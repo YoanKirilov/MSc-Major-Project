@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<!DOCTYPE nmaprun>
+<nmaprun>
+  <host>
+    <status state="up" reason="syn-ack" />
+    <address addr="192.168.56.10" addrtype="ipv4" />
+    <hostnames><hostname name="camera-office" /></hostnames>
+    <ports>
+      <port protocol="tcp" portid="23">
+        <state state="open" reason="syn-ack" />
+        <service name="telnet" method="probed" conf="9" />
+      </port>
+      <port protocol="tcp" portid="8443">
+        <state state="open" reason="syn-ack" />
+        <service name="https" tunnel="ssl" method="table" />
+      </port>
+    </ports>
+  </host>
+  <runstats><finished time="1" /></runstats>
+</nmaprun>

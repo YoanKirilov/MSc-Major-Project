@@ -1,0 +1,1 @@
+"""Scanner boundary components."""

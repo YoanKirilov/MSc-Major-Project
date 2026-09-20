@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Private interactive prototype for an AI-assisted home network vulnerability scanner."
+    />
+    <title>NetGuard AI — Sample Security Report</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="NetGuard AI home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 28 28" role="img">
+              <path d="M14 2.7 23 6v6.8c0 6-3.6 10.5-9 12.5-5.4-2-9-6.5-9-12.5V6l9-3.3Z" fill="none" stroke="currentColor" stroke-width="2"/>
+              <path d="m9.6 14.1 2.8 2.8 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span>NetGuard <b>AI</b></span>
+        </a>
+        <div class="sample-pill"><span></span> Demonstration data</div>
+      </header>
+
+      <main id="top">
+        <section class="hero" aria-labelledby="page-title">
+          <div class="hero-copy">
+            <p class="eyebrow">Home network overview</p>
+            <h1 id="page-title">Your sample network needs attention</h1>
+            <p class="hero-lead">
+              This interactive report uses realistic sample findings to show how the scanner could turn technical risks into clear, practical actions.
+            </p>
+            <div class="hero-actions">
+              <button class="primary-button" id="walkthroughButton" type="button">
+                Review the top priority
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="text-button" id="scoreInfoButton" type="button">How is this score calculated?</button>
+            </div>
+          </div>
+
+          <div class="score-card" aria-label="Security score 38 out of 100">
+            <div class="score-ring" style="--score: 38">
+              <div class="score-inner"><strong>38</strong><span>/100</span></div>
+            </div>
+            <div>
+              <span class="status-label"><i></i> At risk</span>
+              <p>Fix critical findings first to reduce the largest immediate risks.</p>
+            </div>
+          </div>
+
+          <div class="metrics" aria-label="Sample scan summary">
+            <article class="metric-card">
+              <div class="metric-icon danger" aria-hidden="true">!</div>
+              <div><span>Urgent actions</span><strong>2 critical</strong></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-icon violet" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 18v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              </div>
+              <div><span>Devices represented</span><strong>8 devices</strong></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-icon cyan" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 8.5a12.5 12.5 0 0 1 16 0M7 12a8 8 0 0 1 10 0M10 15.5a3.5 3.5 0 0 1 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/></svg>
+              </div>
+              <div><span>Sample profile</span><strong>Home Wi-Fi</strong></div>
+            </article>
+          </div>
+          <p class="simulation-note">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 8v5M10 5.5v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            Prototype only — no scan has been run and no live device data is used.
+          </p>
+        </section>
+
+        <section class="findings-section" id="findings" aria-labelledby="findings-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Prioritised guidance</p>
+              <h2 id="findings-title">Security findings</h2>
+              <p id="resultsSummary">Showing all 8 sample findings</p>
+            </div>
+            <label class="search-box">
+              <span class="sr-only">Search findings</span>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m12.5 12.5 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <input id="searchInput" type="search" placeholder="Search device or issue" autocomplete="off" />
+            </label>
+          </div>
+
+          <div class="filter-row" aria-label="Filter findings by severity">
+            <button class="filter-chip active" type="button" data-filter="all" aria-pressed="true">All <span>8</span></button>
+            <button class="filter-chip" type="button" data-filter="critical" aria-pressed="false">Critical <span>2</span></button>
+            <button class="filter-chip" type="button" data-filter="high" aria-pressed="false">High <span>2</span></button>
+            <button class="filter-chip" type="button" data-filter="medium" aria-pressed="false">Medium <span>3</span></button>
+            <button class="filter-chip" type="button" data-filter="low" aria-pressed="false">Low <span>1</span></button>
+          </div>
+
+          <div class="findings-layout">
+            <div class="findings-list" id="findingsList" aria-live="polite"></div>
+            <aside class="detail-panel" id="detailPanel" aria-live="polite" aria-label="Finding details"></aside>
+          </div>
+        </section>
+
+        <section class="next-steps" aria-labelledby="next-title">
+          <div>
+            <p class="eyebrow">A safer order of work</p>
+            <h2 id="next-title">Start with changes that reduce the most risk</h2>
+          </div>
+          <ol class="steps-list">
+            <li><span>1</span><div><strong>Secure the router</strong><p>Use encrypted administration and replace default credentials.</p></div></li>
+            <li><span>2</span><div><strong>Protect exposed devices</strong><p>Disable outdated services and install current security updates.</p></div></li>
+            <li><span>3</span><div><strong>Separate smart devices</strong><p>Move IoT equipment to a guest or isolated network where possible.</p></div></li>
+          </ol>
+        </section>
+      </main>
+
+      <footer>
+        <p>NetGuard AI · MSc research prototype · Sample data only</p>
+        <p>Explanations are educational guidance, not a guarantee of security.</p>
+      </footer>
+    </div>
+
+    <dialog id="scoreDialog" class="score-dialog">
+      <form method="dialog">
+        <button class="dialog-close" value="close" aria-label="Close score explanation">×</button>
+        <p class="eyebrow">Prototype scoring model</p>
+        <h2>What the score means</h2>
+        <p>The demonstration starts at 100 and applies weighted deductions for each unresolved sample finding. Critical and high-severity issues have the greatest effect.</p>
+        <div class="score-breakdown">
+          <div><span>Starting score</span><strong>100</strong></div>
+          <div><span>Critical risks</span><strong>−36</strong></div>
+          <div><span>High risks</span><strong>−18</strong></div>
+          <div><span>Medium and low risks</span><strong>−8</strong></div>
+          <div class="score-total"><span>Current sample score</span><strong>38</strong></div>
+        </div>
+        <p class="dialog-note">A production version would validate and document its risk model against recognised security guidance.</p>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

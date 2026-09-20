@@ -1,0 +1,14 @@
+body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fa; color: #1f2937; }
+.topbar { display: flex; justify-content: space-between; padding: 1rem 2rem; background: #0f172a; color: white; }
+.topbar nav { display: flex; gap: 1rem; align-items: center; }
+.topbar a { color: white; text-decoration: none; }
+main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+.card { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 1.25rem; margin-bottom: 1rem; }
+.status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
+label, input, textarea, select, button { display: block; margin-top: 0.5rem; }
+input, textarea, select { width: 100%; box-sizing: border-box; padding: 0.5rem; }
+button { background: #2563eb; color: white; border: none; border-radius: 6px; padding: 0.7rem 1rem; cursor: pointer; }
+button.secondary { background: #475569; }
+#scan-errors { color: #b91c1c; margin-top: 1rem; }
+.hidden { display: none; }
+@media (max-width: 600px) { .topbar { flex-direction: column; gap: 0.5rem; } }

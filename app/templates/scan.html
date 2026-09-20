@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Scan details</h2>
+  <div id="scan-summary"></div>
+</section>
+<section class="card">
+  <h3>Findings</h3>
+  <div id="finding-list"></div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="/static/js/scan.js"></script>
+{% endblock %}

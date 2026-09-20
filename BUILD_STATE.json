@@ -1,0 +1,41 @@
+{
+  "spec_version": "1.0",
+  "project": "network-assessor",
+  "updated_at": "2026-09-20T00:00:00Z",
+  "current_task": "T07",
+  "tasks": {
+    "T01": {"status": "complete", "evidence": ["pyproject.toml", "requirements.lock", "requirements-dev.lock", "README.md"], "notes": "CLI help, doctor, imports, and config unit tests pass."},
+    "T02": {"status": "complete", "evidence": ["app/schemas/scan.py", "app/schemas/settings.py", "tests/unit/test_models.py"], "notes": "Initial Pydantic models and fixture validation pass; full invariant coverage remains to be added."},
+    "T03": {"status": "complete", "evidence": ["app/storage/json_store.py", "tests/unit/test_storage.py"], "notes": "Offline atomic replacement, previous revision backup, size/duplicate-key checks, revision conflicts, and unreadable history tests pass."},
+    "T04": {"status": "complete", "evidence": ["app/security/scope.py", "app/scanner/commands.py", "app/scanner/runner.py", "tests/unit/test_scope.py", "tests/unit/test_commands.py", "tests/unit/test_process_runner.py"], "notes": "Offline target policy, fixed command, timeout, cancellation, and output-boundary tests pass."},
+    "T05": {"status": "complete", "evidence": ["app/scanner/parser.py", "tests/fixtures/nmap_host.xml", "tests/unit/test_nmap_parser.py"], "notes": "Offline XML parser tests pass for fixed slots, evidence, malformed XML, and unexpected target."},
+    "T06": {"status": "complete", "evidence": ["app/risk/engine.py", "app/risk/catalogue.py", "tests/unit/test_rules.py"], "notes": "Offline Telnet boundary tests pass; full R01-R07 and profiling coverage remains to be expanded."},
+    "T07": {"status": "in_progress", "evidence": ["app/jobs/supervisor.py", "tests/unit/test_supervisor.py"], "notes": "Initial admitted sequential supervisor and persisted host checkpoints pass; discovery branch, deadlines, restart recovery, and full lifecycle integration remain."},
+    "T08": {"status": "pending", "evidence": [], "notes": ""},
+    "T09": {"status": "pending", "evidence": [], "notes": ""},
+    "T10": {"status": "pending", "evidence": [], "notes": ""},
+    "T11": {"status": "pending", "evidence": [], "notes": ""},
+    "T12": {"status": "pending", "evidence": [], "notes": ""},
+    "T13": {"status": "pending", "evidence": [], "notes": ""},
+    "T14": {"status": "pending", "evidence": [], "notes": ""}
+  },
+  "verification": {
+    "offline": "failed",
+    "live_lab": "not_run",
+    "live_provider": "not_run",
+    "human_study": "not_run"
+  },
+  "last_checks": [
+    {"command": "python -m pytest tests/unit/test_models.py tests/unit/test_storage.py tests/unit/test_config.py -q", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "7 passed", "evidence_path": "docs/testing.md"},
+    {"command": "python -m app --help", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "CLI help displayed", "evidence_path": "docs/testing.md"},
+    {"command": "python -m app doctor", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "Python 3.14.2; Nmap unavailable; provider unconfigured", "evidence_path": "docs/testing.md"},
+    {"command": "python -m ruff check app tests", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 1, "result": "Lint failures remain", "evidence_path": "docs/testing.md"},
+    {"command": "python -m pytest -q", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "29 passed", "evidence_path": "docs/testing.md"}
+  ],
+  "blockers": [
+    {"task": "T12", "prerequisite": "Ubuntu reference environment, installed Nmap, and explicitly authorised isolated lab", "affected_checks": ["live_lab"], "work_completed": "Offline scanner boundary work has not yet been implemented."},
+    {"task": "T10", "prerequisite": "Explicitly enabled OpenAI provider configuration and API key", "affected_checks": ["live_provider"], "work_completed": "Fixed explanation schema is present; real adapter is not yet implemented."}
+  ],
+  "deviations": [],
+  "next_action": "Complete supervisor discovery/deadline/recovery integration, then finish session bootstrap and protected API routes."
+}

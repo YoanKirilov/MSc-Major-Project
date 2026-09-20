@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Dashboard</h2>
+  <p>Local network and IoT security assessment for non-expert users.</p>
+  <div class="status-grid">
+    <div>Configured network: <strong id="configured-network">Not yet configured</strong></div>
+    <div>Scanner: <strong id="scanner-status">Unknown</strong></div>
+    <div>AI: <strong id="ai-status">Off</strong></div>
+  </div>
+</section>
+<section class="card">
+  <h3>Scan options</h3>
+  <form id="scan-form">
+    <label><input type="radio" name="mode" value="discover" checked /> Discover</label>
+    <label><input type="radio" name="mode" value="known_hosts" /> Known hosts</label>
+    <textarea id="host-list" placeholder="192.168.0.10
+192.168.0.11"></textarea>
+    <label for="cidr-input">Network CIDR</label>
+    <input id="cidr-input" type="text" value="192.168.0.0/24" />
+    <label><input type="checkbox" id="auth-check" /> I own or have permission to assess these targets</label>
+    <button type="submit">Start scan</button>
+    <button type="button" id="demo-button">Explore demo</button>
+  </form>
+  <div id="scan-errors" aria-live="polite"></div>
+</section>
+<section class="card">
+  <h3>History</h3>
+  <div id="history-container"></div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="/static/js/dashboard.js"></script>
+{% endblock %}
