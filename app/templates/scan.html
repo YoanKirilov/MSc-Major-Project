@@ -1,14 +1,81 @@
-{% extends "base.html" %}
-{% block content %}
-<section class="card">
-  <h2>Scan details</h2>
-  <div id="scan-summary"></div>
-</section>
-<section class="card">
-  <h3>Findings</h3>
-  <div id="finding-list"></div>
-</section>
-{% endblock %}
-{% block scripts %}
-<script type="module" src="/static/js/scan.js"></script>
-{% endblock %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // A static template has no saved scan ID. Open the application's dashboard.
+      if ('{{ "backend" }}' !== 'backend') {
+        window.location.replace('http://127.0.0.1:8765/');
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Observed local network scan results." />
+    <title>NetGuard AI - Scan Results</title>
+    <link rel="stylesheet" href="/static/css/app.css" />
+  </head>
+  <body class="scan-results-page">
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="NetGuard AI home">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 28 28" role="img"><path d="M14 2.7 23 6v6.8c0 6-3.6 10.5-9 12.5-5.4-2-9-6.5-9-12.5V6l9-3.3Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9.6 14.1 2.8 2.8 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span>NetGuard <b>AI</b></span>
+        </a>
+        <span class="local-pill"><i></i> Live scan results</span>
+      </header>
+      <main id="top">
+        <section class="hero result-hero" id="scan-summary" aria-labelledby="result-title">
+          <div class="hero-copy">
+            <p class="eyebrow">Observed network report</p>
+            <h1 id="result-title">Loading scan results...</h1>
+            <p class="hero-lead" id="result-lead">Reading the locally saved scan document.</p>
+            <p class="simulation-note" id="result-status" role="status" aria-live="polite"></p>
+            <div class="simulation-note" id="scan-problems" role="status" hidden></div>
+            <p class="simulation-note" id="guidance-notice" role="status"></p>
+            <details class="scan-technical"><summary>Technical scan details</summary><p id="result-technical"></p></details>
+            <div class="hero-actions">
+              <button class="primary-button" id="runAgainButton" type="button">Run again</button>
+              <button class="text-button" id="simplifyButton" type="button" hidden>Simplify this saved report</button>
+              <button class="text-button" id="refreshGuidanceButton" type="button" hidden>Refresh saved guidance</button>
+              <a class="text-button" href="/settings">AI settings</a>
+            </div>
+          </div>
+          <div class="score-card result-summary-card">
+            <div class="score-ring" id="result-ring" style="--score: 0"><div class="score-inner"><strong id="result-count">0</strong><span>findings</span></div></div>
+            <div><span class="status-label"><i></i> <span id="result-state">Loading</span></span><p id="result-coverage">Coverage is being calculated from scan checkpoints.</p></div>
+          </div>
+          <div class="metrics" aria-label="Live scan summary">
+            <article class="metric-card"><div class="metric-icon danger" aria-hidden="true">!</div><div><span>Findings</span><strong id="finding-metric">0</strong></div></article>
+            <article class="metric-card"><div class="metric-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 18v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div><div><span>Devices observed</span><strong id="device-metric">0</strong></div></article>
+            <article class="metric-card"><div class="metric-icon cyan" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8.5a12.5 12.5 0 0 1 16 0M7 12a8 8 0 0 1 10 0M10 15.5a3.5 3.5 0 0 1 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/></svg></div><div><span>Open services</span><strong id="service-metric">0</strong></div></article>
+          </div>
+        </section>
+        <section class="findings-section" aria-labelledby="findings-title">
+          <div class="section-heading">
+            <div><p class="eyebrow">Prioritised guidance</p><h2 id="findings-title">Security findings</h2><p id="resultsSummary">Loading actual observations...</p></div>
+            <label class="search-box">
+              <span class="sr-only">Search findings</span>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m12.5 12.5 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <input id="searchInput" type="search" placeholder="Search device or issue" autocomplete="off" />
+            </label>
+          </div>
+          <div class="filter-row" aria-label="Filter findings by severity">
+            <button class="filter-chip active" type="button" data-filter="all" aria-pressed="true">All <span id="count-all">0</span></button>
+            <button class="filter-chip" type="button" data-filter="high" aria-pressed="false">High <span id="count-high">0</span></button>
+            <button class="filter-chip" type="button" data-filter="medium" aria-pressed="false">Medium <span id="count-medium">0</span></button>
+            <button class="filter-chip" type="button" data-filter="low" aria-pressed="false">Low <span id="count-low">0</span></button>
+            <button class="filter-chip" type="button" data-filter="informational" aria-pressed="false">Review <span id="count-informational">0</span></button>
+          </div>
+          <div class="findings-layout"><div class="findings-list" id="findingsList" aria-live="polite"></div><aside class="detail-panel" id="detailPanel" aria-live="polite" aria-label="Finding details"></aside></div>
+        </section>
+        <section class="device-section" aria-labelledby="devices-title"><div><p class="eyebrow">Observed devices</p><h2 id="devices-title">What answered the scan</h2><p class="hero-lead">The table lists devices that responded during discovery or service checks. It does not prove that other devices or services are absent.</p></div><div class="device-table-wrap"><table class="device-table"><caption class="sr-only">Observed devices and open services</caption><thead><tr><th scope="col">Name</th><th scope="col">IP address</th><th scope="col">Category</th><th scope="col">Reachability</th><th scope="col">Open services</th><th scope="col">Safe checks</th><th scope="col">Findings</th></tr></thead><tbody id="device-table-body"></tbody></table></div></section>
+        <section class="device-section" id="mdns-section" aria-labelledby="mdns-title" hidden><div><p class="eyebrow">Extra local discovery</p><h2 id="mdns-title">Device announcements</h2><p class="hero-lead">These names and services were advertised on the local network. Advertisements are unverified claims, not proof of an open port or a security problem.</p></div><ul id="mdns-list"></ul></section>
+        <section class="next-steps" aria-labelledby="next-title">
+          <div><p class="eyebrow">A safer order of work</p><h2 id="next-title">Start with changes that reduce the most risk</h2></div>
+          <ol class="steps-list" id="nextStepsList" aria-live="polite"></ol>
+        </section>
+      </main>
+      <footer><p>NetGuard AI · Local JSON result</p><p>Observations are not a security certification.</p></footer>
+    </div>
+    <script type="module" src="/static/js/scan.js"></script>
+  </body>
+</html>

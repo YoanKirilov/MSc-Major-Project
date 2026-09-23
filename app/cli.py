@@ -1,10 +1,10 @@
 import argparse
+import asyncio
 import os
-import shutil
-import sys
 
-from .config import doctor_report, load_config
+from .config import doctor_report
 from .main import create_app
+from .security.session import SessionManager
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,19 +38,35 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "serve":
-        config = load_config()
-        config.port = args.port
+        if args.host not in {"127.0.0.1", "localhost"}:
+            parser.error("--host must be 127.0.0.1 or localhost")
         os.environ["APP_PORT"] = str(args.port)
         import uvicorn
 
-        if not args.no_browser:
-            try:
-                import webbrowser
+        session_manager = SessionManager()
+        bootstrap_url = session_manager.get_bootstrap_url(args.port)
 
-                webbrowser.open(f"http://127.0.0.1:{args.port}/")
-            except Exception:
-                pass
-        uvicorn.run(create_app(), host=args.host, port=args.port, log_level="info")
+        class BrowserServer(uvicorn.Server):
+            async def startup(self, sockets=None):
+                await super().startup(sockets=sockets)
+                if not self.started:
+                    return
+                # Opening before the socket is bound can show "connection refused".
+                print(f"Open this local session URL: {bootstrap_url}", flush=True)
+                if not args.no_browser:
+                    try:
+                        import webbrowser
+
+                        await asyncio.to_thread(webbrowser.open, bootstrap_url)
+                    except Exception:
+                        pass  # The authenticated link remains available in the task log.
+
+        BrowserServer(uvicorn.Config(
+            create_app(session_manager=session_manager),
+            host=args.host,
+            port=args.port,
+            log_level="info",
+        )).run()
         return 0
 
     parser.print_help()

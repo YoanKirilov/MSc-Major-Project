@@ -1,28 +1,28 @@
 {
   "spec_version": "1.0",
   "project": "network-assessor",
-  "updated_at": "2026-09-20T00:00:00Z",
-  "current_task": "T07",
+  "updated_at": "2026-09-21T00:00:00Z",
+  "current_task": "T09",
   "tasks": {
     "T01": {"status": "complete", "evidence": ["pyproject.toml", "requirements.lock", "requirements-dev.lock", "README.md"], "notes": "CLI help, doctor, imports, and config unit tests pass."},
     "T02": {"status": "complete", "evidence": ["app/schemas/scan.py", "app/schemas/settings.py", "tests/unit/test_models.py"], "notes": "Initial Pydantic models and fixture validation pass; full invariant coverage remains to be added."},
-    "T03": {"status": "complete", "evidence": ["app/storage/json_store.py", "tests/unit/test_storage.py"], "notes": "Offline atomic replacement, previous revision backup, size/duplicate-key checks, revision conflicts, and unreadable history tests pass."},
+    "T03": {"status": "complete", "evidence": ["app/storage/json_store.py", "tests/unit/test_storage.py"], "notes": "JSON persistence uses per-scan locks, unique atomic temporary files, previous revision backups, bounded documents, non-blocking async wrappers, and tested concurrent updates."},
     "T04": {"status": "complete", "evidence": ["app/security/scope.py", "app/scanner/commands.py", "app/scanner/runner.py", "tests/unit/test_scope.py", "tests/unit/test_commands.py", "tests/unit/test_process_runner.py"], "notes": "Offline target policy, fixed command, timeout, cancellation, and output-boundary tests pass."},
     "T05": {"status": "complete", "evidence": ["app/scanner/parser.py", "tests/fixtures/nmap_host.xml", "tests/unit/test_nmap_parser.py"], "notes": "Offline XML parser tests pass for fixed slots, evidence, malformed XML, and unexpected target."},
     "T06": {"status": "complete", "evidence": ["app/risk/engine.py", "app/risk/catalogue.py", "tests/unit/test_rules.py"], "notes": "Offline Telnet boundary tests pass; full R01-R07 and profiling coverage remains to be expanded."},
-    "T07": {"status": "in_progress", "evidence": ["app/jobs/supervisor.py", "tests/unit/test_supervisor.py"], "notes": "Initial admitted sequential supervisor and persisted host checkpoints pass; discovery branch, deadlines, restart recovery, and full lifecycle integration remain."},
-    "T08": {"status": "pending", "evidence": [], "notes": ""},
-    "T09": {"status": "pending", "evidence": [], "notes": ""},
-    "T10": {"status": "pending", "evidence": [], "notes": ""},
+    "T07": {"status": "complete", "evidence": ["app/jobs/supervisor.py", "app/api/scans.py", "tests/unit/test_supervisor.py", "tests/integration_test_live_scan.py", ".preview-data/scans/d34cff71-a15b-47a2-b850-c3cde0eda545/scan.json"], "notes": "The supervisor records truthful timestamps and per-target transitions, supports cancellation, bounds concurrent jobs, reconciles interrupted persisted jobs, and completed a real Wi-Fi scan."},
+    "T08": {"status": "complete", "evidence": ["app/main.py", "app/api", "app/security/session.py", "app/static/js/api.js", "tests/unit/test_session.py", "tests/integration_test_live_scan.py"], "notes": "Scan and result APIs use one validated server-owned scope, loopback-only serving, bootstrap sessions, HTTP-only cookies, Origin/Host checks, and CSRF protection."},
+    "T09": {"status": "in_progress", "evidence": ["app/templates/dashboard.html", "app/templates/scan.html", "app/static/css/app.css", "app/static/js/dashboard.js", "app/static/js/scan.js", "app/demo/findings.json", "app/demo/adapter.py", "app/demo/runs.py", "tests/integration_test_dashboard.py", "tests/integration_test_demo_run.py", "tests/integration_test_live_scan.py", "tests/unit/test_demo_adapter.py", "tests/unit/test_demo_runs.py"], "notes": "Scan-first landing page has curl progress driven by persisted coverage; live results show the bounded TCP profile, actual devices/services/findings, and an accessible device inventory table."},
+    "T10": {"status": "complete", "evidence": ["app/explanations/service.py", "tests/unit/test_explanations.py", "tests/live_provider_test_ollama.py", "app/jobs/supervisor.py", "app/static/js/scan.js", "docs/testing.md"], "notes": "The loopback-only Ollama integration uses allow-listed input, structured validation, caching, JSON persistence, UI selection, and fixed fallback. Offline tests and an opt-in live run with llama3.2:3b pass; AI cannot alter deterministic severity or recommended actions."},
     "T11": {"status": "pending", "evidence": [], "notes": ""},
     "T12": {"status": "pending", "evidence": [], "notes": ""},
     "T13": {"status": "pending", "evidence": [], "notes": ""},
     "T14": {"status": "pending", "evidence": [], "notes": ""}
   },
   "verification": {
-    "offline": "failed",
+    "offline": "passed",
     "live_lab": "not_run",
-    "live_provider": "not_run",
+    "live_provider": "passed",
     "human_study": "not_run"
   },
   "last_checks": [
@@ -30,12 +30,17 @@
     {"command": "python -m app --help", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "CLI help displayed", "evidence_path": "docs/testing.md"},
     {"command": "python -m app doctor", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "Python 3.14.2; Nmap unavailable; provider unconfigured", "evidence_path": "docs/testing.md"},
     {"command": "python -m ruff check app tests", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 1, "result": "Lint failures remain", "evidence_path": "docs/testing.md"},
-    {"command": "python -m pytest -q", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "29 passed", "evidence_path": "docs/testing.md"}
+    {"command": "python -m pytest -q", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "31 passed", "evidence_path": "docs/testing.md"},
+    {"command": "node --check app/static/js/dashboard.js", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "JavaScript syntax valid", "evidence_path": "app/static/js/dashboard.js"},
+    {"command": "GET http://127.0.0.1:8765/ and GET http://127.0.0.1:8765/api/demo-findings", "checked_at": "2026-09-20T00:00:00Z", "exit_code": 0, "result": "page 200; demo 200; 8 findings", "evidence_path": "docs/testing.md"},
+    {"command": "python -m pytest -q", "checked_at": "2026-09-21T00:00:00Z", "exit_code": 0, "result": "40 passed, including local AI explanation contract and fallback tests", "evidence_path": "docs/testing.md"},
+    {"command": "Browser: authorise and click Run real scan on active Wi-Fi scope", "checked_at": "2026-09-21T00:00:00Z", "exit_code": 0, "result": "Live scan 374670da-9017-439e-98ec-ac51dc6ae87c completed; 10 devices; 7 open selected TCP services; 4 findings.", "evidence_path": ".preview-data/scans/374670da-9017-439e-98ec-ac51dc6ae87c/scan.json"},
+    {"command": "python -m pytest -q", "checked_at": "2026-09-21T00:00:00Z", "exit_code": 0, "result": "68 passed, 1 live-provider test skipped by default", "evidence_path": "docs/testing.md"},
+    {"command": "$env:RUN_LIVE_OLLAMA='1'; python -m pytest tests/live_provider_test_ollama.py -q", "checked_at": "2026-09-21T00:00:00Z", "exit_code": 0, "result": "1 passed with Ollama 0.34.2 and llama3.2:3b", "evidence_path": "docs/testing.md"}
   ],
   "blockers": [
-    {"task": "T12", "prerequisite": "Ubuntu reference environment, installed Nmap, and explicitly authorised isolated lab", "affected_checks": ["live_lab"], "work_completed": "Offline scanner boundary work has not yet been implemented."},
-    {"task": "T10", "prerequisite": "Explicitly enabled OpenAI provider configuration and API key", "affected_checks": ["live_provider"], "work_completed": "Fixed explanation schema is present; real adapter is not yet implemented."}
+    {"task": "T12", "prerequisite": "Ubuntu reference environment and an explicitly authorised isolated lab", "affected_checks": ["live_lab"], "work_completed": "Offline scanner boundaries and Windows Nmap execution are implemented and tested; the remaining blocker is validation in the reference Ubuntu lab."}
   ],
   "deviations": [],
-  "next_action": "Complete supervisor discovery/deadline/recovery integration, then finish session bootstrap and protected API routes."
+  "next_action": "Run a browser smoke test through the new bootstrap session, then replace placeholder reference URLs and add retention/index/schema-migration maintenance for long-lived JSON datasets."
 }

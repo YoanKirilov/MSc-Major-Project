@@ -29,10 +29,12 @@ async def _read_limited(stream: asyncio.StreamReader, limit: int) -> tuple[bytes
             break
         total += len(chunk)
         if total > limit:
+            if not overflow:
+                chunks.append(chunk[: max(0, limit - (total - len(chunk)))])
             overflow = True
-            chunks.append(chunk[: max(0, limit - (total - len(chunk)))])
-            break
-        chunks.append(chunk)
+            continue
+        if not overflow:
+            chunks.append(chunk)
     return b"".join(chunks), overflow
 
 

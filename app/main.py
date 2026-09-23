@@ -1,21 +1,25 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .config import load_config
-from .risk.engine import RiskEngine
-from .storage.json_store import JsonStore
-from .security.session import SessionManager
-from .jobs.supervisor import ScanSupervisor
-from .api import session as session_api
+from .api import demo as demo_api
 from .api import scans as scans_api
+from .api import session as session_api
 from .api import settings as settings_api
+from .config import load_config, resolve_nmap_path
+from .demo.adapter import DemoFindingsAdapter
+from .demo.runs import DemoRunStore
+from .explanations import ExplanationService, OllamaExplanationProvider
+from .jobs.supervisor import ScanSupervisor
+from .security.session import SessionManager
+from .storage.json_store import JsonStore
 
 
 @asynccontextmanager
@@ -24,37 +28,77 @@ async def lifespan(app: FastAPI):
     data_dir = Path(config.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     app.state.config = config
+    app.state.runtime_status_lock = asyncio.Lock()
+    app.state.runtime_status_cache = None
     app.state.store = JsonStore(data_dir)
-    app.state.risk = RiskEngine()
-    app.state.session_manager = SessionManager()
-    app.state.supervisor = ScanSupervisor(app.state.store, nmap_path=config.nmap_path or "nmap")
+    app.state.storage_writable_at_startup = await asyncio.to_thread(app.state.store.storage_writable)
+    app.state.session_manager = getattr(app.state, "initial_session_manager", None) or SessionManager()
+    app.state.demo_data = DemoFindingsAdapter()
+    app.state.demo_runs = DemoRunStore(data_dir / "demo-runs", app.state.demo_data)
+    explanation_provider = None
+    if config.ai_provider == "ollama":
+        try:
+            explanation_provider = OllamaExplanationProvider(
+                model=config.ai_model,
+                base_url=config.ai_base_url,
+                timeout_s=config.ai_timeout_s,
+            )
+        except ValueError:
+            explanation_provider = None
+    app.state.explanations = ExplanationService(
+        app.state.store,
+        explanation_provider,
+        enabled=True,
+    )
+    app.state.supervisor = ScanSupervisor(
+        app.state.store,
+        nmap_path=resolve_nmap_path(config) or "nmap",
+        explanation_service=app.state.explanations,
+        max_concurrent_scans=config.max_concurrent_scans,
+    )
+    await app.state.supervisor.reconcile_incomplete()
     try:
         yield
     finally:
         await app.state.supervisor.shutdown()
 
 
-def create_app() -> FastAPI:
+def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     app = FastAPI(title="Network Assessor", lifespan=lifespan)
+    app.state.initial_session_manager = session_manager
     app.state.response_factory = JSONResponse
-    templates = Jinja2Templates(directory="app/templates")
+    app_root = Path(__file__).resolve().parent
+    templates = Jinja2Templates(directory=str(app_root / "templates"))
     app.state.templates = templates
-    app.mount("/static", StaticFiles(directory="app/static"), name="static")
+    app.mount("/static", StaticFiles(directory=str(app_root / "static")), name="static")
+
+    @app.exception_handler(PermissionError)
+    async def local_storage_permission_error(_request: Request, _exc: PermissionError):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "The local data folder is not writable. Close other app instances "
+                    "and restart Network Assessor with normal user permissions."
+                )
+            },
+        )
 
     @app.get("/")
-    async def home(request):
-        return templates.TemplateResponse("dashboard.html", {"request": request})
+    async def home(request: Request):
+        return templates.TemplateResponse(request=request, name="dashboard.html", context={})
 
     @app.get("/settings")
-    async def settings_page(request):
-        return templates.TemplateResponse("settings.html", {"request": request})
+    async def settings_page(request: Request):
+        return templates.TemplateResponse(request=request, name="settings.html", context={})
 
     @app.get("/scans/{scan_id}")
-    async def scan_page(request, scan_id: str):
-        return templates.TemplateResponse("scan.html", {"request": request, "scan_id": scan_id})
+    async def scan_page(request: Request, scan_id: str):
+        return templates.TemplateResponse(request=request, name="scan.html", context={"scan_id": scan_id})
 
     app.include_router(session_api.router)
     app.include_router(scans_api.router)
     app.include_router(settings_api.router)
+    app.include_router(demo_api.router)
 
     return app

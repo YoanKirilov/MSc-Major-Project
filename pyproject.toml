@@ -17,7 +17,7 @@ dependencies = [
   "filelock>=3.31,<4.0",
   "platformdirs>=4.0,<5.0",
   "defusedxml>=0.7,<1.0",
-  "openai>=1.40,<2.0",
+  "zeroconf>=0.149,<1.0",
 ]
 
 [project.optional-dependencies]
@@ -41,9 +41,11 @@ where = ["."]
 include = ["app*"]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test_*.py"]
 markers = [
   "live_lab: live network lab checks",
-  "live_provider: live cloud provider checks",
+  "live_provider: opt-in live AI provider checks",
   "human_study: research study checks",
 ]
 addopts = "-q"

@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Request
+import asyncio
 
+from fastapi import APIRouter, HTTPException, Request
+
+from app.api.dependencies import require_session
+from app.config import nmap_interface_choices
 from app.schemas.settings import SettingsUpdate
+from app.scanner.mdns import mdns_available
 
 router = APIRouter(prefix="/api")
-
-
-def require_session(request: Request, csrf: bool = False):
-    request.app.state.session_manager.authenticate(request, require_csrf=csrf)
 
 
 @router.get("/settings")
@@ -18,4 +19,15 @@ async def get_settings(request: Request):
 @router.patch("/settings")
 async def update_settings(request: Request, update: SettingsUpdate):
     require_session(request, csrf=True)
-    return await request.app.state.store.update_settings(update, update.expected_revision)
+    if update.mdns_enabled and not mdns_available():
+        raise HTTPException(status_code=503, detail="Optional mDNS discovery is not installed")
+    if update.interface is not None:
+        choices = await asyncio.to_thread(nmap_interface_choices, request.app.state.config)
+        if update.interface not in choices:
+            raise HTTPException(status_code=422, detail="Selected interface is unavailable")
+    try:
+        return await request.app.state.store.update_settings(update, update.expected_revision)
+    except ValueError as exc:
+        if str(exc) == "revision conflict":
+            raise HTTPException(status_code=409, detail="Settings changed; reload and try again") from exc
+        raise

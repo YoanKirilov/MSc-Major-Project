@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.schemas.scan import Device, DeviceProfile, ExplanationRecord, Finding, FixedExplanation, Service
+from app.schemas.scan import Device, DeviceProfile, Finding, FixedExplanation, Service
 
 
 def make_telnet_scan() -> dict:
@@ -51,14 +51,4 @@ def make_telnet_scan() -> dict:
         "device": device.model_dump(),
         "service": service.model_dump(),
         "finding": finding.model_dump(),
-    }
-
-
-def make_demo_scan() -> dict:
-    return {
-        "scan_id": "demo-scan-1",
-        "source": "demo",
-        "devices": [],
-        "services": [],
-        "findings": [],
     }

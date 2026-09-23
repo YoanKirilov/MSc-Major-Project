@@ -13,3 +13,9 @@ coverage.xml
 .DS_Store
 .idea/
 .vscode/
+.preview-data/
+.test-*/
+.cleanup-backup-*.zip
+.pytest-ai-*/
+.rt-*/
+.vs/

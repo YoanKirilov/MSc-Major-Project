@@ -7,12 +7,14 @@
     <input id="allowed-network" type="text" value="192.168.0.0/24" />
     <label for="interface-select">Interface</label>
     <select id="interface-select">
-      <option value="eth0">eth0</option>
-      <option value="ens33">ens33</option>
-      <option value="lo">lo</option>
+      <option value="">Loading available interfaces...</option>
     </select>
     <label><input type="checkbox" id="retain-raw-xml" /> Retain raw XML</label>
-    <label><input type="checkbox" id="ai-enabled" /> Enable AI explanations</label>
+    <label><input type="checkbox" id="mdns-enabled" /> Also look for local device announcements (mDNS)</label>
+    <p id="mdns-status"></p>
+    <label><input type="checkbox" id="ai-enabled" /> Enable local AI wording</label>
+    <p>AI may simplify finding titles, explanations, limitations, and step wording. The original scan facts and rule-based guidance stay saved and available. When off, the report still provides plain-English guidance.</p>
+    <p id="ai-status" role="status"></p>
     <button type="submit">Save settings</button>
   </form>
 </section>

@@ -34,7 +34,7 @@ def test_service_port_rejected_outside_profile():
         Service(
             service_id="x",
             device_id="d",
-            port=8081,
+            port=0,
             state="closed",
         )
     except Exception:

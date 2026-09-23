@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+from time import monotonic
+
 from fastapi import APIRouter, HTTPException, Request
 
-from app.config import load_config
+from app.config import nmap_interface_choices, nmap_preflight, resolve_allowed_network
+from app.scanner.mdns import mdns_available
 from app.security.session import SessionManager
 
 router = APIRouter(prefix="/api")
@@ -14,38 +18,80 @@ def get_session_manager(request: Request) -> SessionManager:
 
 @router.post("/session")
 async def create_session(request: Request):
-    body = await request.json()
-    token = body.get("token")
     manager = get_session_manager(request)
+    manager.validate_request_boundary(request)
+    try:
+        body = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+    token = body.get("token") if isinstance(body, dict) else None
     if not manager.validate_bootstrap(token):
         raise HTTPException(status_code=401, detail="Invalid bootstrap token")
-    session_id = manager.build_session_cookie()
-    manager.sessions[session_id] = session_id
+    session_id = manager.register_session()
     csrf_token = manager.csrf_for_session(session_id)
     response = {"csrf_token": csrf_token}
     response_obj = request.app.state.response_factory(response)
-    response_obj.set_cookie("session_id", session_id, httponly=True, samesite="strict", path="/")
+    response_obj.set_cookie(
+        "session_id",
+        session_id,
+        httponly=True,
+        samesite="strict",
+        path="/",
+        max_age=int(manager.session_ttl_s),
+    )
     return response_obj
 
 
 @router.get("/session")
 async def get_session(request: Request):
-    session = request.cookies.get("session_id")
-    if not session or session not in request.app.state.session_manager.sessions:
+    manager = request.app.state.session_manager
+    manager.validate_request_boundary(request)
+    if not manager.validate_session(request):
         raise HTTPException(status_code=401, detail="Session required")
-    return {"csrf_token": request.app.state.session_manager.csrf_for_session(session)}
+    session = request.cookies["session_id"]
+    return {"csrf_token": manager.csrf_for_session(session)}
 
 
 @router.get("/status")
 async def status(request: Request):
-    config = load_config()
+    request.app.state.session_manager.authenticate(request)
+    config = request.app.state.config
+    settings = await request.app.state.store.load_settings()
+    storage_ok = await asyncio.to_thread(request.app.state.store.storage_writable)
+    async with request.app.state.runtime_status_lock:
+        runtime = request.app.state.runtime_status_cache
+        if runtime is None or monotonic() - runtime["checked_at"] > 30:
+            scanner_result, interfaces, ai_available = await asyncio.gather(
+                asyncio.to_thread(nmap_preflight, config),
+                asyncio.to_thread(nmap_interface_choices, config),
+                request.app.state.explanations.provider_available(),
+            )
+            scanner_available, scanner_version = scanner_result
+            runtime = {
+                "checked_at": monotonic(),
+                "scanner_available": scanner_available,
+                "scanner_version": scanner_version,
+                "interface_choices": interfaces,
+                "ai_available": ai_available,
+            }
+            request.app.state.runtime_status_cache = runtime
+    supervisor = request.app.state.supervisor
+    active_scan_ids = supervisor.active_scan_ids
     return {
         "app_version": "0.1.0",
-        "scanner_available": False,
-        "scanner_version": None,
-        "interface_choices": ["eth0", "ens33", "lo"],
-        "ai_configured": False,
+        "scanner_available": runtime["scanner_available"],
+        "scanner_version": runtime["scanner_version"],
+        "interface_choices": runtime["interface_choices"],
+        "ai_configured": config.ai_provider == "ollama" and bool(config.ai_model),
+        "ai_available": runtime["ai_available"],
+        "ai_enabled": settings.ai_enabled,
+        "ai_provider": config.ai_provider,
         "ai_model": config.ai_model,
-        "active_scan_id": None,
-        "storage_status": "ok",
+        "mdns_available": mdns_available(),
+        "mdns_enabled": settings.mdns_enabled,
+        "allowed_network": settings.allowed_network or await asyncio.to_thread(resolve_allowed_network, config),
+        "active_scan_id": active_scan_ids[0] if len(active_scan_ids) == 1 else None,
+        "active_scan_count": len(active_scan_ids),
+        "max_concurrent_scans": supervisor.max_concurrent_scans,
+        "storage_status": "ok" if storage_ok else "not_writable",
     }

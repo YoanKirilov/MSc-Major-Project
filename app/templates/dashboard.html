@@ -1,34 +1,62 @@
-{% extends "base.html" %}
-{% block content %}
-<section class="card">
-  <h2>Dashboard</h2>
-  <p>Local network and IoT security assessment for non-expert users.</p>
-  <div class="status-grid">
-    <div>Configured network: <strong id="configured-network">Not yet configured</strong></div>
-    <div>Scanner: <strong id="scanner-status">Unknown</strong></div>
-    <div>AI: <strong id="ai-status">Off</strong></div>
-  </div>
-</section>
-<section class="card">
-  <h3>Scan options</h3>
-  <form id="scan-form">
-    <label><input type="radio" name="mode" value="discover" checked /> Discover</label>
-    <label><input type="radio" name="mode" value="known_hosts" /> Known hosts</label>
-    <textarea id="host-list" placeholder="192.168.0.10
-192.168.0.11"></textarea>
-    <label for="cidr-input">Network CIDR</label>
-    <input id="cidr-input" type="text" value="192.168.0.0/24" />
-    <label><input type="checkbox" id="auth-check" /> I own or have permission to assess these targets</label>
-    <button type="submit">Start scan</button>
-    <button type="button" id="demo-button">Explore demo</button>
-  </form>
-  <div id="scan-errors" aria-live="polite"></div>
-</section>
-<section class="card">
-  <h3>History</h3>
-  <div id="history-container"></div>
-</section>
-{% endblock %}
-{% block scripts %}
-<script type="module" src="/static/js/dashboard.js"></script>
-{% endblock %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // Live Server previews static templates; the application runs on Python.
+      if ('{{ "backend" }}' !== 'backend') {
+        window.location.replace('http://127.0.0.1:8765/');
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Local network security assessment." />
+    <title>NetGuard AI - Local Scan</title>
+    <link rel="stylesheet" href="/static/css/app.css" />
+  </head>
+  <body class="scan-home">
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="NetGuard AI home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 28 28" role="img"><path d="M14 2.7 23 6v6.8c0 6-3.6 10.5-9 12.5-5.4-2-9-6.5-9-12.5V6l9-3.3Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9.6 14.1 2.8 2.8 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span>NetGuard <b>AI</b></span>
+        </a>
+        <div class="topbar-actions"><a href="/settings">Settings</a><span class="local-pill"><i></i> Local assessment</span></div>
+      </header>
+
+      <main id="top" class="scan-home-main">
+        <section class="scan-landing" aria-labelledby="page-title">
+          <p class="eyebrow">Private network security</p>
+          <h1 id="page-title">See what is exposed<br />on your network.</h1>
+          <p class="scan-intro">A bounded local scan checks the active private network for common exposed services, then explains the observed risks in plain English.</p>
+          <div class="scan-mode" role="group" aria-label="Scan depth">
+            <button class="mode-button active" type="button" data-profile="light" aria-pressed="true"><strong>Light</strong><span>12 TCP + 3 UDP checks</span></button>
+            <button class="mode-button" type="button" data-profile="deep-tcp-v1" aria-pressed="false"><strong>Deep</strong><span>All TCP + expanded UDP checks</span></button>
+          </div>
+          <label class="deep-host-field" id="deepHostField" hidden for="deepHostInput">Deep scan host</label>
+          <input class="deep-host-field" id="deepHostInput" type="text" inputmode="decimal" placeholder="Example: 192.168.0.53" hidden />
+          <button class="scan-launch" id="scanLaunchButton" type="button" aria-describedby="scan-notice">
+            <span>Scan</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <p class="scan-notice" id="scan-notice">Only scan a private network you own or have permission to assess. Light checks the detected local network; Deep requires one explicit host and performs exhaustive service/version identification plus safe service checks. It does not use exploit or password-guessing checks.</p>
+          <p class="scan-config" id="scan-config" aria-live="polite">Checking local scanner configuration...</p>
+        </section>
+
+        <section class="scan-progress" id="scanProgress" hidden aria-live="polite" aria-label="Scan progress">
+          <div class="curl-loader" aria-hidden="true"><span></span><span></span><span></span></div>
+          <p class="eyebrow" id="progressPhase">Preparing local scan</p>
+          <div class="progress-value"><strong id="progressPercent">0%</strong><span id="progressDetail">Waiting for the scanner</span></div>
+          <div class="progress-track"><span id="progressBar"></span></div>
+          <p class="progress-note" id="progressNote">Results will appear when the scan finishes.</p>
+          <button class="scan-cancel" id="scanCancelButton" type="button" hidden>Cancel scan</button>
+        </section>
+
+        <section class="scan-error" id="scanError" hidden role="alert"></section>
+      </main>
+      <footer><p>NetGuard AI · MSc research prototype</p><p>Observations are not a security certification.</p></footer>
+    </div>
+    <script type="module" src="/static/js/dashboard.js"></script>
+  </body>
+</html>

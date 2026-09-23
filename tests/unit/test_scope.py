@@ -3,7 +3,7 @@ import pytest
 from app.security.scope import validate_target
 
 
-SETTINGS = {"allowed_network": "192.168.56.0/24", "profile_id": "tcp12-v1"}
+SETTINGS = {"allowed_network": "192.168.56.0/24", "profile_id": "tcp12-udp3-v5"}
 
 
 def test_discover_restricts_to_private_subnet_and_eligible_hosts():

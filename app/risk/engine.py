@@ -1,16 +1,20 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from uuid import UUID, uuid5
 
-from app.schemas.scan import EvidenceItem, Finding, FixedExplanation, Service
+from app.schemas.scan import EvidenceItem, Finding, FixedExplanation
 
 from .catalogue import RULE_CATALOGUE
 
 
-class RiskEngine:
-    def evaluate(self, device, services):
-        return evaluate_device(device, services, RULE_CATALOGUE)
+SERVICE_RULES = {
+    "telnet": "R01",
+    "ftp": "R02",
+    "http": "R03",
+    "ms-wbt-server": "R04",
+    "microsoft-ds": "R05",
+    "mqtt": "R06",
+}
 
 
 def service_name_key(name: str | None) -> str | None:
@@ -35,22 +39,14 @@ def evaluate_device(device, services, catalogue=None):
         if service.tunnel == "ssl":
             if name in {"telnet", "ftp", "http"}:
                 continue
-        matched = None
-        for rule_id in ["R01", "R02", "R03", "R04", "R05", "R06"]:
-            rule = catalogue[rule_id]
-            if name == rule_id_to_name(rule_id):
-                matched = rule_id
-                break
+        matched = SERVICE_RULES.get(name)
         if matched is None:
             if name == "ssh" and service.nmap_confidence and service.nmap_confidence >= 7:
-                continue
-            if name == "http" and service.tunnel == "ssl" and service.nmap_confidence and service.nmap_confidence >= 7:
-                continue
-            if name == "http" and service.tunnel == "ssl":
                 continue
             matched = "R07"
         rule = catalogue[matched]
         evidence = [
+            EvidenceItem(field="protocol", value=service.protocol),
             EvidenceItem(field="state", value=service.state),
             EvidenceItem(field="name", value=service.name),
             EvidenceItem(field="detection_method", value=service.detection_method),
@@ -70,8 +66,8 @@ def evaluate_device(device, services, catalogue=None):
             evidence=evidence,
             limitations=rule["limitations"],
             fixed_explanation=FixedExplanation(
-                meaning=f"{rule['title']} was observed.",
-                why_it_matters="This indicates a service is reachable locally and should be reviewed.",
+                meaning=rule["meaning"],
+                why_it_matters=rule["why_it_matters"],
                 recommended_steps=[action["text"] for action in rule["actions"]],
                 how_to_check=[action["verification"] for action in rule["actions"]],
             ),
@@ -87,15 +83,3 @@ def evaluate_device(device, services, catalogue=None):
         )
         results.append(finding)
     return results
-
-
-def rule_id_to_name(rule_id: str):
-    mapping = {
-        "R01": "telnet",
-        "R02": "ftp",
-        "R03": "http",
-        "R04": "ms-wbt-server",
-        "R05": "microsoft-ds",
-        "R06": "mqtt",
-    }
-    return mapping.get(rule_id)
