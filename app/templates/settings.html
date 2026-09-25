@@ -13,11 +13,15 @@
     <label><input type="checkbox" id="retain-raw-xml" /> Retain raw XML</label>
     <label><input type="checkbox" id="mdns-enabled" /> Also look for local device announcements (mDNS)</label>
     <p id="mdns-status"></p>
+    <p>Announcements are available for Light and Deep scans. Deep and known-host scans keep announcements only for the selected devices. Both profiles also collect bounded extra device details and compare recent saved reports where identity can be matched.</p>
     <h3>Plain-language results with Ollama</h3>
     <p>Every new scan includes local AI report preparation. The results open when that step finishes. If Ollama stops, you can retry the explanation using the saved scan.</p>
     <p id="ai-status" role="status"></p>
+    <h3>Device names from Pi-hole (optional)</h3>
+    <p>Pi-hole is a separate service on your own network. It can help recognise devices using names it already knows. Installing it alone does not identify every device.</p>
     <label><input type="checkbox" id="pihole-enabled" /> Use names from my Pi-hole</label>
     <p id="pihole-status" role="status"></p>
+    <p>For setup, follow <code>docs/pihole-setup.md</code> in the project. Keep this off on networks you are not authorised to assess. Imported names are extra context, not proof that a device is online or safe.</p>
     <button type="submit">Save settings</button>
   </form>
 </section>

@@ -24,6 +24,10 @@ SERVICE_TYPES = (
     "_googlecast._tcp.local.",
     "_hap._tcp.local.",
     "_mqtt._tcp.local.",
+    "_smb._tcp.local.",
+    "_device-info._tcp.local.",
+    "_ipps._tcp.local.",
+    "_raop._tcp.local.",
 )
 MAX_ADVERTISEMENTS = 64
 MAX_UNIQUE_HOSTS = 8
@@ -37,7 +41,25 @@ def _safe_name(value: str) -> str:
     return "".join(character for character in value if character.isprintable())[:120]
 
 
-def _browse(scope: str, interface_ip: str, duration_s: float, cancel_event: asyncio.Event):
+def safe_properties(properties) -> dict[str, str]:
+    """Retain only identification hints, never arbitrary TXT secrets or user IDs."""
+    result = {}
+    for key in ("model", "md", "ty", "product", "manufacturer"):
+        value = properties.get(key.encode(), properties.get(key))
+        if isinstance(value, bytes):
+            value = value[:480].decode("utf-8", errors="replace")
+        if isinstance(value, str) and (value := _safe_name(value)):
+            result[key] = value
+    return result
+
+
+def _browse(
+    scope: str,
+    interface_ip: str,
+    duration_s: float,
+    cancel_event: asyncio.Event,
+    target_ips: set[str] | None = None,
+):
     if not mdns_available():
         raise RuntimeError("mDNS library is not installed")
     allowed = ipaddress.ip_network(scope, strict=True)
@@ -65,6 +87,8 @@ def _browse(scope: str, interface_ip: str, duration_s: float, cancel_event: asyn
                 if address not in allowed:
                     continue
                 address_value = str(address)
+                if target_ips is not None and address_value not in target_ips:
+                    continue
                 key = (address_value, type_, advertised_name)
                 with guard:
                     if len(observations) >= MAX_ADVERTISEMENTS:
@@ -75,6 +99,11 @@ def _browse(scope: str, interface_ip: str, duration_s: float, cancel_event: asyn
                         ip=address_value,
                         advertised_name=advertised_name,
                         service_type=type_,
+                        hostname=_safe_name(info.server or "") or None,
+                        port=info.port
+                        if isinstance(info.port, int) and 1 <= info.port <= 65535
+                        else None,
+                        properties=safe_properties(info.properties or {}),
                     )
                     observed_ips.add(address_value)
 
@@ -101,6 +130,12 @@ def _browse(scope: str, interface_ip: str, duration_s: float, cancel_event: asyn
 
 
 async def browse_mdns(
-    scope: str, interface_ip: str, cancel_event: asyncio.Event, duration_s: float = 2.5
+    scope: str,
+    interface_ip: str,
+    cancel_event: asyncio.Event,
+    duration_s: float = 2.5,
+    target_ips: set[str] | None = None,
 ) -> list[DiscoveryObservation]:
-    return await asyncio.to_thread(_browse, scope, interface_ip, duration_s, cancel_event)
+    return await asyncio.to_thread(
+        _browse, scope, interface_ip, duration_s, cancel_event, target_ips
+    )

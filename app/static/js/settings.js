@@ -43,9 +43,11 @@ async function loadSettings() {
         : 'Optional local device announcements are unavailable in this installation.';
     piholeEnabled.checked = settings.pihole_enabled;
     piholeEnabled.disabled = !status.pihole_configured && !settings.pihole_enabled;
-    piholeStatus.textContent = status.pihole_configured
-      ? 'Pi-hole connection configured. Names are extra context; they do not prove a device is online.'
-      : 'Optional: configure APP_PIHOLE_URL and APP_PIHOLE_PASSWORD on the server, then restart the app.';
+    piholeStatus.textContent = status.pihole_configuration_error
+      ? `Pi-hole setup needs attention: ${status.pihole_configuration_error}`
+      : status.pihole_configured
+        ? 'Pi-hole details are configured; this page does not check the connection. When enabled, names are requested during an authorised scan. Missing names are possible and do not mean a device is absent.'
+        : 'Pi-hole is not configured. Set APP_PIHOLE_URL and APP_PIHOLE_PASSWORD_FILE (or APP_PIHOLE_PASSWORD) on the server, then restart the app. No Pi-hole connection is made by this page.';
     aiStatus.textContent = status.ai_available
       ? `Ollama is ready (${status.ai_model}). Scan facts and original guidance remain available.`
       : `Ollama is unavailable. Start Ollama and install ${status.ai_model} before scanning.`;

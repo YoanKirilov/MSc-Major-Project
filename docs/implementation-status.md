@@ -3,6 +3,47 @@
 This is the handover for the eleven agreed items. Verification details are in
 `testing.md`; external evaluation steps are in `evaluation.md`.
 
+## Richer Light and Deep device information - 25 September 2026
+
+Implemented the six agreed additions in the shared pipeline: richer optional mDNS,
+conservative evidence-based device types, bounded UPnP descriptions, HTTP-to-HTTPS
+checks and certificate dates, selective NetBIOS names, and recent-report comparisons.
+Both profiles collect and display these under **More about this device**. Deep remains
+single-host; advertised services never become confirmed open ports merely from an
+announcement. Limits and failed optional checks are explicit. Local JSON and existing
+reports are preserved; no Pi-hole service was installed or configured.
+
+See the current verification entry in `testing.md`. Earlier live results below predate
+these richer collectors and must not be treated as their live-network validation.
+
+## Latest live check — 25 September 2026
+
+Home Light scan and Ollama processing now verified: all 12 discovered device checks
+completed, with 13 open services and 8 review items. See [results and follow-ups](live-check-20260925.md).
+Pi-hole is still not installed/configured here; no live name extraction is claimed.
+The check found a timing-sensitive test and user-facing AI fallback wording to improve.
+This was a verification pass, not another application-code change.
+
+## Pi-hole setup implementation — verification deferred (25 September 2026)
+
+Prepared `deployment/pihole/compose.yaml` and its opt-in home DNS profile. The base
+deployment is loopback-only, requires a private administrator-secret file, disables
+DHCP/NTP serving and does not restart automatically. No container/runtime was installed
+or started. NetGuard now supports `APP_PIHOLE_PASSWORD_FILE`, sanitised setup errors,
+clearer unverified-connection wording, and a manual VS Code Pi-hole launch task.
+See [setup and rollback](pihole-setup.md).
+
+New regression tests cover password files and configuration-only status/settings;
+test fixtures no longer inherit real Pi-hole credentials. **No tests, scans, app starts
+or Pi-hole requests were run for these changes**, at the user's request. The earlier
+passing results below predate this implementation.
+
+Prepared lockfile updates: platformdirs 4.11.13, Uvicorn 0.54.0, Ruff 0.16.9. They have
+not been installed or validated in the virtual environments. Existing constraints allow
+them. Major dependency/test-client migrations and CI automation remain follow-up work,
+not silently included in an untested runtime upgrade. Saved-report AI preparation,
+real Pi-hole name extraction, home scans, Ubuntu and reader evaluation are deferred.
+
 ## Latest code organisation/recheck
 
 The subsequent full review is in `architecture.md`; cleanup and repeatable commands are

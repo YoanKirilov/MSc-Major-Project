@@ -12,6 +12,7 @@ import pytest
 import uvicorn
 from app.main import create_app
 from app.scanner.runner import ProcessResult
+from app.schemas.scan import DeviceDetail
 from app.security.session import SessionManager
 from tests.fixtures.provider import ReviewedProvider
 
@@ -56,7 +57,19 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
     async def no_dns(self, ip):
         return None
 
+    async def synthetic_details(device, *args, **kwargs):
+        device.details.append(
+            DeviceDetail(
+                kind="mdns",
+                label="Reported model",
+                value="Example room display <script>",
+                source="mDNS",
+                status="advertised",
+            )
+        )
+
     monkeypatch.setattr("app.jobs.supervisor.ScanSupervisor._local_hostname", no_dns)
+    monkeypatch.setattr("app.scanner.details.network_details", synthetic_details)
     manager = SessionManager()
     app = create_app(session_manager=manager)
     listener = socket.socket()
@@ -105,6 +118,15 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             expect(page.locator("#report-content")).to_be_visible()
             expect(page.locator("#report-first-step")).not_to_be_empty()
             expect(page.locator("#report-checks")).to_contain_text("device")
+            extra = (
+                page.locator("details")
+                .filter(has=page.locator("summary", has_text="More about this device"))
+                .last
+            )
+            extra.locator("summary").first.click()
+            expect(extra).to_contain_text("Example room display <script>")
+            expect(extra).to_contain_text("Device announcement")
+            assert extra.locator("script").count() == 0
             first_report = page.url
             page.get_by_role("link", name="Saved reports").click()
             page.locator("#history-list a").first.click()
@@ -141,6 +163,21 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
                 "Ollama reviewed", timeout=15000
             )
             assert len(scanned) == count
+            # Both profiles pass through the same detail collector and renderer.
+            deep = page.evaluate("""async () => {
+                const response = await fetch('/api/live-scans', {method:'POST',
+                  headers:{'Content-Type':'application/json','X-CSRF-Token':sessionStorage.getItem('network-assessor-csrf')},
+                  body:JSON.stringify({mode:'known_hosts',hosts:['192.168.56.10'],profile:'deep-tcp-v1',authorised:true})});
+                if (response.status !== 202) throw new Error('Deep request rejected');
+                return response.json();
+            }""")
+            page.goto(base + "/scans/" + deep["scan_id"])
+            expect(page.locator("#result-title")).to_have_text(
+                "Your local scan is ready.", timeout=15000
+            )
+            expect(page.get_by_text("Reported model: Example room display <script>")).to_have_count(
+                1
+            )
             page.screenshot(path=str(tmp_path / "report.png"), full_page=True)
             page.context.clear_cookies()
             page.goto(base)

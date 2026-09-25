@@ -95,6 +95,9 @@ async def status(request: Request):
         "ai_enabled": True,
         "ai_required": True,
         "pihole_configured": request.app.state.pihole is not None,
+        # Configuration is not authentication or a successful name import.
+        # This endpoint deliberately makes no requests to Pi-hole.
+        "pihole_configuration_error": request.app.state.pihole_configuration_error,
         "pihole_enabled": settings.pihole_enabled,
         "ai_provider": config.ai_provider,
         "ai_model": config.ai_model,

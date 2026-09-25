@@ -347,12 +347,15 @@ async def test_host_workers_are_bounded_and_keep_all_checkpoints(tmp_path):
     xml = (Path(__file__).parents[1] / "fixtures" / "nmap_host.xml").read_bytes()
     active = 0
     peak = 0
+    overlap = asyncio.Event()
 
     async def runner(args, *_):
         nonlocal active, peak
         active += 1
         peak = max(peak, active)
-        await asyncio.sleep(0.05)
+        if active == 2:
+            overlap.set()
+        await asyncio.wait_for(overlap.wait(), timeout=5)
         active -= 1
         return ProcessResult(xml.replace(b"192.168.56.10", args[-1].encode()), b"", 0, 0.05)
 

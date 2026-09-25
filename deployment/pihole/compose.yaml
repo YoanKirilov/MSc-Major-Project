@@ -1,0 +1,32 @@
+# Deferred setup only: nothing starts until you explicitly run docker compose up.
+# Requires Docker with Linux containers and Compose v2. See docs/pihole-setup.md.
+name: netguard-pihole
+services:
+  pihole:
+    image: pihole/pihole:2026.09.0
+    restart: "no"
+    ports:
+      - "127.0.0.1:8081:80/tcp"
+    environment:
+      TZ: Europe/London
+      WEBPASSWORD_FILE: pihole_webpasswd
+      FTLCONF_dns_listeningMode: "all"
+      FTLCONF_dns_upstreams: "${PIHOLE_UPSTREAMS:-1.1.1.1;1.0.0.1}"
+      FTLCONF_dhcp_active: "false"
+      FTLCONF_ntp_ipv4_active: "false"
+      FTLCONF_ntp_ipv6_active: "false"
+    secrets:
+      - pihole_webpasswd
+    volumes:
+      - pihole-data:/etc/pihole
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+secrets:
+  pihole_webpasswd:
+    # Required: no default/committed password. Use an absolute path outside this repo.
+    file: "${PIHOLE_ADMIN_PASSWORD_FILE:?Set PIHOLE_ADMIN_PASSWORD_FILE to a private UTF-8 secret file}"
+volumes:
+  pihole-data:

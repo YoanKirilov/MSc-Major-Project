@@ -1,5 +1,52 @@
 # Testing status
 
+## Richer device details - 25 September 2026
+
+- `python scripts/check.py --browser --ollama`: **232 Python tests passed** (230
+  offline tests, one real Edge workflow using synthetic network/provider responses,
+  and one real local Ollama test using synthetic facts). **16 JavaScript tests**, all
+  six module syntax checks, Ruff lint and formatting passed. Artifacts are under
+  `.test-artifacts/checks-fe214bc8c8/`; real device addresses were not probed.
+- Both Light and Deep are covered by authenticated API policy tests, known-host mDNS
+  filtering/enrichment tests and the browser workflow. Browser checks verify the new
+  expandable details, provenance wording, and safe text rendering of markup-like values.
+- Collector tests cover TXT allowlisting, UPnP identity-only extraction, oversized/
+  malformed/entity XML rejection, blocked external URLs, bounded same-device redirects,
+  certificate-verification failure, selective NetBIOS name-only storage, conservative
+  classification/history, legacy JSON loading, deduplication and explicit detail limits.
+- Timeout/cancellation tests verify that optional extras do not discard completed Nmap
+  evidence and leave no active collector tasks. Extra collector concurrency is capped
+  at two. The older host-worker test now uses an explicit overlap event rather than a
+  timing-sensitive sleep; it still requires exactly two concurrent workers.
+- A fresh wheel in `.test-artifacts/richer-device-package/` was installed only into
+  `.venv-package`. Installed-package verification passed: four pages, seven static assets,
+  and demo read/create/reopen. `pip check` passed. Saved app reports were not modified.
+- Existing Python 3.14/pytest-asyncio and Starlette test-client deprecation warnings
+  remain. The earlier full run exposed two outdated mDNS test doubles; those fixtures
+  were updated and the entire suite rerun successfully, not excluded.
+
+These checks do **not** establish live interoperability of the new enrichment with
+home devices, actual TLS servers, a Pi-hole instance, or Ubuntu. No new network scan
+or Pi-hole installation was performed. The live-home entry below predates these changes.
+
+## Home live verification — 25 September 2026
+
+See [the live-check report](live-check-20260925.md) for the latest results: 12 home devices
+completed Light checks, 13 open services, 8 review items, and completed local Ollama
+preparation. Real report refresh/history/Settings checks passed. Python: 200 passed and
+one timing-sensitive failure that passed on rerun; JavaScript: 16 passed. Updated-runtime
+wheel checks passed. Real Pi-hole extraction is blocked by absent configuration/instance;
+Deep needs a selected target. Earlier "not tested" entries below record the prior stage.
+
+## Pi-hole setup changes — not tested (25 September 2026)
+
+At the user's request, no tests or scans were executed for the latest Pi-hole deployment,
+password-file configuration, Settings/VS Code changes or dependency-pin updates. The
+new `tests/unit/test_pihole_setup.py` cases are written, not run. No Docker/Compose service
+was started, no network settings were changed, and no existing reports were reprocessed.
+The results below apply to the preceding revision, not these changes. Resume with the
+[deferred acceptance checklist](pihole-setup.md#deferred-acceptance-checklist).
+
 ## Full code/workspace recheck - 25 September 2026
 
 Latest verification, after organisation and additional storage fixes:

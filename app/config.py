@@ -26,6 +26,31 @@ def _float_env(name: str, default: float, minimum: float, maximum: float) -> flo
     return value if minimum <= value <= maximum else default
 
 
+def _pihole_password_from_env() -> tuple[str | None, str | None]:
+    """Read one backend-only credential, without putting secrets/paths in errors."""
+    password = os.getenv("APP_PIHOLE_PASSWORD") or None
+    password_file = os.getenv("APP_PIHOLE_PASSWORD_FILE") or None
+    if password and password_file:
+        return None, "Set only one of APP_PIHOLE_PASSWORD and APP_PIHOLE_PASSWORD_FILE."
+    if password_file:
+        try:
+            path = Path(password_file).expanduser()
+            if not path.is_file():
+                return None, "The Pi-hole password file is missing or is not a regular file."
+            with path.open("rb") as secret:
+                contents = secret.read(4097)
+            if len(contents) > 4096:
+                return None, "The Pi-hole password file exceeds the 4 KiB limit."
+            password = contents.decode("utf-8-sig").rstrip("\r\n")
+        except (OSError, ValueError):
+            return None, "The Pi-hole password file could not be read as UTF-8."
+        if not password:
+            return None, "The Pi-hole password file is empty."
+    if password and (len(password) > 4096 or any(c in password for c in "\r\n\x00")):
+        return None, "The Pi-hole password must be a single line of at most 4096 characters."
+    return password, None
+
+
 @dataclass
 class AppConfig:
     data_dir: Path = field(
@@ -41,10 +66,12 @@ class AppConfig:
     max_concurrent_scans: int = 2
     pihole_url: str | None = None
     pihole_password: str | None = field(default=None, repr=False)
+    pihole_configuration_error: str | None = None
 
     @classmethod
     def from_env(cls) -> "AppConfig":
         data_dir = os.getenv("APP_DATA_DIR")
+        pihole_password, pihole_error = _pihole_password_from_env()
         return cls(
             data_dir=Path(data_dir)
             if data_dir
@@ -58,7 +85,8 @@ class AppConfig:
             allowed_network=os.getenv("APP_ALLOWED_NETWORK") or None,
             max_concurrent_scans=_integer_env("APP_MAX_CONCURRENT_SCANS", 2, 1, 8),
             pihole_url=os.getenv("APP_PIHOLE_URL") or None,
-            pihole_password=os.getenv("APP_PIHOLE_PASSWORD") or None,
+            pihole_password=pihole_password,
+            pihole_configuration_error=pihole_error,
         )
 
 

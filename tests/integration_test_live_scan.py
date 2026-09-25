@@ -1,7 +1,7 @@
 import pytest
 from app.main import create_app
 from app.schemas.scan import Device, Finding, ScanDocument, Service
-from app.schemas.settings import SettingsUpdate
+from app.schemas.settings import Settings, SettingsUpdate
 from app.security.session import SessionManager
 from fastapi.testclient import TestClient
 from tests.fixtures.fixtures import make_telnet_scan
@@ -39,6 +39,41 @@ def test_live_scan_reports_missing_nmap_without_creating_fake_result(tmp_path, m
         if (tmp_path / "scans").exists()
         else True
     )
+
+
+@pytest.mark.parametrize("profile", ["light", "deep-tcp-v1"])
+def test_both_profiles_save_extra_details_and_mdns_policy(monkeypatch, profile):
+    async def settings():
+        return Settings(allowed_network="192.168.56.0/24", mdns_enabled=True)
+
+    async def no_job(scan_id):
+        pass
+
+    monkeypatch.setattr("app.api.scans.nmap_preflight", lambda config: (True, "synthetic"))
+    monkeypatch.setattr("app.api.scans.resolve_nmap_path", lambda config: "synthetic-nmap")
+    monkeypatch.setattr("app.api.scans.mdns_available", lambda: True)
+    monkeypatch.setattr("app.api.scans.nmap_interface_ipv4", lambda *args: "192.168.56.2")
+    manager = SessionManager()
+    with TestClient(create_app(session_manager=manager), base_url=BASE_URL) as client:
+        headers = authenticate_client(client, manager)
+        monkeypatch.setattr(client.app.state.store, "load_settings", settings)
+        monkeypatch.setattr(client.app.state.supervisor, "start", no_job)
+        response = client.post(
+            "/api/live-scans",
+            headers=headers,
+            json={
+                "mode": "known_hosts",
+                "hosts": ["192.168.56.10"],
+                "profile": profile,
+                "authorised": True,
+            },
+        )
+        assert response.status_code == 202
+        saved = client.portal.call(client.app.state.store.load_scan, response.json()["scan_id"])
+        assert saved.policy["extra_details_enabled"] is True
+        assert saved.policy["mdns_enabled"] is True
+        assert saved.policy["mdns_interface_ip"] == "192.168.56.2"
+        assert saved.target["hosts"] == ["192.168.56.10"]
 
 
 def test_live_scan_reports_unwritable_local_storage(tmp_path, monkeypatch):

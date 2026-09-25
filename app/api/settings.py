@@ -27,7 +27,11 @@ async def update_settings(request: Request, update: SettingsUpdate):
     if update.pihole_enabled and request.app.state.pihole is None:
         raise HTTPException(
             status_code=422,
-            detail="Configure APP_PIHOLE_URL and APP_PIHOLE_PASSWORD on the server first.",
+            detail=request.app.state.pihole_configuration_error
+            or (
+                "Configure APP_PIHOLE_URL and APP_PIHOLE_PASSWORD_FILE "
+                "(or APP_PIHOLE_PASSWORD) on the server, then restart the app."
+            ),
         )
     if update.mdns_enabled and not mdns_available():
         raise HTTPException(status_code=503, detail="Optional mDNS discovery is not installed")

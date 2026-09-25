@@ -6,6 +6,10 @@ from app.scanner import mdns
 
 def test_mdns_browse_filters_out_of_scope_advertisements(monkeypatch):
     class FakeInfo:
+        server = "printer.local."
+        port = 631
+        properties = {}
+
         def get_name(self):
             return "Living room printer"
 
@@ -45,6 +49,10 @@ def test_mdns_rejects_interface_outside_authorised_scope():
 
 def test_mdns_limits_new_hosts_added_to_a_scan(monkeypatch):
     class FakeInfo:
+        server = None
+        port = None
+        properties = {}
+
         def __init__(self, address):
             self.address = address
 

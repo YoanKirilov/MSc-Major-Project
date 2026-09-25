@@ -11,12 +11,20 @@ It is **not** a production multi-user service: do not expose it to the internet 
 run several server workers against one data folder. No database migration is needed
 for the current scope; JSON remains the storage format.
 
+The latest Pi-hole setup extension is **implemented but untested**: deployment files are
+under `deployment/pihole/`, separate from the Python package; backend credentials may
+come from a bounded private UTF-8 file. Status reports local configuration errors, not
+connection health, and never probes Pi-hole. See [deployment boundaries](pihole-setup.md).
+The Pi-hole service itself has not been installed or activated by this change.
+
 ```text
 Browser templates + JavaScript
     -> authenticated API (session, CSRF, authorised scope)
     -> ScanSupervisor (bounded jobs, cancellation, retries)
          -> Nmap runner -> XML parser -> deterministic rules
-         -> optional mDNS / Pi-hole naming -> conservative classification
+         -> optional mDNS / Pi-hole naming
+         -> bounded web / UPnP / selective NetBIOS details
+         -> conservative classification + recent-report comparison
          -> saved JSON checkpoints
          -> local Ollama -> source-bound wording validation -> saved report
     <- lightweight progress while working; full report when finished
@@ -29,7 +37,7 @@ Browser templates + JavaScript
 | `app/main.py`, `cli.py`, `config.py` | Assemble dependencies, own the instance lock, select configuration |
 | `app/api/`, `security/` | HTTP/session boundaries, scope validation and user actions |
 | `app/jobs/` | Job lifecycle, host workers, checkpoints, cancellation and AI deadline |
-| `app/scanner/` | Fixed Nmap commands, bounded subprocesses, safe XML and name sources |
+| `app/scanner/` | Fixed Nmap commands, bounded subprocesses, safe XML, name sources and bounded device-detail collectors |
 | `app/risk/`, `profiling/` | Factual findings, original guidance and cautious device hints |
 | `app/explanations/` | Redacted structured input, Ollama, reviewed wording and fallback audit |
 | `app/schemas/` | Primary data and validated history/progress projections |
@@ -69,6 +77,29 @@ model check do not establish comprehension by nontechnical readers.
 Pi-hole is an optional external name source, not a replacement scanning engine. DHCP and
 network-history failures are isolated. Historical names require a matching observed MAC;
 names alone never establish reachability or identity. Real instance verification is pending.
+
+### Shared Light/Deep enrichment
+
+`scanner/details.py` collects small structured `DeviceDetail` records after Nmap, before
+Ollama. Both profiles use this path. mDNS discovery-mode observations are reused;
+known-host mode browses with an explicit host filter, applied before the discovery cap.
+No additional host is added to a Deep scan. Announcements and UPnP descriptions are
+labelled as device claims; only Nmap evidence determines service-check coverage.
+
+Two extra-information workers share a 30-second scan budget. NetBIOS also uses the
+existing global Nmap capacity. Cancellation stops pending collectors, keeps completed
+facts, and discloses missing extras. HTTP checks use HEAD, disabled proxy inheritance,
+verified TLS, and at most one explicitly validated same-IP redirect. UPnP GETs are
+same-IP only, bounded to 64 KiB and parsed with defusedxml. Arbitrary TXT fields,
+UPnP serial numbers, embedded-device names and NetBIOS usernames are not retained
+by these collectors. Details are deduplicated and capped at 48 with a visible limit note.
+
+`profiling/history.py` compares at most ten recent live reports without modifying them.
+It requires matching scope and a nonduplicated MAC for a possible identity match, and
+equal profiles/port selections plus completed checks for service differences. It does
+not claim that a MAC proves identity, a changed service proves an attack, or no prior
+match means a newly connected device. Existing schema-v1 reports load with empty detail
+lists; no destructive migration is needed. Identity metadata stays out of Ollama input.
 
 ## Remaining limitations and recommended order
 

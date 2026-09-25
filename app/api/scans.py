@@ -123,7 +123,7 @@ async def _create_validated_live_scan(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     ai_available = await request.app.state.explanations.provider_available()
     mdns_interface_ip = None
-    if settings.mdns_enabled and body.mode == "discover":
+    if settings.mdns_enabled:
         if not mdns_available():
             raise HTTPException(status_code=503, detail="Optional mDNS discovery is not installed")
         mdns_interface_ip = await asyncio.to_thread(
@@ -154,13 +154,16 @@ async def _create_validated_live_scan(
             "mdns_interface_ip": mdns_interface_ip,
             "ai_enabled": True,
             "pihole_enabled": settings.pihole_enabled,
+            "extra_details_enabled": True,
+            "extra_details_budget_seconds": 30,
+            "extra_details_version": "1.0.0",
             "retry_of": retry_of,
         },
         coverage={"candidate_count": len(validated.candidates), "targets": targets},
         versions={
             "app": "0.1.0",
             "rules": RULESET_VERSION,
-            "profiling": "1.0.0",
+            "profiling": "1.1.0",
             "prompt": PROMPT_VERSION,
             "nmap": scanner_version,
         },

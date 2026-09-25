@@ -1,0 +1,8 @@
+# Opt-in only, at home: publish DNS on the selected host's private IPv4 address.
+# Never substitute 0.0.0.0 or use this on a shared/unapproved network.
+# Does not change router settings, start DHCP, or expose the web admin to the LAN.
+services:
+  pihole:
+    ports:
+      - "${PIHOLE_HOME_IP:?Set PIHOLE_HOME_IP to this host's authorised home IPv4}:53:53/tcp"
+      - "${PIHOLE_HOME_IP:?Set PIHOLE_HOME_IP to this host's authorised home IPv4}:53:53/udp"

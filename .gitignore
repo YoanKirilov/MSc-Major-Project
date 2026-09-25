@@ -25,3 +25,7 @@ coverage.xml
 .pytest-brief-*/
 .pytest-*/
 .coverage
+# Defence in depth: keep Pi-hole secrets and runtime state outside the repository.
+deployment/pihole/secrets/
+deployment/pihole/pihole_password.txt
+deployment/pihole/etc-pihole/

@@ -9,7 +9,8 @@ The report describes what the selected checks observed. A missing finding does n
 - A browser dashboard with **Light** and **Deep** scan choices, live progress, cancellation, and scanner status. The result page shows coverage, errors, observed devices and services, safe check output, prioritised findings, recommended steps, and technical details. Findings can be searched and filtered by severity.
 - A bounded Light scan of **12 TCP and 3 UDP ports** across an authorised private IPv4 network. It discovers responding hosts, then checks selected services on those hosts.
 - A Deep scan of **one explicitly entered host** inside the authorised network. It checks all TCP ports, 25 selected UDP ports, service versions, and a fixed list of safe Nmap scripts. It can take substantially longer than Light. Neither profile runs exploits, password guessing, or packet capture.
-- Optional short mDNS discovery of local device announcements. Advertised names and services are shown as unverified observations, separately from confirmed open services and findings.
+- Optional short mDNS discovery in **both Light and Deep**: advertised features, hostnames, ports and selected model/manufacturer hints. These are unverified device claims, not confirmed open services or security findings. Deep retains only announcements for its selected host.
+- Both profiles include bounded extra device details: UPnP names/model descriptions, HTTP-to-HTTPS redirect checks, dates from collected certificates, and selective NetBIOS computer names. **More about this device** explains the observations and their sources. Conservative classification and recent-report comparisons help identify possible device types and changes without claiming verified identity.
 - Seven deterministic finding rules for selected services, with evidence, severity, limitations, and actions. Device type hints are conservative. Incomplete or failed checks remain visible in the report.
 - Automatic Ollama preparation for the report overview and all findings, including reports with no findings or unsuccessful checks. The model selects reviewed alternatives tied to the saved facts. Original guidance remains available; an AI outage opens the factual report with an explicit retry message.
 - Actions on a saved report to refresh guidance or retry AI preparation without rescanning. Unfinished host checks can be retried in a new scan limited to those devices. **Saved reports** reopens local history.
@@ -60,7 +61,10 @@ This workspace has a local VS Code task named **NetGuard: Start backend**. It st
 
 Right-click `app/templates/dashboard.html` and choose **Open with Live Server** if you prefer that shortcut. The static preview redirects to the Python app at `http://127.0.0.1:8765/`; Live Server alone cannot run scans or read saved JSON. Refresh the browser after HTML/CSS/JavaScript edits, and restart the Python task after backend changes. If port 8765 is in use, stop the previous backend task before starting another.
 
-The `.vscode` task and Live Server settings are ignored by Git, so they are **local to this workspace**. On another machine, use the terminal commands above or recreate the VS Code task.
+The `.vscode/tasks.json` tasks are shared in Git; other editor settings remain local.
+The manual **NetGuard: Start backend with Pi-hole** task prompts for an origin and a
+private password-file path. Stop the existing backend before using it. See the
+[Pi-hole setup guide](docs/pihole-setup.md); this task does not install or start Pi-hole.
 
 ## Using the application
 
@@ -71,6 +75,37 @@ The `.vscode` task and Live Server settings are ignored by Git, so they are **lo
 5. Use **Saved reports** to reopen previous results. **Run again** preserves the saved target; **Retry unfinished device checks** creates a new scan of only eligible unfinished hosts, revalidated against the current authorised range. Guidance refresh and AI preparation use saved evidence without rescanning.
 
 Each scan request must include an authorisation flag. The server restricts discovery to a configured RFC 1918 private IPv4 scope and requires a single in-scope host for Deep scans. A host that does not respond or a port outside the selected checks may still exist; the report makes this coverage limit visible.
+
+### Richer device details in both scan modes
+
+Enable **mDNS** in Settings to collect short local announcements. The browser listens
+on the selected local interface for about 2.5 seconds, keeping at most 64 announcements
+from eight devices. Reaching a limit is disclosed; absence of an announcement does not
+mean absence of a device. Known-host scans retain only requested hosts, although mDNS
+browsing itself uses local multicast. Only selected model/manufacturer TXT fields are
+kept, not arbitrary TXT data, serial numbers or passwords.
+
+The shared extra-information stage has two workers and a 30-second budget, separate
+from mDNS, history lookup and process cleanup. It checks at most two observed HTTP
+ports per device, follows at most one same-device HTTPS redirect with certificate
+verification enabled, and reads at most one UPnP description (64 KiB maximum). It does
+not follow external URLs, resolve advertised URL hostnames, log in, or change settings.
+Missing or untrusted HTTPS certificates are reported as unverified, not silently accepted.
+Certificate expiry information is interpreted from existing Nmap output, not a full
+certificate-security audit.
+
+A device without a name and with an observed open file-sharing port can receive one
+short NetBIOS lookup on UDP 137. Only its computer name is saved from that lookup,
+not any returned username. This is conditional additional traffic beyond Light's base
+12 TCP/3 UDP port set. Optional failures leave the original scan evidence accessible.
+
+Comparisons inspect up to ten recent saved live reports from the same configured
+network. Changed open services require matching network-adapter addresses, equal scan
+profiles/port selections and completed host checks. Reused IPs, duplicated addresses,
+incomplete checks and different profiles are not treated as reliable matches. A change
+does not prove an attack, and an unmatched device is not labelled a new intruder.
+Existing reports are not rewritten; these details appear on newly collected reports.
+Raw device metadata remains local and is not added to Ollama input.
 
 ### Local AI report preparation
 
@@ -88,7 +123,19 @@ Requests use batches of up to six items, prioritise higher-severity findings, an
 
 ### Optional Pi-hole names
 
-Run Pi-hole separately. Configure `APP_PIHOLE_URL` with its private IP origin and `APP_PIHOLE_PASSWORD` with a Pi-hole application password, restart the backend, then enable Pi-hole names in Settings. Prefer HTTPS with a trusted certificate; certificate validation stays enabled. The connector uses Pi-hole v6's documented local API, authenticates on the backend and logs out afterward. Credentials are not returned to the browser or saved with reports.
+Run Pi-hole separately. Configure `APP_PIHOLE_URL` with its private IP origin and
+`APP_PIHOLE_PASSWORD_FILE` with a private UTF-8 application-password file outside the
+repository. `APP_PIHOLE_PASSWORD` is an alternative; do not set both. Restart the backend,
+then enable Pi-hole names in Settings. Prefer HTTPS with a trusted certificate;
+certificate validation stays enabled. The connector uses Pi-hole v6's documented local
+API, authenticates on the backend and logs out afterward. Credentials are not returned
+to the browser or saved with reports. Setup errors are shown without disabling the app;
+configured details do not imply a verified connection.
+
+The [deferred setup guide](docs/pihole-setup.md) includes a pinned Docker Compose
+deployment, loopback-only admin access, an explicit home-only DNS profile, and rollback
+steps. These files have been prepared but **not started or tested**. Pi-hole still needs
+a suitable host/runtime and credentials; no router changes are made automatically.
 
 Only names inside the authorised range are used. Expired leases are ignored; historical IP associations require a matching MAC address. Imported names retain their source and time and cannot mark a device online. Router-only DNS forwarding, absent DHCP names and stale records limit coverage. No Pi-hole installation or router configuration is performed automatically. See [Pi-hole API documentation](https://docs.pi-hole.net/api/).
 
@@ -108,6 +155,7 @@ The Settings page stores the allowed network, selected interface, raw XML retent
 | `APP_AI_TIMEOUT_SECONDS` | Maximum provider request time (1–300 seconds) | `60` |
 | `APP_PIHOLE_URL` | Optional private IP origin of Pi-hole v6 | Unset |
 | `APP_PIHOLE_PASSWORD` | Backend-only Pi-hole application password | Unset |
+| `APP_PIHOLE_PASSWORD_FILE` | Alternative private UTF-8 password file, max 4 KiB; do not also set the password variable | Unset |
 
 Use `python -m app doctor` to see the resolved data directory and whether Nmap can run. Use `python -m app serve --port <port>` to change the web port; the server accepts only `127.0.0.1` or `localhost` as its bind host. The VS Code Live Server shortcut is fixed to port 8765.
 

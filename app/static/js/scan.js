@@ -143,7 +143,7 @@ function deviceCategory(device) {
   if (device.user_category) return device.user_category;
   const labels = {
     camera: 'camera', printer: 'printer', router: 'router',
-    iot_other: 'smart-home device', computer: 'computer', unknown: 'unknown type',
+    iot_other: 'smart-home device', computer: 'computer', media: 'television or media device', unknown: 'unknown type',
   };
   const category = labels[device.profile?.category] || 'unknown type';
   return category === 'unknown type' ? 'Type not identified' : `Possible ${category}`;
@@ -442,7 +442,8 @@ function renderDevices(data) {
     row.append(checkCell, text('td', String(deviceFindings.length)));
     if (device.hostname_source || device.vendor) {
       const sources = { nmap: 'scan response', reverse_dns: 'local name lookup', mdns: 'device announcement',
-        pihole_dhcp: 'Pi-hole address lease', pihole_network: 'Pi-hole history', nmap_discovery: 'Nmap discovery' };
+        pihole_dhcp: 'Pi-hole address lease', pihole_network: 'Pi-hole history', nmap_discovery: 'Nmap discovery',
+        upnp: 'device description (UPnP)', netbios: 'computer-name response (NetBIOS)' };
       const nameDetails = document.createElement('details');
       nameDetails.append(text('summary', 'About this name'));
       nameDetails.append(text('p', `Source: ${sources[device.hostname_source] || 'scan'}. ${device.hostname_observed_at ? `Recorded: ${device.hostname_observed_at}.` : ''}`));
@@ -450,6 +451,28 @@ function renderDevices(data) {
       if (device.vendor) nameDetails.append(text('p', `Network adapter manufacturer: ${device.vendor}. This does not identify the device model.`));
       (device.name_candidates || []).forEach((item) => nameDetails.append(text('p', `${item.name} — ${sources[item.source] || item.source}, ${item.observed_at}`)));
       row.children[0].append(nameDetails);
+    }
+    if (device.details?.length) {
+      const extra = document.createElement('details');
+      extra.append(text('summary', 'More about this device'));
+      extra.append(text('p', 'These details help you recognise the device. Advertised names and features are claims, not verified identity or security checks.'));
+      const labels = { friendlyName: 'Reported device name', manufacturer: 'Reported manufacturer',
+        modelName: 'Reported model', deviceType: 'Reported device type',
+        'Reported md': 'Reported model', 'Reported ty': 'Reported model or product' };
+      const statuses = { advertised: 'Device announcement', inferred: 'Comparison or inference',
+        unavailable: 'Could not check', not_checked: 'Not fully checked', observed: 'Observed' };
+      device.details.forEach((item) => {
+        extra.append(text('p', `${labels[item.label] || item.label}: ${item.value}`));
+        extra.append(text('small', `${statuses[item.status] || 'Reported'} · ${item.source} · ${item.observed_at}`));
+      });
+      row.children[0].append(extra);
+    }
+    if (device.profile?.hints?.length) {
+      const basis = document.createElement('details');
+      basis.append(text('summary', 'Why this possible type?'));
+      basis.append(text('p', device.profile.conflict ? 'Clues disagree; no device type is assigned.' : 'This is a suggestion from reported clues, not verified identity.'));
+      device.profile.hints.forEach((hint) => basis.append(text('p', `${hint.source}: ${hint.token}`)));
+      row.children[2].append(basis);
     }
     deviceTableBody.append(row);
   });
@@ -460,7 +483,12 @@ function renderAdvertisements(data) {
   mdnsSection.hidden = observations.length === 0;
   mdnsList.replaceChildren();
   observations.forEach((item) => {
-    mdnsList.append(text('li', `${item.advertised_name || 'Unnamed device'} (${item.ip}) advertised ${item.service_type}. This has not been verified as an open service.`));
+    const features = { _http: 'a device web page', _https: 'an encrypted device web page',
+      _ipp: 'printing', _ipps: 'encrypted printing', _printer: 'printing', _airplay: 'AirPlay media sharing',
+      _raop: 'audio streaming', _googlecast: 'media casting', _hap: 'a smart-home accessory',
+      _mqtt: 'smart-home messaging', _smb: 'file sharing', '_device-info': 'device information' };
+    const feature = features[item.service_type.split('.')[0]] || 'a device feature';
+    mdnsList.append(text('li', `${item.advertised_name || 'Unnamed device'} (${item.ip}) advertised ${feature}${item.port ? ` on port ${item.port}` : ''}. This has not been verified as an open service.`));
   });
 }
 

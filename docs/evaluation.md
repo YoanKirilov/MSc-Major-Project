@@ -7,8 +7,9 @@ people understand the report or that every device on a live network will answer.
 
 Use Python 3.12 on the intended Ubuntu lab host. In a new virtual environment, install
 `python -m pip install -r requirements-dev.lock -e ".[dev]"`, then run `python -m pip check`.
-The current pins were resolved and tested on Windows/Python 3.14; verify their Linux
-wheels and compatibility before claiming the reference platform is supported.
+The earlier pins were resolved and tested on Windows/Python 3.14. The latest
+platformdirs/Uvicorn/Ruff pin changes are prepared but untested; validate them first.
+Verify Linux wheels and compatibility before claiming the reference platform is supported.
 
 Run the offline Python suite and the JavaScript tests described in `testing.md`.
 Build a wheel with `python -m build --wheel`. Install the wheel and `requirements.lock`

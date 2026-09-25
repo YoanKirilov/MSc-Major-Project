@@ -18,6 +18,29 @@
       }
     },
     {
+      "label": "NetGuard: Start backend with Pi-hole",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": { "command": "${workspaceFolder}/.venv/Scripts/python.exe" },
+      "args": ["-m", "app", "serve", "--port", "8765"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "APP_PIHOLE_URL": "${input:piholeUrl}",
+          "APP_PIHOLE_PASSWORD_FILE": "${input:piholePasswordFile}",
+          "APP_PIHOLE_PASSWORD": ""
+        }
+      },
+      "isBackground": true,
+      "runOptions": { "instanceLimit": 1 },
+      "presentation": { "reveal": "always", "focus": false, "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "netguard",
+        "pattern": { "regexp": "^(.+):(\\d+): (error): (.+)$", "file": 1, "line": 2, "severity": 3, "message": 4 },
+        "background": { "activeOnStart": true, "beginsPattern": "Started server process", "endsPattern": "Open this local session URL:" }
+      }
+    },
+    {
       "label": "NetGuard: Check offline",
       "type": "process",
       "command": "${workspaceFolder}/.venv/bin/python",
@@ -26,6 +49,19 @@
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": [],
       "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "piholeUrl",
+      "type": "promptString",
+      "description": "Pi-hole private IP origin (no /admin or /api path)",
+      "default": "http://127.0.0.1:8081"
+    },
+    {
+      "id": "piholePasswordFile",
+      "type": "promptString",
+      "description": "Absolute path to the private Pi-hole application-password file (NOT the password itself)"
     }
   ]
 }

@@ -35,7 +35,7 @@ DEEP_PROFILE = "deep-tcp-v1"
 
 LIGHT_SAFE_SCRIPTS = "dns-recursion,snmp-info,upnp-info,http-title,http-headers,ssl-cert"
 DEEP_SAFE_SCRIPTS = (
-    "dns-recursion,ntp-info,nbstat,snmp-info,upnp-info,http-title,http-headers,"
+    "dns-recursion,ntp-info,snmp-info,upnp-info,http-title,http-headers,"
     "http-methods,ssl-cert,ssh-hostkey,rdp-enum-encryption,smb-os-discovery"
 )
 

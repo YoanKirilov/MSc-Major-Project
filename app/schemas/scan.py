@@ -29,7 +29,9 @@ HostCheckState = Literal[
 
 
 class DeviceProfile(StrictModel):
-    category: Literal["camera", "printer", "router", "iot_other", "computer", "unknown"] = "unknown"
+    category: Literal[
+        "camera", "printer", "router", "iot_other", "computer", "media", "unknown"
+    ] = "unknown"
     confidence: Literal["low", "medium"] = "low"
     hints: list[dict[str, str]] = Field(default_factory=list)
     conflict: bool = False
@@ -39,6 +41,15 @@ class ScriptEvidence(StrictModel):
     script_id: str
     output: str
     truncated: bool = False
+
+
+class DeviceDetail(StrictModel):
+    kind: Literal["mdns", "upnp", "web", "certificate", "netbios", "history"]
+    label: str = Field(max_length=80)
+    value: str = Field(max_length=600)
+    source: str = Field(max_length=80)
+    status: Literal["observed", "advertised", "unavailable", "not_checked", "inferred"] = "observed"
+    observed_at: str = Field(default_factory=lambda: iso_z(utc_now()))
 
 
 class Device(StrictModel):
@@ -51,6 +62,7 @@ class Device(StrictModel):
     hostname_confidence: Literal["low", "medium"] = "low"
     hostname_conflict: bool = False
     name_candidates: list[dict[str, str]] = Field(default_factory=list)
+    details: list[DeviceDetail] = Field(default_factory=list, max_length=48)
     mac: str | None = None
     vendor: str | None = None
     discovery_method: Literal["nmap_discovery", "mdns_advertisement", "known_host", "demo"] = (
@@ -166,6 +178,9 @@ class DiscoveryObservation(StrictModel):
     ip: str
     advertised_name: str
     service_type: str
+    hostname: str | None = Field(default=None, max_length=120)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    properties: dict[str, str] = Field(default_factory=dict, max_length=8)
     observed_at: str = Field(default_factory=lambda: iso_z(utc_now()))
 
 

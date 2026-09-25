@@ -80,11 +80,20 @@ async def owned_lifespan(app: FastAPI):
         enabled=True,
     )
     app.state.pihole = None
-    if config.pihole_url and config.pihole_password:
+    app.state.pihole_configuration_error = config.pihole_configuration_error
+    if not app.state.pihole_configuration_error and config.pihole_url and config.pihole_password:
         try:
             app.state.pihole = PiholeClient(config.pihole_url, config.pihole_password)
         except ValueError:
-            pass
+            app.state.pihole_configuration_error = (
+                "Use a private or loopback IP HTTP(S) origin for APP_PIHOLE_URL, "
+                "without credentials, an /admin path or an /api path."
+            )
+    elif not app.state.pihole_configuration_error and (config.pihole_url or config.pihole_password):
+        app.state.pihole_configuration_error = (
+            "Configure both APP_PIHOLE_URL and a Pi-hole password "
+            "using APP_PIHOLE_PASSWORD_FILE or APP_PIHOLE_PASSWORD."
+        )
     app.state.supervisor = ScanSupervisor(
         app.state.store,
         nmap_path=resolve_nmap_path(config) or "nmap",
