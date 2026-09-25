@@ -38,12 +38,26 @@ def make_telnet_scan() -> dict:
         fixed_explanation=FixedExplanation(
             meaning="Telnet is an unencrypted terminal service.",
             why_it_matters="It exposes management traffic without a verified encrypted transport.",
-            recommended_steps=["Review whether the service is required.", "Use a secure management method instead."],
-            how_to_check=["Check whether the service is enabled on the device.", "Confirm whether an encrypted alternative is available."],
+            recommended_steps=[
+                "Review whether the service is required.",
+                "Use a secure management method instead.",
+            ],
+            how_to_check=[
+                "Check whether the service is enabled on the device.",
+                "Confirm whether an encrypted alternative is available.",
+            ],
         ),
         actions=[
-            {"action_id": "review_service_need", "text": "Review whether the service is required.", "verification": "Check the device's allowed management configuration."},
-            {"action_id": "use_secure_alternative", "text": "Use a supported secure management method instead.", "verification": "Verify that encrypted management is enabled."},
+            {
+                "action_id": "review_service_need",
+                "text": "Review whether the service is required.",
+                "verification": "Check the device's allowed management configuration.",
+            },
+            {
+                "action_id": "use_secure_alternative",
+                "text": "Use a supported secure management method instead.",
+                "verification": "Verify that encrypted management is enabled.",
+            },
         ],
         references=[{"title": "Telnet guidance", "url": "https://example.com/telnet"}],
     )

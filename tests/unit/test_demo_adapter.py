@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from app.demo.adapter import DemoDataError, DemoFindingsAdapter
 
 

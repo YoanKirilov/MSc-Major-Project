@@ -1,7 +1,6 @@
-from fastapi.testclient import TestClient
-
 from app.main import create_app
 from app.security.session import SessionManager
+from fastapi.testclient import TestClient
 from tests.session_helpers import BASE_URL, authenticate_client
 
 
@@ -38,9 +37,7 @@ def test_live_scan_endpoints_require_a_session(tmp_path, monkeypatch):
             json={"mode": "known_hosts", "hosts": ["192.168.0.2"], "authorised": True},
             headers={"Origin": BASE_URL},
         )
-        read_response = client.get(
-            "/api/live-scans/11111111-1111-4111-8111-111111111111"
-        )
+        read_response = client.get("/api/live-scans/11111111-1111-4111-8111-111111111111")
 
     assert create_response.status_code == 403
     assert read_response.status_code == 401

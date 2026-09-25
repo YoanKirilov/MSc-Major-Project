@@ -40,6 +40,9 @@ include-package-data = true
 where = ["."]
 include = ["app*"]
 
+[tool.setuptools.package-data]
+app = ["templates/*.html", "static/css/*.css", "static/js/*.js", "static/js/*.mjs", "demo/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test_*.py"]
@@ -47,6 +50,7 @@ markers = [
   "live_lab: live network lab checks",
   "live_provider: opt-in live AI provider checks",
   "human_study: research study checks",
+  "browser: opt-in browser workflow with synthetic scan/provider responses",
 ]
 addopts = "-q"
 

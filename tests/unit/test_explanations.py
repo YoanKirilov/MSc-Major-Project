@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import httpx
 import pytest
-
 from app.explanations.service import (
     ExplanationService,
     GeneratedExplanation,
@@ -11,11 +10,43 @@ from app.explanations.service import (
     OllamaExplanationProvider,
     build_safe_findings,
 )
+from app.risk.engine import evaluate_device
 from app.schemas.scan import Device, Finding, ScanDocument, Service
 from app.schemas.settings import SettingsUpdate
 from app.storage.json_store import JsonStore
-from app.risk.engine import evaluate_device
 from tests.fixtures.fixtures import make_telnet_scan
+
+
+def test_every_catalogue_sentence_has_reviewed_plain_language():
+    from app.explanations.wording import wording_choices
+    from app.risk.catalogue import RULE_CATALOGUE
+
+    for rule in RULE_CATALOGUE.values():
+        lines = [rule["title"], rule["meaning"], rule["why_it_matters"], *rule["limitations"]]
+        lines += [
+            value
+            for action in rule["actions"]
+            for value in (action["text"], action["verification"])
+        ]
+        for line in lines:
+            assert len(wording_choices(line)) == 2, line
+
+
+def test_report_overview_preserves_limits_and_uses_service_not_connection():
+    from app.explanations.report import report_input
+
+    document = ScanDocument(
+        scan_id=str(uuid4()),
+        target={"mode": "demo", "hosts": []},
+        state="partial",
+        scan_outcome="partial",
+        coverage={"service_completed_count": 1, "service_failed_count": 2},
+    )
+    _, payload = report_input(document)
+    choices = payload["reviewed_choices"]
+    assert "0 services accepting requests" in choices["meaning"][-1]
+    assert "Some checks could not finish" in choices["limitations"][0][-1]
+    assert "Retry unfinished device checks" in choices["recommended_steps"][0][-1]
 
 
 async def make_stored_scan(tmp_path):
@@ -140,26 +171,13 @@ async def test_one_bad_rewrite_does_not_discard_other_valid_explanations(tmp_pat
 
     class MixedProvider(FakeProvider):
         async def generate(self, findings):
-            return GeneratedExplanationBatch(explanations=[
-                GeneratedExplanation(
-                    finding_id=findings[0]["finding_id"],
-                    title=findings[0]["verified_title"],
-                    meaning=findings[0]["reviewed_choices"]["meaning"][-1],
-                    why_it_matters=findings[0]["reviewed_choices"]["why_it_matters"][-1],
-                    limitations=findings[0]["verified_limitations"],
-                    recommended_steps=findings[0]["verified_recommended_steps"],
-                    how_to_check=findings[0]["verified_how_to_check"],
-                ),
-                GeneratedExplanation(
-                    finding_id=findings[1]["finding_id"],
-                    title=findings[1]["verified_title"],
-                    meaning="This service may reveal a password.",
-                    why_it_matters="The verified explanation did not make that claim.",
-                    limitations=findings[1]["verified_limitations"],
-                    recommended_steps=findings[1]["verified_recommended_steps"],
-                    how_to_check=findings[1]["verified_how_to_check"],
-                ),
-            ])
+            response = await super().generate(findings)
+            record = next(
+                item for item in response.explanations if item.finding_id == second.finding_id
+            )
+            record.meaning = "This service may reveal a password."
+            record.why_it_matters = "The verified explanation did not make that claim."
+            return response
 
     await ExplanationService(store, MixedProvider(), enabled=True).explain_scan(document.scan_id)
     saved = await store.load_scan(document.scan_id)
@@ -173,38 +191,57 @@ async def test_ai_can_simplify_titles_limitations_and_steps_without_changing_rul
 
     class MoreGuidanceProvider(FakeProvider):
         async def generate(self, findings):
-            return GeneratedExplanationBatch(explanations=[GeneratedExplanation(
-                finding_id=findings[0]["finding_id"],
+            response = await super().generate(findings)
+            source = next(
+                item for item in findings if item["finding_id"] == document.findings[0].finding_id
+            )
+            extra = GeneratedExplanation(
+                finding_id=source["finding_id"],
                 title="Older remote control found (Telnet)",
-                meaning=findings[0]["verified_meaning"],
-                why_it_matters=findings[0]["verified_why_it_matters"],
+                meaning=source["verified_meaning"],
+                why_it_matters=source["verified_why_it_matters"],
                 limitations=[
                     "Only the selected checks on your local network were used.",
                     "The scan did not try any sign-in details or attempt to sign in.",
                 ],
                 recommended_steps=[
                     "Check the settings or manual to find out whether this device needs Telnet.",
-                    "If you need remote control, look for a protected option recommended by the device maker.",
+                    (
+                        "If you need remote control, look for a protected option "
+                        "recommended by the device maker."
+                    ),
                 ],
                 how_to_check=[
-                    "If you do not use it, ask the owner or device maker how to turn it off safely.",
+                    (
+                        "If you do not use it, ask the owner or device maker how to turn "
+                        "it off safely."
+                    ),
                     "Check that the new option works before turning off the old one.",
                 ],
-            )])
+            )
+            response.explanations = [
+                extra if item.finding_id == extra.finding_id else item
+                for item in response.explanations
+            ]
+            return response
 
-    await ExplanationService(store, MoreGuidanceProvider(), enabled=True).explain_scan(document.scan_id)
+    await ExplanationService(store, MoreGuidanceProvider(), enabled=True).explain_scan(
+        document.scan_id
+    )
     saved = await store.load_scan(document.scan_id)
     record = saved.explanations[0]
     assert record.status == "ready"
     assert set(record.ai_fields) >= {"title", "limitations", "recommended_steps", "how_to_check"}
     assert record.display_title == "Older remote control found (Telnet)"
-    assert record.display_limitations[0] == "Only the selected checks on your local network were used."
+    assert (
+        record.display_limitations[0] == "Only the selected checks on your local network were used."
+    )
     assert "settings or manual" in record.content.recommended_steps[0]
     assert saved.findings == document.findings
 
 
 @pytest.mark.asyncio
-async def test_ai_batches_larger_reports_and_caps_optional_work(tmp_path):
+async def test_ai_batches_larger_reports_without_silent_finding_cutoff(tmp_path):
     store, document = await make_stored_scan(tmp_path)
     copies = []
     for _ in range(25):
@@ -218,25 +255,30 @@ async def test_ai_batches_larger_reports_and_caps_optional_work(tmp_path):
     provider = FakeProvider()
     await ExplanationService(store, provider, enabled=True).explain_scan(document.scan_id)
     saved = await store.load_scan(document.scan_id)
-    assert len(provider.calls) == 4
+    assert len(provider.calls) == 5
     assert all(len(call) <= 6 for call in provider.calls)
-    assert saved.ai_requests_used == 4
-    assert sum(record.status == "ready" for record in saved.explanations) == 24
-    assert saved.explanations[-1].fallback_reason == "ai_limit_reached"
+    assert saved.ai_requests_used == 5
+    assert sum(record.status == "ready" for record in saved.explanations) == 25
+    assert saved.report_explanation.status == "ready"
 
 
 @pytest.mark.asyncio
-async def test_ai_never_exceeds_saved_report_request_limit(tmp_path):
+async def test_ai_can_retry_a_report_after_previous_request_count_limit(tmp_path):
     store, document = await make_stored_scan(tmp_path)
-    await store.update_scan(document.scan_id, lambda current: current.model_copy(update={
-        "ai_requests_used": 12,
-    }))
+    await store.update_scan(
+        document.scan_id,
+        lambda current: current.model_copy(
+            update={
+                "ai_requests_used": 12,
+            }
+        ),
+    )
     provider = FakeProvider()
     await ExplanationService(store, provider, enabled=True).explain_scan(document.scan_id)
     saved = await store.load_scan(document.scan_id)
-    assert provider.calls == []
-    assert saved.ai_requests_used == 12
-    assert saved.explanations[0].fallback_reason == "ai_request_limit"
+    assert len(provider.calls) == 1
+    assert saved.ai_requests_used == 13
+    assert saved.analysis_status == "ready"
 
 
 @pytest.mark.asyncio
@@ -253,14 +295,14 @@ async def test_disabled_explanation_service_does_not_call_provider(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_saved_user_setting_controls_ai_even_when_provider_is_enabled(tmp_path):
+async def test_legacy_disabled_setting_does_not_skip_required_analysis(tmp_path):
     store, document = await make_stored_scan(tmp_path)
     await store.update_settings(SettingsUpdate(expected_revision=2, ai_enabled=False), 2)
     provider = FakeProvider()
     await ExplanationService(store, provider, enabled=True).explain_scan(document.scan_id)
     saved = await store.load_scan(document.scan_id)
-    assert provider.calls == []
-    assert saved.ai_requests_used == 0
+    assert len(provider.calls) == 1
+    assert saved.ai_requests_used == 1
 
 
 def test_ai_rewrite_cannot_remove_a_source_qualifier():
@@ -276,7 +318,10 @@ def test_ai_rewrite_cannot_remove_a_source_qualifier():
 def test_ai_rewrite_cannot_drop_untested_scan_limitation():
     with pytest.raises(ValueError, match="scan_limitation_removed"):
         ExplanationService._validated_line(
-            "Telnet normally sends information without encryption. This scan did not check sign-in.",
+            (
+                "Telnet normally sends information without encryption. This scan "
+                "did not check sign-in."
+            ),
             "Telnet normally sends information without encryption.",
             field="why_it_matters",
             rule_id="R01",
@@ -320,17 +365,21 @@ async def test_ollama_provider_requests_schema_constrained_local_output():
         assert request.url.host == "127.0.0.1"
         assert body["stream"] is False
         assert body["format"]["type"] == "object"
-        response_content = json.dumps({
-            "explanations": [{
-                "finding_id": "finding-1",
-                "title": "Service found",
-                "meaning": "A service that needs checking was found.",
-                "why_it_matters": "It may be available to other devices in your home.",
-                "limitations": [],
-                "recommended_steps": [],
-                "how_to_check": [],
-            }]
-        })
+        response_content = json.dumps(
+            {
+                "explanations": [
+                    {
+                        "finding_id": "finding-1",
+                        "title": "Service found",
+                        "meaning": "A service that needs checking was found.",
+                        "why_it_matters": "It may be available to other devices in your home.",
+                        "limitations": [],
+                        "recommended_steps": [],
+                        "how_to_check": [],
+                    }
+                ]
+            }
+        )
         return httpx.Response(200, json={"message": {"content": response_content}})
 
     provider = OllamaExplanationProvider(
@@ -370,33 +419,42 @@ def test_generated_explanation_rejects_unsupported_absolute_claims():
         )
 
 
-@pytest.mark.parametrize("source,candidate,field", [
-    (
-        "This device offers an FTP service for moving files across your local network.",
-        "FTP is a file-sharing service that sends file contents or sign-in details without encryption.",
-        "meaning",
-    ),
-    (
-        "This device offers a web page over HTTP on your local network.",
-        "This device does not offer a web page over HTTP on your local network.",
-        "meaning",
-    ),
-    (
-        "If you need remote control, look for a protected option recommended by the manufacturer.",
-        "If you need remote control, use a connection without protection.",
-        "recommended_steps",
-    ),
-    (
-        "Review the sharing settings with the device's owner.",
-        "Limit shared-folder access to people who need it.",
-        "how_to_check",
-    ),
-    (
-        "Check whether this connection is expected for the device.",
-        "Check if this connection is expected for the device.",
-        "recommended_steps",
-    ),
-])
+@pytest.mark.parametrize(
+    "source,candidate,field",
+    [
+        (
+            "This device offers an FTP service for moving files across your local network.",
+            (
+                "FTP is a file-sharing service that sends file contents or sign-in "
+                "details without encryption."
+            ),
+            "meaning",
+        ),
+        (
+            "This device offers a web page over HTTP on your local network.",
+            "This device does not offer a web page over HTTP on your local network.",
+            "meaning",
+        ),
+        (
+            (
+                "If you need remote control, look for a protected option "
+                "recommended by the manufacturer."
+            ),
+            "If you need remote control, use a connection without protection.",
+            "recommended_steps",
+        ),
+        (
+            "Review the sharing settings with the device's owner.",
+            "Limit shared-folder access to people who need it.",
+            "how_to_check",
+        ),
+        (
+            "Check whether this connection is expected for the device.",
+            "Check if this connection is expected for the device.",
+            "recommended_steps",
+        ),
+    ],
+)
 def test_unreviewed_or_cosmetic_changes_cannot_be_labelled_simpler(source, candidate, field):
     with pytest.raises(ValueError):
         ExplanationService._validated_line(source, candidate, field=field, rule_id="R02")
@@ -407,20 +465,37 @@ async def test_live_review_ftp_regression_keeps_original_claim(tmp_path):
     store, document = await make_stored_scan(tmp_path)
     service = document.services[0].model_copy(update={"name": "ftp", "port": 21})
     finding = evaluate_device(document.devices[0], [service])[0]
-    await store.update_scan(document.scan_id, lambda current: current.model_copy(update={
-        "services": [service], "findings": [finding],
-    }))
+    await store.update_scan(
+        document.scan_id,
+        lambda current: current.model_copy(
+            update={
+                "services": [service],
+                "findings": [finding],
+            }
+        ),
+    )
 
     class DriftingProvider(FakeProvider):
         async def generate(self, findings):
-            return GeneratedExplanationBatch(explanations=[GeneratedExplanation(
+            response = await super().generate(findings)
+            extra = GeneratedExplanation(
                 finding_id=finding.finding_id,
                 title="File transfer found (FTP)",
-                meaning="FTP is a file-sharing service that sends file contents or sign-in details without encryption.",
+                meaning=(
+                    "FTP is a file-sharing service that sends file contents or sign-in "
+                    "details without encryption."
+                ),
                 why_it_matters=finding.fixed_explanation.why_it_matters,
-            )])
+            )
+            response.explanations = [
+                extra if item.finding_id == extra.finding_id else item
+                for item in response.explanations
+            ]
+            return response
 
-    result = await ExplanationService(store, DriftingProvider(), enabled=True).explain_scan(document.scan_id)
+    result = await ExplanationService(store, DriftingProvider(), enabled=True).explain_scan(
+        document.scan_id
+    )
     assert result.explanations[0].content.meaning == finding.fixed_explanation.meaning
     assert result.explanations[0].ai_fields == ["title"]
     assert result.findings == [finding]

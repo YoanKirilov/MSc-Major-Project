@@ -5,27 +5,35 @@ from uuid import NAMESPACE_URL, uuid5
 
 from defusedxml import ElementTree
 
-from app.schemas.scan import Device, Service
 from app.scanner.commands import PORTS, UDP_PORTS
+from app.schemas.scan import Device, Service
+
+SCRIPT_OUTPUT_LIMIT = 1024
 
 
-def _text(element, attribute: str) -> str | None:
+def _text(element, attribute: str, limit: int = 255) -> str | None:
     value = element.attrib.get(attribute)
     if value is None:
         return None
     cleaned = "".join(char for char in value if char >= " " or char in "\t\n\r")
-    return cleaned[:255] or None
+    return cleaned[:limit] or None
 
 
-def _script_results(element) -> list[dict[str, str]]:
+def _script_results(element) -> list[dict[str, str | bool]]:
     if element is None:
         return []
     results = []
     for script in element.findall("script")[:32]:
         script_id = _text(script, "id")
-        output = _text(script, "output")
+        output = _text(script, "output", SCRIPT_OUTPUT_LIMIT)
         if script_id and output:
-            results.append({"script_id": script_id, "output": output[:1024]})
+            results.append(
+                {
+                    "script_id": script_id,
+                    "output": output,
+                    "truncated": len(script.attrib.get("output", "")) > SCRIPT_OUTPUT_LIMIT,
+                }
+            )
     return results
 
 
@@ -36,24 +44,36 @@ def _require_completed(root):
     finished = runstats is not None and runstats.find("finished") is not None
     if not finished:
         raise ValueError("scan XML is incomplete")
+    if runstats.find("finished").attrib.get("exit", "success") != "success":
+        raise ValueError("Nmap reported an unsuccessful scan")
 
 
 def parse_discovery(xml_bytes: bytes, candidates: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(sorted(parse_discovery_details(xml_bytes, candidates)))
+
+
+def parse_discovery_details(xml_bytes: bytes, candidates: tuple[str, ...]) -> dict[str, dict]:
     try:
         root = ElementTree.fromstring(xml_bytes)
     except Exception as exc:
         raise ValueError("malformed discovery XML") from exc
     _require_completed(root)
     allowed = set(candidates)
-    observed = []
+    observed = {}
     for host in root.findall("host"):
         address = host.find("address[@addrtype='ipv4']")
         if address is None or address.attrib.get("addr") not in allowed:
             raise ValueError("discovery XML contains an unexpected target")
         status = host.find("status")
         if status is not None and status.attrib.get("state") == "up":
-            observed.append(address.attrib["addr"])
-    return tuple(sorted(set(observed)))
+            mac = host.find("address[@addrtype='mac']")
+            hostname = host.find("hostnames/hostname")
+            observed[address.attrib["addr"]] = {
+                "mac": _text(mac, "addr") if mac is not None else None,
+                "vendor": _text(mac, "vendor") if mac is not None else None,
+                "hostname": _text(hostname, "name") if hostname is not None else None,
+            }
+    return observed
 
 
 def parse_host(
@@ -74,17 +94,23 @@ def parse_host(
     if len(hosts) != 1:
         raise ValueError("host XML must contain exactly one host")
     host = hosts[0]
+    if host.attrib.get("timedout") == "true":
+        raise ValueError("host scan timed out")
     address = host.find("address[@addrtype='ipv4']")
     if address is None or address.attrib.get("addr") != expected_ip:
         raise ValueError("host XML contains an unexpected target")
 
     device_id = str(uuid5(uuid5(NAMESPACE_URL, scan_id), f"device:{expected_ip}"))
     hostnames = host.find("hostnames/hostname")
+    mac_address = host.find("address[@addrtype='mac']")
     device = Device(
         device_id=device_id,
         scan_id=scan_id,
         ip=expected_ip,
         hostname=_text(hostnames, "name") if hostnames is not None else None,
+        hostname_source="nmap" if hostnames is not None and _text(hostnames, "name") else None,
+        mac=_text(mac_address, "addr") if mac_address is not None else None,
+        vendor=_text(mac_address, "vendor") if mac_address is not None else None,
         discovery_method=discovery_method,
         reachability="unconfirmed",
         reachability_evidence=[],
@@ -105,9 +131,22 @@ def parse_host(
             if port not in profile_ports:
                 continue
             state_node = port_node.find("state")
-            state_value = state_node.attrib.get("state", "unknown") if state_node is not None else "unknown"
-            state_value = {"open|filtered": "open_filtered", "closed|filtered": "closed_filtered"}.get(state_value, state_value)
-            if state_value not in {"open", "closed", "filtered", "open_filtered", "closed_filtered", "unfiltered", "unknown"}:
+            state_value = (
+                state_node.attrib.get("state", "unknown") if state_node is not None else "unknown"
+            )
+            state_value = {
+                "open|filtered": "open_filtered",
+                "closed|filtered": "closed_filtered",
+            }.get(state_value, state_value)
+            if state_value not in {
+                "open",
+                "closed",
+                "filtered",
+                "open_filtered",
+                "closed_filtered",
+                "unfiltered",
+                "unknown",
+            }:
                 state_value = "unknown"
             service_node = port_node.find("service")
             method = "unknown"
@@ -144,15 +183,20 @@ def parse_host(
                 script_results=_script_results(port_node),
             )
             key = (protocol, port)
-            if key in parsed and parsed[key].model_dump(exclude={"observed_at"}) != parsed_service.model_dump(exclude={"observed_at"}):
+            if key in parsed and parsed[key].model_dump(
+                exclude={"observed_at"}
+            ) != parsed_service.model_dump(exclude={"observed_at"}):
                 raise ValueError("conflicting duplicate port record")
             parsed[key] = parsed_service
             if state_value in {"open", "closed", "unfiltered"}:
                 device.reachability = "observed"
-                device.reachability_evidence = ["open_port_response" if state_value == "open" else "closed_port_response"]
+                device.reachability_evidence = [
+                    "open_port_response" if state_value == "open" else "closed_port_response"
+                ]
     if fill_unknown:
         services = [
-            parsed.get((protocol, port)) or Service(
+            parsed.get((protocol, port))
+            or Service(
                 service_id=str(uuid5(uuid5(NAMESPACE_URL, device_id), f"{protocol}:{port}")),
                 device_id=device_id,
                 protocol=protocol,

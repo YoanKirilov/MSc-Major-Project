@@ -100,4 +100,18 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   context.data.findings = []; context.data.state = 'failed';
   vm.runInContext('render(data)', context);
   assert.match(text(elements.get('#findingsList')), /Scan incomplete/);
+  assert.match(text(elements.get('#report-first-step')), /retry the unfinished/);
+  context.data.state = 'completed';
+  context.data.analysis_status = 'ready';
+  context.data.report_explanation = { prompt_version: '3.0.0', content: {
+    meaning: 'Recorded observations.', why_it_matters: 'Review the selected checks.',
+    recommended_steps: ['Reviewed report-level next step.'], how_to_check: ['Reviewed report-level verification.'],
+  }, display_limitations: ['Other settings were not checked.'] };
+  vm.runInContext('render(data)', context);
+  assert.match(text(elements.get('#report-first-step')), /Reviewed report-level next step/);
+  assert.match(text(elements.get('#report-checks')), /Reviewed report-level verification/);
+  assert.match(text(elements.get('#nextStepsList')), /Reviewed report-level next step/);
+  context.data.report_explanation.prompt_version = 'old';
+  vm.runInContext('render(data)', context);
+  assert.doesNotMatch(text(elements.get('#report-first-step')), /Reviewed report-level/);
 });

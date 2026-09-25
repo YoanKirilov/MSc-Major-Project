@@ -1,4 +1,3 @@
-from pathlib import Path
 from types import SimpleNamespace
 
 from app.config import (
@@ -72,10 +71,15 @@ Wireless LAN adapter Wi-Fi:
    Subnet Mask . . . . . . . . . . . : 255.255.255.0
    Default Gateway . . . . . . . . . : 192.168.0.1
 """
-    monkeypatch.setattr("app.config.subprocess.run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=ipconfig))
+    monkeypatch.setattr(
+        "app.config.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=ipconfig),
+    )
 
     assert detect_private_network() == "192.168.0.0/24"
-    assert resolve_allowed_network(AppConfig(allowed_network="192.168.10.0/24")) == "192.168.10.0/24"
+    assert (
+        resolve_allowed_network(AppConfig(allowed_network="192.168.10.0/24")) == "192.168.10.0/24"
+    )
 
 
 def test_nmap_interface_choices_returns_only_active_non_loopback_interfaces(monkeypatch):
@@ -100,6 +104,9 @@ eth4 (eth4)  192.168.91.1/24 ethernet up 1500 00:00:00:00:00:01
 eth6 (eth6)  192.168.0.216/24 ethernet up 1500 00:00:00:00:00:02
 """
     monkeypatch.setattr("app.config.resolve_nmap_path", lambda config: "nmap")
-    monkeypatch.setattr("app.config.subprocess.run", lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=output))
+    monkeypatch.setattr(
+        "app.config.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=output),
+    )
     assert nmap_interface_ipv4(AppConfig(), "192.168.0.0/24") == "192.168.0.216"
     assert nmap_interface_ipv4(AppConfig(), "192.168.0.0/24", "eth4") is None

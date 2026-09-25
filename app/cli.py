@@ -8,11 +8,22 @@ from .security.session import SessionManager
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="network-assessor", description="Local network and IoT assessment tool")
+    parser = argparse.ArgumentParser(
+        prog="network-assessor", description="Local network and IoT assessment tool"
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     doctor = subparsers.add_parser("doctor", help="Check runtime dependencies")
     doctor.set_defaults(command="doctor")
+
+    storage = subparsers.add_parser(
+        "storage", help="Offline JSON audit, retention preview or recovery"
+    )
+    storage.add_argument("action", choices=("audit", "retention", "recover"))
+    storage.add_argument("--data-dir", required=True)
+    storage.add_argument("--scan-id")
+    storage.add_argument("--older-than-days", type=int, default=90)
+    storage.add_argument("--apply", action="store_true")
 
     serve = subparsers.add_parser("serve", help="Start the local web server")
     serve.add_argument("--port", type=int, default=8765)
@@ -26,6 +37,27 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "storage":
+        from filelock import Timeout
+
+        from .storage.maintenance import maintain, print_result
+
+        try:
+            print_result(
+                maintain(
+                    args.data_dir,
+                    args.action,
+                    scan_id=args.scan_id,
+                    older_than_days=args.older_than_days,
+                    apply=args.apply,
+                )
+            )
+        except Timeout:
+            parser.error("Stop the app before running storage maintenance")
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        return 0
 
     if args.command == "doctor":
         report = doctor_report()
@@ -61,12 +93,14 @@ def main(argv: list[str] | None = None) -> int:
                     except Exception:
                         pass  # The authenticated link remains available in the task log.
 
-        BrowserServer(uvicorn.Config(
-            create_app(session_manager=session_manager),
-            host=args.host,
-            port=args.port,
-            log_level="info",
-        )).run()
+        BrowserServer(
+            uvicorn.Config(
+                create_app(session_manager=session_manager),
+                host=args.host,
+                port=args.port,
+                log_level="info",
+            )
+        ).run()
         return 0
 
     parser.print_help()

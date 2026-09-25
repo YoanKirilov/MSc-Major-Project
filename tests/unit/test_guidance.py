@@ -1,5 +1,4 @@
 import pytest
-
 from app.risk.guidance import guidance_status, refresh_guidance
 from app.schemas.scan import Device, Finding, ScanDocument, Service
 from tests.fixtures.fixtures import make_telnet_scan
@@ -9,7 +8,8 @@ def legacy_document():
     fixture = make_telnet_scan()
     return ScanDocument(
         scan_id="2d9aaddd-4c59-41dd-b5d8-256e5b49c811",
-        state="completed", phase="finished",
+        state="completed",
+        phase="finished",
         target={"mode": "known_hosts", "hosts": ["192.168.0.10"], "cidr": None},
         devices=[Device.model_validate(fixture["device"])],
         services=[Service.model_validate(fixture["service"])],

@@ -1,4 +1,4 @@
-from app.schemas.scan import Device, DeviceProfile, Finding, FixedExplanation, ScanDocument, Service
+from app.schemas.scan import Device, Finding, ScanDocument, Service
 from tests.fixtures.fixtures import make_telnet_scan
 
 
@@ -15,18 +15,20 @@ def test_telnet_fixture_round_trip():
 
 def test_invalid_scan_document_rejected():
     try:
-        ScanDocument.model_validate({
-            "scan_id": "bad",
-            "source": "live",
-            "devices": [],
-            "services": [],
-            "findings": [],
-            "target": {"mode": "discover", "hosts": ["1.1.1.1"], "cidr": None},
-            "coverage": {"targets": []},
-        })
+        ScanDocument.model_validate(
+            {
+                "scan_id": "bad",
+                "source": "live",
+                "devices": [],
+                "services": [],
+                "findings": [],
+                "target": {"mode": "discover", "hosts": ["1.1.1.1"], "cidr": None},
+                "coverage": {"targets": []},
+            }
+        )
     except Exception:
         return
-    assert False, "Expected validation failure for invalid scan document"
+    raise AssertionError("Expected validation failure for invalid scan document")
 
 
 def test_service_port_rejected_outside_profile():
@@ -39,4 +41,4 @@ def test_service_port_rejected_outside_profile():
         )
     except Exception:
         return
-    assert False, "Unsupported port should be rejected"
+    raise AssertionError("Unsupported port should be rejected")

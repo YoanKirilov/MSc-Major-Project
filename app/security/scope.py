@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from app.scanner.commands import PROFILE_ID
 
 PRIVATE_NETWORKS = tuple(
-    ipaddress.ip_network(value)
-    for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+    ipaddress.ip_network(value) for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 )
 
 

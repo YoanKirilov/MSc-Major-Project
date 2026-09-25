@@ -3,8 +3,9 @@
 <section class="card">
   <h2>Settings</h2>
   <form id="settings-form">
-    <label for="allowed-network">Allowed CIDR</label>
-    <input id="allowed-network" type="text" value="192.168.0.0/24" />
+    <label for="allowed-network">Authorised network range</label>
+    <input id="allowed-network" type="text" placeholder="Automatically detect my home network" />
+    <p id="network-status" role="status"></p>
     <label for="interface-select">Interface</label>
     <select id="interface-select">
       <option value="">Loading available interfaces...</option>
@@ -12,9 +13,11 @@
     <label><input type="checkbox" id="retain-raw-xml" /> Retain raw XML</label>
     <label><input type="checkbox" id="mdns-enabled" /> Also look for local device announcements (mDNS)</label>
     <p id="mdns-status"></p>
-    <label><input type="checkbox" id="ai-enabled" /> Enable local AI wording</label>
-    <p>AI may simplify finding titles, explanations, limitations, and step wording. The original scan facts and rule-based guidance stay saved and available. When off, the report still provides plain-English guidance.</p>
+    <h3>Plain-language results with Ollama</h3>
+    <p>Every new scan includes local AI report preparation. The results open when that step finishes. If Ollama stops, you can retry the explanation using the saved scan.</p>
     <p id="ai-status" role="status"></p>
+    <label><input type="checkbox" id="pihole-enabled" /> Use names from my Pi-hole</label>
+    <p id="pihole-status" role="status"></p>
     <button type="submit">Save settings</button>
   </form>
 </section>

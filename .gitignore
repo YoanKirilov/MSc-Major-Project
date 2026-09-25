@@ -5,6 +5,7 @@ __pycache__/
 .venv*
 .env
 .env.*
+!.env.example
 *.egg-info/
 build/
 dist/
@@ -12,10 +13,14 @@ htmlcov/
 coverage.xml
 .DS_Store
 .idea/
-.vscode/
+.vscode/*
+!.vscode/tasks.json
 .preview-data/
 .test-*/
 .cleanup-backup-*.zip
 .pytest-ai-*/
 .rt-*/
 .vs/
+.pytest-brief-*/
+.pytest-*/
+.coverage

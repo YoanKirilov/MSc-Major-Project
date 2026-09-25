@@ -5,7 +5,13 @@ from time import monotonic
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.config import nmap_interface_choices, nmap_preflight, resolve_allowed_network
+from app.config import (
+    detect_private_network,
+    network_warning,
+    nmap_interface_choices,
+    nmap_preflight,
+    resolve_allowed_network,
+)
 from app.scanner.mdns import mdns_available
 from app.security.session import SessionManager
 
@@ -77,6 +83,8 @@ async def status(request: Request):
             request.app.state.runtime_status_cache = runtime
     supervisor = request.app.state.supervisor
     active_scan_ids = supervisor.active_scan_ids
+    detected = await asyncio.to_thread(detect_private_network)
+    scope = settings.allowed_network or await asyncio.to_thread(resolve_allowed_network, config)
     return {
         "app_version": "0.1.0",
         "scanner_available": runtime["scanner_available"],
@@ -84,13 +92,19 @@ async def status(request: Request):
         "interface_choices": runtime["interface_choices"],
         "ai_configured": config.ai_provider == "ollama" and bool(config.ai_model),
         "ai_available": runtime["ai_available"],
-        "ai_enabled": settings.ai_enabled,
+        "ai_enabled": True,
+        "ai_required": True,
+        "pihole_configured": request.app.state.pihole is not None,
+        "pihole_enabled": settings.pihole_enabled,
         "ai_provider": config.ai_provider,
         "ai_model": config.ai_model,
         "mdns_available": mdns_available(),
         "mdns_enabled": settings.mdns_enabled,
-        "allowed_network": settings.allowed_network or await asyncio.to_thread(resolve_allowed_network, config),
+        "allowed_network": scope,
+        "detected_network": detected,
+        "network_warning": network_warning(scope, detected),
         "active_scan_id": active_scan_ids[0] if len(active_scan_ids) == 1 else None,
+        "active_scan_ids": list(active_scan_ids),
         "active_scan_count": len(active_scan_ids),
         "max_concurrent_scans": supervisor.max_concurrent_scans,
         "storage_status": "ok" if storage_ok else "not_writable",

@@ -15,7 +15,8 @@ class Settings(StrictModel):
     profile_id: str = "tcp12-udp3-v5"
     retain_raw_xml: bool = False
     mdns_enabled: bool = False
-    ai_enabled: bool = False
+    ai_enabled: bool = True
+    pihole_enabled: bool = False
     ai_consent_revision: int = 0
     updated_at: str | None = Field(default_factory=lambda: iso_z(utc_now()))
 
@@ -29,8 +30,7 @@ class Settings(StrictModel):
         except ValueError as exc:
             raise ValueError("allowed network must be canonical IPv4 CIDR") from exc
         private_networks = tuple(
-            ipaddress.ip_network(cidr)
-            for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+            ipaddress.ip_network(cidr) for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
         )
         if (
             not isinstance(network, ipaddress.IPv4Network)
@@ -48,6 +48,7 @@ class SettingsUpdate(StrictModel):
     retain_raw_xml: bool | None = None
     mdns_enabled: bool | None = None
     ai_enabled: bool | None = None
+    pihole_enabled: bool | None = None
 
     _validate_allowed_network = field_validator("allowed_network")(
         Settings.validate_allowed_network.__func__
@@ -55,7 +56,7 @@ class SettingsUpdate(StrictModel):
 
     @model_validator(mode="after")
     def reject_null_boolean_updates(self):
-        for field in ("retain_raw_xml", "mdns_enabled", "ai_enabled"):
+        for field in ("retain_raw_xml", "mdns_enabled", "ai_enabled", "pihole_enabled"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} must be true or false")
         return self

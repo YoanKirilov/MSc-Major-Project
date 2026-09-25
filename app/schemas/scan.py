@@ -7,8 +7,9 @@ from pydantic import Field, field_validator, model_validator
 
 from .common import StrictModel, iso_z, utc_now
 
-
-ServiceState = Literal["open", "closed", "filtered", "open_filtered", "closed_filtered", "unfiltered", "unknown"]
+ServiceState = Literal[
+    "open", "closed", "filtered", "open_filtered", "closed_filtered", "unfiltered", "unknown"
+]
 FindingSeverity = Literal["high", "medium", "low", "informational"]
 FindingConfidence = Literal["high", "medium", "low"]
 ScanSource = Literal["live", "demo"]
@@ -24,6 +25,7 @@ class DeviceProfile(StrictModel):
 class ScriptEvidence(StrictModel):
     script_id: str
     output: str
+    truncated: bool = False
 
 
 class Device(StrictModel):
@@ -31,10 +33,17 @@ class Device(StrictModel):
     scan_id: str
     ip: str
     hostname: str | None = None
+    hostname_source: str | None = None
+    hostname_observed_at: str | None = None
+    hostname_confidence: Literal["low", "medium"] = "low"
+    hostname_conflict: bool = False
+    name_candidates: list[dict[str, str]] = Field(default_factory=list)
     mac: str | None = None
     vendor: str | None = None
-    discovery_method: Literal["nmap_discovery", "mdns_advertisement", "known_host", "demo"] = "known_host"
-    reachability: Literal["observed", "unconfirmed"] = "unconfirmed"
+    discovery_method: Literal["nmap_discovery", "mdns_advertisement", "known_host", "demo"] = (
+        "known_host"
+    )
+    reachability: Literal["observed", "advertised", "unconfirmed"] = "unconfirmed"
     reachability_evidence: list[str] = Field(default_factory=list)
     host_script_results: list[ScriptEvidence] = Field(default_factory=list)
     profile: DeviceProfile = Field(default_factory=DeviceProfile)
@@ -118,15 +127,33 @@ class ExplanationRecord(StrictModel):
     content: FixedExplanation | None = None
     display_title: str | None = None
     display_limitations: list[str] | None = None
-    ai_fields: list[Literal["title", "meaning", "why_it_matters", "limitations", "recommended_steps", "how_to_check"]] = Field(default_factory=list)
+    rejected_fields: dict[str, str] = Field(default_factory=dict)
+    ai_fields: list[
+        Literal[
+            "title", "meaning", "why_it_matters", "limitations", "recommended_steps", "how_to_check"
+        ]
+    ] = Field(default_factory=list)
 
 
 class TargetLedgerEntry(StrictModel):
     ip: str
     discovery_status: Literal["not_run", "observed", "not_seen", "unknown"] = "not_run"
-    service_status: Literal["not_scheduled", "pending", "running", "completed", "failed", "timed_out", "cancelled", "skipped"] = "not_scheduled"
+    service_status: Literal[
+        "not_scheduled",
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "timed_out",
+        "cancelled",
+        "skipped",
+    ] = "not_scheduled"
     reason_code: str | None = None
+    attempts: int = 0
     discovery_sources: list[Literal["nmap", "mdns"]] = Field(default_factory=list)
+    discovery_mac: str | None = None
+    discovery_hostname: str | None = None
+    discovery_vendor: str | None = None
 
 
 class DiscoveryObservation(StrictModel):
@@ -167,9 +194,19 @@ class ScanDocument(StrictModel):
     finished_at: str | None = None
     state: Literal["queued", "running", "completed", "partial", "failed", "cancelled"] = "queued"
     phase: Literal["queued", "discovery", "service_scan", "analysis", "finished"] = "queued"
-    target: dict[str, object] = Field(default_factory=lambda: {"mode": "discover", "cidr": None, "hosts": []})
+    target: dict[str, object] = Field(
+        default_factory=lambda: {"mode": "discover", "cidr": None, "hosts": []}
+    )
     policy: dict[str, object] = Field(default_factory=dict)
-    versions: dict[str, str | None] = Field(default_factory=lambda: {"app": "0.1.0", "rules": "1.2.0", "profiling": "1.0.0", "prompt": "3.0.0", "nmap": None})
+    versions: dict[str, str | None] = Field(
+        default_factory=lambda: {
+            "app": "0.1.0",
+            "rules": "1.2.0",
+            "profiling": "1.0.0",
+            "prompt": "3.0.0",
+            "nmap": None,
+        }
+    )
     coverage: Coverage = Field(default_factory=Coverage)
     observations: list[DiscoveryObservation] = Field(default_factory=list)
     devices: list[Device] = Field(default_factory=list)
@@ -177,6 +214,11 @@ class ScanDocument(StrictModel):
     findings: list[Finding] = Field(default_factory=list)
     explanations: list[ExplanationRecord] = Field(default_factory=list)
     guidance_history: list[GuidanceSnapshot] = Field(default_factory=list)
+    guidance_archives: list[str] = Field(default_factory=list)
+    report_explanation: ExplanationRecord | None = None
+    scan_outcome: Literal["completed", "partial", "failed", "cancelled"] | None = None
+    analysis_status: Literal["not_started", "running", "ready", "failed"] = "not_started"
+    analysis_error: str | None = None
     guidance_updated_at: str | None = None
     ai_requests_used: int = 0
     warnings: list[dict[str, str]] = Field(default_factory=list)

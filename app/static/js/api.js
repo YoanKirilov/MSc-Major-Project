@@ -3,8 +3,17 @@ let csrfToken = window.sessionStorage.getItem('network-assessor-csrf');
 async function parseResponse(response) {
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    const message = body?.detail || body?.error?.message || `Request failed (${response.status})`;
-    throw new Error(message);
+    const message = response.status === 401
+      ? 'Your local session has expired or the app restarted. Open the session link printed by the running app, then reopen your saved report.'
+      : body?.detail || body?.error?.message || `Request failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    if (response.status === 401) {
+      csrfToken = null;
+      window.sessionStorage.removeItem('network-assessor-csrf');
+      sessionReady = null;
+    }
+    throw error;
   }
   return body;
 }
@@ -25,7 +34,7 @@ async function bootstrapSession() {
     return;
   }
 
-  if (!csrfToken) {
+  {
     const response = await fetch('/api/session', { headers: { Accept: 'application/json' } });
     const body = await parseResponse(response);
     csrfToken = body.csrf_token;
@@ -33,10 +42,15 @@ async function bootstrapSession() {
   }
 }
 
-const sessionReady = bootstrapSession();
+let sessionReady = null;
 
 async function request(path, options = {}) {
-  await sessionReady;
+  try {
+    await (sessionReady ||= bootstrapSession());
+  } catch (error) {
+    sessionReady = null;
+    throw error;
+  }
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
   const method = (options.method || 'GET').toUpperCase();

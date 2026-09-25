@@ -3,9 +3,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin
 
-from fastapi.testclient import TestClient
-
 from app.main import create_app
+from fastapi.testclient import TestClient
 
 
 def test_dashboard_uses_local_demo_adapter():
@@ -34,7 +33,9 @@ def test_scan_page_keeps_live_data_hooks_with_prototype_controls():
     assert 'id="nextStepsList"' in page.text
     assert 'id="device-table-body"' in page.text
     assert "if ('backend' !== 'backend')" in page.text
-    assert "Safe checks" in page.text
+    assert "Additional checks" in page.text
+    assert 'id="report-first-step"' in page.text
+    assert "Explain the words in this report" in page.text
 
 
 def test_templates_and_static_assets_do_not_depend_on_working_directory(tmp_path, monkeypatch):
@@ -69,10 +70,11 @@ def test_active_pages_load_all_static_assets_and_module_dependencies(tmp_path, m
             ("/", "dashboard.js"),
             ("/scans/11111111-1111-1111-1111-111111111111", "scan.js"),
             ("/settings", "settings.js"),
+            ("/history", "history.js"),
         ]:
             page = client.get(route)
             assert page.status_code == 200
-            assert f'/static/js/{script}' in page.text
+            assert f"/static/js/{script}" in page.text
             assert "{%" not in page.text
             assets.feed(page.text)
 
@@ -90,6 +92,9 @@ def test_active_pages_load_all_static_assets_and_module_dependencies(tmp_path, m
                     pending.append(urljoin(url, module))
 
     static_root = Path(__file__).resolve().parents[1] / "app" / "static"
-    actual_assets = {f"/static/{path.relative_to(static_root).as_posix()}"
-                     for path in static_root.rglob("*") if path.is_file()}
+    actual_assets = {
+        f"/static/{path.relative_to(static_root).as_posix()}"
+        for path in static_root.rglob("*")
+        if path.is_file()
+    }
     assert visited == actual_assets

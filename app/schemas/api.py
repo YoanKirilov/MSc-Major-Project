@@ -13,9 +13,5 @@ class ScanCreateRequest(StrictModel):
     profile: str = "light"
 
 
-class DemoScanRequest(StrictModel):
-    scenario: str = "mixed-network-v1"
-
-
 class RefreshGuidanceRequest(StrictModel):
     expected_revision: int = Field(ge=1)

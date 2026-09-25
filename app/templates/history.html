@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Saved reports</h2>
+  <p>Reopen results saved on this computer. Opening a report does not start a new scan.</p>
+  <p id="history-status" role="status"></p>
+  <ul id="history-list"></ul>
+  <button type="button" id="history-previous" disabled>Previous</button>
+  <button type="button" id="history-next" disabled>Next</button>
+</section>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/history.js"></script>{% endblock %}

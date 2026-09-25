@@ -31,12 +31,15 @@
             <p class="simulation-note" id="result-status" role="status" aria-live="polite"></p>
             <div class="simulation-note" id="scan-problems" role="status" hidden></div>
             <p class="simulation-note" id="guidance-notice" role="status"></p>
+            <div id="guidance-archives"></div>
             <details class="scan-technical"><summary>Technical scan details</summary><p id="result-technical"></p></details>
             <div class="hero-actions">
               <button class="primary-button" id="runAgainButton" type="button">Run again</button>
               <button class="text-button" id="simplifyButton" type="button" hidden>Simplify this saved report</button>
               <button class="text-button" id="refreshGuidanceButton" type="button" hidden>Refresh saved guidance</button>
+              <button class="text-button" id="retryHostsButton" type="button" hidden>Retry unfinished device checks</button>
               <a class="text-button" href="/settings">AI settings</a>
+              <a class="text-button" href="/history">Saved reports</a>
             </div>
           </div>
           <div class="score-card result-summary-card">
@@ -49,9 +52,28 @@
             <article class="metric-card"><div class="metric-icon cyan" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8.5a12.5 12.5 0 0 1 16 0M7 12a8 8 0 0 1 10 0M10 15.5a3.5 3.5 0 0 1 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/></svg></div><div><span>Open services</span><strong id="service-metric">0</strong></div></article>
           </div>
         </section>
+        <div id="report-content">
+        <section class="beginner-guide" aria-labelledby="guide-title">
+          <h2 id="guide-title">Understanding your results</h2>
+          <div class="beginner-cards">
+            <article><h3>Does this mean someone broke in?</h3><p>No such conclusion can be drawn from this scan. It checks how devices answer on your local network, not whether someone has used them without permission. No findings does not mean everything is safe.</p></article>
+            <article><h3>What should I check first?</h3><p id="report-first-step"></p><p>High means review first; Medium means review next; Low means lower priority. Review items describe features whose safety this tool has not assessed. These labels are not proof of a break-in.</p></article>
+            <article><h3>What did the scan manage to check?</h3><p id="report-checks"></p><p>These results cover only the checks listed. If any checks could not finish, retrying them creates a new report and keeps this one.</p></article>
+          </div>
+          <details class="scan-technical"><summary>Explain the words in this report</summary>
+            <dl>
+              <dt>Service</dt><dd>A device feature that other devices can contact, such as file sharing or a web page. An open service is not automatically a security problem or an active connection.</dd>
+              <dt>IP address</dt><dd>A device's address on this network. It helps you match the result to your router's device list, but it can change.</dd>
+              <dt>Port</dt><dd>A numbered contact point for a device feature. TCP and UDP are two ways devices exchange information.</dd>
+              <dt>Encryption</dt><dd>Protection that scrambles information while it travels so it is not readable without the right key.</dd>
+              <dt>Confidence</dt><dd>How strongly the saved evidence supports a finding, not how safe the device is.</dd>
+              <dt>Unknown device</dt><dd>The scan did not obtain a usable name. This does not mean the device is an intruder. Check your router's device list or ask the person who set up the network.</dd>
+            </dl>
+          </details>
+        </section>
         <section class="findings-section" aria-labelledby="findings-title">
           <div class="section-heading">
-            <div><p class="eyebrow">Prioritised guidance</p><h2 id="findings-title">Security findings</h2><p id="resultsSummary">Loading actual observations...</p></div>
+            <div><p class="eyebrow">Things to check, in priority order</p><h2 id="findings-title">What we found</h2><p id="resultsSummary">Loading actual observations...</p></div>
             <label class="search-box">
               <span class="sr-only">Search findings</span>
               <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m12.5 12.5 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -67,12 +89,13 @@
           </div>
           <div class="findings-layout"><div class="findings-list" id="findingsList" aria-live="polite"></div><aside class="detail-panel" id="detailPanel" aria-live="polite" aria-label="Finding details"></aside></div>
         </section>
-        <section class="device-section" aria-labelledby="devices-title"><div><p class="eyebrow">Observed devices</p><h2 id="devices-title">What answered the scan</h2><p class="hero-lead">The table lists devices that responded during discovery or service checks. It does not prove that other devices or services are absent.</p></div><div class="device-table-wrap"><table class="device-table"><caption class="sr-only">Observed devices and open services</caption><thead><tr><th scope="col">Name</th><th scope="col">IP address</th><th scope="col">Category</th><th scope="col">Reachability</th><th scope="col">Open services</th><th scope="col">Safe checks</th><th scope="col">Findings</th></tr></thead><tbody id="device-table-body"></tbody></table></div></section>
+        <section class="device-section" aria-labelledby="devices-title"><div><p class="eyebrow">Saved device results</p><h2 id="devices-title">Which devices were checked?</h2><p class="hero-lead">The response column distinguishes devices that answered a check from devices that only announced themselves or could not be confirmed. Other devices may still exist.</p></div><div class="device-table-wrap"><table class="device-table"><caption class="sr-only">Saved devices and services accepting requests</caption><thead><tr><th scope="col">Name</th><th scope="col">Network address (IP)</th><th scope="col">Possible device type</th><th scope="col">Did it answer?</th><th scope="col">Features accepting requests</th><th scope="col">Additional checks</th><th scope="col">Items to review</th></tr></thead><tbody id="device-table-body"></tbody></table></div></section>
         <section class="device-section" id="mdns-section" aria-labelledby="mdns-title" hidden><div><p class="eyebrow">Extra local discovery</p><h2 id="mdns-title">Device announcements</h2><p class="hero-lead">These names and services were advertised on the local network. Advertisements are unverified claims, not proof of an open port or a security problem.</p></div><ul id="mdns-list"></ul></section>
         <section class="next-steps" aria-labelledby="next-title">
-          <div><p class="eyebrow">A safer order of work</p><h2 id="next-title">Start with changes that reduce the most risk</h2></div>
+          <div><p class="eyebrow">A safer order of work</p><h2 id="next-title">What to do next</h2><p>Identify the device and check whether you use the feature before changing anything. If unsure, ask its owner or the device maker.</p></div>
           <ol class="steps-list" id="nextStepsList" aria-live="polite"></ol>
         </section>
+        </div>
       </main>
       <footer><p>NetGuard AI · Local JSON result</p><p>Observations are not a security certification.</p></footer>
     </div>

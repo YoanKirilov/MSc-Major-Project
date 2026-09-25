@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "NetGuard: Start backend",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "args": ["-m", "app", "serve", "--port", "8765"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "runOptions": { "runOn": "folderOpen", "instanceLimit": 1 },
+      "presentation": { "reveal": "silent", "focus": false, "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "netguard",
+        "pattern": { "regexp": "^(.+):(\\d+): (error): (.+)$", "file": 1, "line": 2, "severity": 3, "message": 4 },
+        "background": { "activeOnStart": true, "beginsPattern": "Started server process", "endsPattern": "Open this local session URL:" }
+      }
+    }
+  ]
+}

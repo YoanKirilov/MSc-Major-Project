@@ -34,8 +34,9 @@ export function coverageSummary(data) {
       ? 'No devices answered discovery. Device security could not be assessed.'
       : 'No device checks finished. Device security could not be assessed.';
   }
-  const scope = discover ? `${total} devices answered discovery.` : `${total} device addresses were requested.`;
-  return `${scope} ${finished} device checks finished.`
+  const mdnsOnly = (c.targets || []).filter((target) => target.discovery_sources?.includes('mdns') && !target.discovery_sources.includes('nmap')).length;
+  const scope = discover ? `${total} device${total === 1 ? '' : 's'} identified during discovery${mdnsOnly ? `, including ${mdnsOnly} seen only through mDNS announcements` : ''}.` : `${total} device address${total === 1 ? ' was' : 'es were'} selected.`;
+  return `${scope} ${finished} device check${finished === 1 ? '' : 's'} finished.`
     + (remaining ? ` ${remaining} ${active ? 'still pending' : 'did not finish'}.` : '');
 }
 
@@ -56,7 +57,12 @@ export function usableAiRecord(record, data) {
 export function aiExplanationNote(data) {
   const records = data.explanations || [];
   const count = records.filter((record) => usableAiRecord(record, data)).length;
-  if (data.phase === 'analysis') return 'Local AI is choosing optional reviewed wording. Rule-based guidance is already available.';
+  if (data.phase === 'analysis') return 'Ollama is preparing your plain-language report.';
+  if (data.analysis_status === 'failed') return 'The scan observations are saved, but the AI explanation did not finish. Retry report preparation; no new scan is needed.';
+  if (data.analysis_status === 'ready') {
+    const rejected = [...records, data.report_explanation].filter(Boolean).reduce((count, record) => count + Object.keys(record.rejected_fields || {}).length, 0);
+    return `Ollama reviewed the report overview and all ${data.findings?.length || 0} findings. Original wording is retained where appropriate.${rejected ? ` ${rejected} wording field(s) did not pass validation; their original text was kept.` : ''}`;
+  }
   if (count) return `Local AI selected reviewed wording for ${count} finding${count === 1 ? '' : 's'}; remaining wording is rule-based.`;
   if (records.some((record) => record.source === 'ai' && record.prompt_version !== data.guidance_status?.ai_prompt_version)) {
     return 'Older AI wording is hidden because it predates the current validation checks. Rule-based guidance is shown.';
@@ -85,5 +91,5 @@ export function checkSummary(check) {
   const topic = topics[check.script_id] || check.script_id;
   return /\b(error|failed|timed out)\b/i.test(check.output)
     ? `Could not reliably check ${topic}; see the technical result.`
-    : `Recorded ${topic}.`;
+    : `Recorded ${topic}.${check.truncated ? ' Technical output was shortened to the saved evidence limit.' : ''}`;
 }

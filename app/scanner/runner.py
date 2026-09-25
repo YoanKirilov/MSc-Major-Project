@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-import sys
 import time
 from dataclasses import dataclass
 
@@ -90,7 +89,9 @@ async def run_process(
         pending = {wait_task}
         if cancel_task is not None:
             pending.add(cancel_task)
-        done, _ = await asyncio.wait(pending, timeout=timeout_s, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait(
+            pending, timeout=timeout_s, return_when=asyncio.FIRST_COMPLETED
+        )
         if not done:
             timed_out = True
             await _stop_process(process)
@@ -125,7 +126,3 @@ async def run_process(
             if not task.done():
                 task.cancel()
         await asyncio.gather(stdout_task, stderr_task, wait_task, return_exceptions=True)
-
-
-if __name__ == "__main__":
-    print(sys.argv[1:])

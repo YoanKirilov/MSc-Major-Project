@@ -1,7 +1,6 @@
-from fastapi.testclient import TestClient
-
 from app.main import create_app
 from app.security.session import SessionManager
+from fastapi.testclient import TestClient
 from tests.session_helpers import BASE_URL, authenticate_client
 
 

@@ -2,15 +2,17 @@ import asyncio
 from pathlib import Path
 
 import pytest
-
 from app.jobs.supervisor import ScanSupervisor
-from app.schemas.scan import ScanDocument, TargetLedgerEntry
-from app.schemas.scan import DiscoveryObservation, ExplanationRecord, Finding
-from app.schemas.settings import SettingsUpdate
 from app.scanner.runner import ProcessResult
+from app.schemas.scan import (
+    DiscoveryObservation,
+    ExplanationRecord,
+    Finding,
+    ScanDocument,
+)
+from app.schemas.settings import SettingsUpdate
 from app.storage.json_store import JsonStore
 from tests.fixtures.fixtures import make_telnet_scan
-
 
 XML = (Path(__file__).parents[1] / "fixtures" / "nmap_host.xml").read_bytes()
 
@@ -167,20 +169,29 @@ async def test_mdns_advertisement_adds_in_scope_host_without_creating_a_finding(
     scan = ScanDocument(
         scan_id="12121212-1212-4121-8121-121212121212",
         target={"mode": "discover", "cidr": "192.168.56.8/30", "hosts": []},
-        policy={"allowed_network": "192.168.56.8/30", "mdns_enabled": True,
-                "mdns_interface_ip": "192.168.56.9"},
-        coverage={"candidate_count": 2, "targets": [
-            {"ip": "192.168.56.9", "service_status": "pending"},
-            {"ip": "192.168.56.10", "service_status": "pending"},
-        ]},
+        policy={
+            "allowed_network": "192.168.56.8/30",
+            "mdns_enabled": True,
+            "mdns_interface_ip": "192.168.56.9",
+        },
+        coverage={
+            "candidate_count": 2,
+            "targets": [
+                {"ip": "192.168.56.9", "service_status": "pending"},
+                {"ip": "192.168.56.10", "service_status": "pending"},
+            ],
+        },
     )
     await store.create_scan(scan)
 
     async def fake_browser(scope, interface_ip, cancel_event):
         assert scope == "192.168.56.8/30"
         assert interface_ip == "192.168.56.9"
-        return [DiscoveryObservation(ip="192.168.56.9", advertised_name="Home printer",
-                                     service_type="_ipp._tcp.local.")]
+        return [
+            DiscoveryObservation(
+                ip="192.168.56.9", advertised_name="Home printer", service_type="_ipp._tcp.local."
+            )
+        ]
 
     async def fake_runner(args, timeout_s, cancel_event):
         if "-sn" in args:
@@ -198,8 +209,10 @@ async def test_mdns_advertisement_adds_in_scope_host_without_creating_a_finding(
     assert saved.coverage.discovered_count == 2
     assert by_ip["192.168.56.9"].discovery_method == "mdns_advertisement"
     assert saved.observations[0].advertised_name == "Home printer"
-    assert all(finding.service_id in {service.service_id for service in saved.services}
-               for finding in saved.findings)
+    assert all(
+        finding.service_id in {service.service_id for service in saved.services}
+        for finding in saved.findings
+    )
 
 
 @pytest.mark.asyncio
@@ -231,7 +244,8 @@ async def test_recovery_finishes_interrupted_ai_analysis_with_fixed_guidance(tmp
     finding = Finding.model_validate(make_telnet_scan()["finding"])
     scan = ScanDocument(
         scan_id="34343434-3434-4343-8343-343434343434",
-        state="completed", phase="analysis",
+        state="completed",
+        phase="analysis",
         target={"mode": "known_hosts", "cidr": None, "hosts": ["192.168.56.10"]},
         findings=[finding],
         explanations=[ExplanationRecord(finding_id=finding.finding_id, status="pending")],
@@ -247,7 +261,7 @@ async def test_recovery_finishes_interrupted_ai_analysis_with_fixed_guidance(tmp
 
 
 @pytest.mark.asyncio
-async def test_ai_explanation_does_not_delay_scan_completion(tmp_path):
+async def test_ai_explanation_is_part_of_scan_completion(tmp_path):
     store = JsonStore(tmp_path)
     await store.update_settings(SettingsUpdate(expected_revision=1, ai_enabled=True), 1)
     scan = ScanDocument(
@@ -263,6 +277,9 @@ async def test_ai_explanation_does_not_delay_scan_completion(tmp_path):
         async def explain_scan(self, scan_id):
             started.set()
             await release.wait()
+            await store.update_scan(
+                scan_id, lambda current: current.model_copy(update={"analysis_status": "ready"})
+            )
 
     async def fake_runner(args, timeout_s, cancel_event):
         return ProcessResult(XML, b"", 0, 0.01)
@@ -274,11 +291,9 @@ async def test_ai_explanation_does_not_delay_scan_completion(tmp_path):
     )
     await supervisor.start(scan.scan_id)
     await started.wait()
-    while supervisor.is_active(scan.scan_id):
-        await asyncio.sleep(0.01)
-
     saved = await store.load_scan(scan.scan_id)
-    assert saved.state == "completed"
+    assert supervisor.is_active(scan.scan_id)
+    assert saved.state == "running"
     assert saved.phase == "analysis"
 
     release.set()
@@ -286,6 +301,7 @@ async def test_ai_explanation_does_not_delay_scan_completion(tmp_path):
         await asyncio.sleep(0.01)
     saved = await store.load_scan(scan.scan_id)
     assert saved.phase == "finished"
+    assert saved.state == "completed"
 
 
 @pytest.mark.asyncio
@@ -295,7 +311,8 @@ async def test_saved_report_can_request_ai_without_running_nmap(tmp_path):
     finding = Finding.model_validate(make_telnet_scan()["finding"])
     scan = ScanDocument(
         scan_id="48484848-4848-4848-8848-484848484848",
-        state="completed", phase="finished",
+        state="completed",
+        phase="finished",
         target={"mode": "known_hosts", "cidr": None, "hosts": ["192.168.56.10"]},
         findings=[finding],
     )
@@ -317,7 +334,7 @@ async def test_saved_report_can_request_ai_without_running_nmap(tmp_path):
     await supervisor.request_explanations(scan.scan_id)
     await started.wait()
     during = await store.load_scan(scan.scan_id)
-    assert during.state == "completed"
+    assert during.state == "running"
     assert during.phase == "analysis"
     with pytest.raises(RuntimeError, match="SCAN_BUSY"):
         await supervisor.request_explanations(scan.scan_id)
@@ -327,11 +344,17 @@ async def test_saved_report_can_request_ai_without_running_nmap(tmp_path):
     saved = await store.load_scan(scan.scan_id)
     assert saved.phase == "finished"
     assert saved.findings == scan.findings
-    await store.update_scan(scan.scan_id, lambda current: current.model_copy(update={
-        "ai_requests_used": 12,
-    }))
-    with pytest.raises(RuntimeError, match="AI_REQUEST_LIMIT"):
-        await supervisor.request_explanations(scan.scan_id)
+    await store.update_scan(
+        scan.scan_id,
+        lambda current: current.model_copy(
+            update={
+                "ai_requests_used": 12,
+            }
+        ),
+    )
+    await supervisor.request_explanations(scan.scan_id)
+    while supervisor.is_analysis_active(scan.scan_id):
+        await asyncio.sleep(0.01)
 
 
 @pytest.mark.asyncio

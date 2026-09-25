@@ -7,8 +7,8 @@ from collections.abc import Callable
 from ipaddress import IPv4Address
 from typing import Any
 
-from app.risk.engine import evaluate_device
 from app.profiling.classifier import classify_device
+from app.risk.engine import evaluate_device
 from app.scanner.commands import (
     DEEP_PROFILE,
     DEEP_UDP_PORTS,
@@ -17,13 +17,12 @@ from app.scanner.commands import (
     discovery_command,
     host_command,
 )
-from app.scanner.parser import parse_discovery, parse_host
 from app.scanner.mdns import browse_mdns
+from app.scanner.parser import parse_discovery_details, parse_host
 from app.scanner.runner import ProcessResult, run_process
-from app.storage.json_store import JsonStore
 from app.schemas.common import iso_z, utc_now
 from app.schemas.scan import ExplanationRecord, ScanDocument
-
+from app.storage.json_store import JsonStore
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +36,22 @@ class ScanSupervisor:
         explanation_service=None,
         mdns_browser=browse_mdns,
         max_concurrent_scans: int = 2,
+        pihole_client=None,
     ):
         self.store = store
         self.nmap_path = nmap_path
         self.process_runner = process_runner
         self.explanation_service = explanation_service
         self.mdns_browser = mdns_browser
+        self.pihole_client = pihole_client
         self.max_concurrent_scans = max(1, max_concurrent_scans)
         self._tasks: dict[str, asyncio.Task] = {}
         self._analysis_tasks: dict[str, asyncio.Task] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
         self._admission = asyncio.Lock()
         self._analysis_capacity = asyncio.Semaphore(1)
+        self._host_capacity = asyncio.Semaphore(2)
+        self.host_stage_timeout_s = 1800
 
     def is_active(self, scan_id: str | None = None) -> bool:
         if scan_id is not None:
@@ -62,7 +65,14 @@ class ScanSupervisor:
 
     @property
     def active_scan_ids(self) -> tuple[str, ...]:
-        return tuple(scan_id for scan_id, task in self._tasks.items() if not task.done())
+        return tuple(
+            dict.fromkeys(
+                scan_id
+                for tasks in (self._tasks, self._analysis_tasks)
+                for scan_id, task in tasks.items()
+                if not task.done()
+            )
+        )
 
     def has_capacity(self) -> bool:
         return self.active_scan_count < self.max_concurrent_scans
@@ -85,19 +95,29 @@ class ScanSupervisor:
             if self.is_active(scan_id) or self.is_analysis_active(scan_id):
                 raise RuntimeError("SCAN_BUSY")
             document = await self.store.load_scan(scan_id)
-            if document.source != "live" or document.state not in {"completed", "partial"}:
+            if document.source != "live" or document.state not in {
+                "completed",
+                "partial",
+                "failed",
+                "cancelled",
+            }:
                 raise RuntimeError("SCAN_NOT_READY")
-            if document.phase != "finished" or not document.findings:
+            if document.phase != "finished":
                 raise RuntimeError("SCAN_NOT_READY")
-            if document.ai_requests_used >= 12:
-                raise RuntimeError("AI_REQUEST_LIMIT")
             if self.explanation_service is None:
                 raise RuntimeError("AI_NOT_CONFIGURED")
-            if not (await self.store.load_settings()).ai_enabled:
-                raise RuntimeError("AI_DISABLED")
-            await self._checkpoint(scan_id, lambda current: current.model_copy(update={
-                "phase": "analysis",
-            }))
+            await self._checkpoint(
+                scan_id,
+                lambda current: current.model_copy(
+                    update={
+                        "phase": "analysis",
+                        "state": "running",
+                        "analysis_status": "running",
+                        "analysis_error": None,
+                        "scan_outcome": current.scan_outcome or current.state,
+                    }
+                ),
+            )
             self._analysis_tasks[scan_id] = asyncio.create_task(self._run_explanations(scan_id))
 
     async def refresh_guidance(self, scan_id: str, expected_revision: int) -> ScanDocument:
@@ -110,14 +130,26 @@ class ScanSupervisor:
 
     async def cancel(self, scan_id: str) -> bool:
         event = self._cancel_events.get(scan_id)
-        if event is None:
+        task = self._analysis_tasks.get(scan_id)
+        if event is None and (task is None or task.done()):
             return False
-        event.set()
+        if event is not None:
+            event.set()
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            current = await self.store.load_scan(scan_id)
+            if current.phase == "analysis":
+                # A task cancelled before its coroutine starts cannot run its finally block.
+                await self._finish_explanations(scan_id, warning_code="AI_EXPLANATION_CANCELLED")
+            self._analysis_tasks.pop(scan_id, None)
         return True
 
     async def shutdown(self) -> None:
         for event in self._cancel_events.values():
             event.set()
+        for task in self._analysis_tasks.values():
+            task.cancel()
         tasks = list(self._tasks.values())
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -134,7 +166,7 @@ class ScanSupervisor:
         """Close persisted jobs that cannot survive a process restart."""
         for scan_id in await self.store.list_incomplete_scan_ids():
             try:
-                await self._checkpoint(
+                await self.store.finish_scan(
                     scan_id,
                     lambda current: self._interrupted_document(current),
                 )
@@ -144,15 +176,101 @@ class ScanSupervisor:
     async def _checkpoint(self, scan_id: str, mutate: Callable[[Any], Any]) -> None:
         await self.store.update_scan(scan_id, mutate)
 
+    @staticmethod
+    def _close_unfinished(current, reason: str, *, cancelled: bool = False):
+        coverage = current.coverage.model_copy(deep=True)
+        for target in coverage.targets:
+            eligible = (
+                current.target.get("mode") == "known_hosts" or target.discovery_status == "observed"
+            )
+            if eligible and target.service_status in {"pending", "running"}:
+                target.service_status = "cancelled" if cancelled else "failed"
+                target.reason_code = reason
+                if not cancelled:
+                    coverage.service_failed_count += 1
+        coverage.service_stage_complete = False
+        return current.model_copy(update={"coverage": coverage})
+
     async def _local_hostname(self, ip: str) -> str | None:
         try:
-            hostname, _, _ = await asyncio.wait_for(asyncio.to_thread(socket.gethostbyaddr, ip), timeout=1.0)
+            hostname, _, _ = await asyncio.wait_for(
+                asyncio.to_thread(socket.gethostbyaddr, ip), timeout=1.0
+            )
         except (OSError, asyncio.TimeoutError):
             return None
         return hostname[:255] if hostname else None
 
+    async def _enrich_names(self, scan_id: str, cancel_event: asyncio.Event) -> None:
+        from app.scanner.names import add_name
+        from app.scanner.pihole import apply_pihole_names
+
+        document = await self.store.load_scan(scan_id)
+        if cancel_event.is_set():
+            return
+        records = []
+        warning = None
+        if document.policy.get("pihole_enabled"):
+            try:
+                if self.pihole_client is None:
+                    raise ValueError("Pi-hole is not configured")
+                records = await asyncio.wait_for(
+                    self.pihole_client.names(document.policy["allowed_network"]),
+                    timeout=20,
+                )
+            except Exception:
+                # Do not log external responses, URLs with credentials, or session IDs.
+                warning = {
+                    "code": "PIHOLE_UNAVAILABLE",
+                    "message": (
+                        "Pi-hole device names could not be read. Scan observations are "
+                        "still available."
+                    ),
+                }
+
+        def enrich(current):
+            devices = [device.model_copy(deep=True) for device in current.devices]
+            for device in devices:
+                if device.hostname:
+                    add_name(
+                        device,
+                        device.hostname,
+                        device.hostname_source or "nmap",
+                        device.observed_at,
+                    )
+                for observation in current.observations:
+                    if observation.ip == device.ip:
+                        add_name(
+                            device, observation.advertised_name, "mdns", observation.observed_at
+                        )
+            apply_pihole_names(devices, records)
+            for device in devices:
+                services = [item for item in current.services if item.device_id == device.device_id]
+                device.profile = device.profile.model_validate(classify_device(device, services))
+            return current.model_copy(
+                update={
+                    "devices": devices,
+                    "warnings": [
+                        *current.warnings,
+                        *getattr(records, "warnings", []),
+                        *([warning] if warning else []),
+                    ],
+                }
+            )
+
+        await self._checkpoint(scan_id, enrich)
+
     @staticmethod
     def _interrupted_document(current):
+        if current.phase == "analysis" and current.analysis_status == "running":
+            return current.model_copy(
+                update={
+                    "state": current.scan_outcome or "failed",
+                    "phase": "finished",
+                    "analysis_status": "failed",
+                    "analysis_error": "process_restarted",
+                    "finished_at": iso_z(utc_now()),
+                }
+            )
         if current.phase == "analysis" and current.state in {"completed", "partial"}:
             finished_at = iso_z(utc_now())
             existing = {record.finding_id: record for record in current.explanations}
@@ -162,22 +280,32 @@ class ScanSupervisor:
                 if record is not None and record.status == "ready":
                     explanations.append(record)
                 else:
-                    explanations.append(ExplanationRecord(
-                        finding_id=finding.finding_id,
-                        status="fallback",
-                        source="fixed",
-                        completed_at=finished_at,
-                        fallback_reason="process_restarted",
-                        content=finding.fixed_explanation,
-                    ))
-            return current.model_copy(update={
-                "phase": "finished",
-                "explanations": explanations,
-                "warnings": [*current.warnings, {
-                    "code": "AI_EXPLANATION_INTERRUPTED",
-                    "message": "Plain-language AI wording was interrupted; fixed guidance is shown.",
-                }],
-            })
+                    explanations.append(
+                        ExplanationRecord(
+                            finding_id=finding.finding_id,
+                            status="fallback",
+                            source="fixed",
+                            completed_at=finished_at,
+                            fallback_reason="process_restarted",
+                            content=finding.fixed_explanation,
+                        )
+                    )
+            return current.model_copy(
+                update={
+                    "phase": "finished",
+                    "explanations": explanations,
+                    "warnings": [
+                        *current.warnings,
+                        {
+                            "code": "AI_EXPLANATION_INTERRUPTED",
+                            "message": (
+                                "Plain-language AI wording was interrupted; fixed guidance is "
+                                "shown."
+                            ),
+                        },
+                    ],
+                }
+            )
         coverage = current.coverage.model_copy(deep=True)
         for target in coverage.targets:
             if target.service_status in {"pending", "running"}:
@@ -185,20 +313,22 @@ class ScanSupervisor:
                 target.reason_code = "process_restarted"
         coverage.service_stage_complete = False
         state = "partial" if current.devices else "failed"
-        return current.model_copy(update={
-            "state": state,
-            "phase": "finished",
-            "finished_at": iso_z(utc_now()),
-            "coverage": coverage,
-            "errors": [
-                *current.errors,
-                {
-                    "code": "SCAN_INTERRUPTED",
-                    "message": "The application stopped before this scan completed.",
-                    "device_id": None,
-                },
-            ],
-        })
+        return current.model_copy(
+            update={
+                "state": state,
+                "phase": "finished",
+                "finished_at": iso_z(utc_now()),
+                "coverage": coverage,
+                "errors": [
+                    *current.errors,
+                    {
+                        "code": "SCAN_INTERRUPTED",
+                        "message": "The application stopped before this scan completed.",
+                        "device_id": None,
+                    },
+                ],
+            }
+        )
 
     async def _run(self, scan_id: str, cancel_event: asyncio.Event) -> None:
         try:
@@ -207,13 +337,21 @@ class ScanSupervisor:
             interface = document.policy.get("interface", settings.interface)
             retain_raw_xml = document.policy.get("retain_raw_xml", settings.retain_raw_xml)
             nmap_observed: set[str] = set()
+            discovery_details = {}
             mdns_observed: set[str] = set()
-            initial_phase = "discovery" if document.target.get("mode") == "discover" else "service_scan"
-            await self._checkpoint(scan_id, lambda current: current.model_copy(update={
-                "state": "running",
-                "phase": initial_phase,
-                "started_at": iso_z(utc_now()),
-            }))
+            initial_phase = (
+                "discovery" if document.target.get("mode") == "discover" else "service_scan"
+            )
+            await self._checkpoint(
+                scan_id,
+                lambda current: current.model_copy(
+                    update={
+                        "state": "running",
+                        "phase": initial_phase,
+                        "started_at": iso_z(utc_now()),
+                    }
+                ),
+            )
             target_hosts = tuple(document.target.get("hosts", []))
             if document.target.get("mode") == "discover":
                 cidr = document.target.get("cidr")
@@ -229,7 +367,8 @@ class ScanSupervisor:
                     raise RuntimeError("Discovery did not complete")
                 if not cancel_event.is_set():
                     candidates = tuple(target.ip for target in document.coverage.targets)
-                    nmap_observed = set(parse_discovery(result.stdout, candidates))
+                    discovery_details = parse_discovery_details(result.stdout, candidates)
+                    nmap_observed = set(discovery_details)
                     observations = []
                     if document.policy.get("mdns_enabled"):
                         try:
@@ -238,26 +377,52 @@ class ScanSupervisor:
                                 document.policy["mdns_interface_ip"],
                                 cancel_event,
                             )
-                            mdns_observed = {item.ip for item in observations if item.ip in candidates}
+                            mdns_observed = {
+                                item.ip for item in observations if item.ip in candidates
+                            }
                         except Exception:
                             logger.exception("mDNS discovery failed for scan %s", scan_id)
-                            await self._checkpoint(scan_id, lambda current: current.model_copy(update={
-                                "warnings": [*current.warnings, {
-                                    "code": "MDNS_UNAVAILABLE",
-                                    "message": "Extra device announcements could not be checked; Nmap results remain available.",
-                                }],
-                            }))
+                            await self._checkpoint(
+                                scan_id,
+                                lambda current: current.model_copy(
+                                    update={
+                                        "warnings": [
+                                            *current.warnings,
+                                            {
+                                                "code": "MDNS_UNAVAILABLE",
+                                                "message": (
+                                                    "Extra device announcements could not be "
+                                                    "checked; Nmap results "
+                                                    "remain available."
+                                                ),
+                                            },
+                                        ],
+                                    }
+                                ),
+                            )
                     observed = nmap_observed | mdns_observed
-                    target_hosts = tuple(sorted(observed, key=IPv4Address)) if not cancel_event.is_set() else ()
+                    target_hosts = (
+                        tuple(sorted(observed, key=IPv4Address))
+                        if not cancel_event.is_set()
+                        else ()
+                    )
 
                     def commit_discovery(current):
                         coverage = current.coverage.model_copy(deep=True)
                         for target in coverage.targets:
                             if target.ip in observed:
+                                identity = discovery_details.get(target.ip, {})
+                                target.discovery_mac = identity.get("mac")
+                                target.discovery_hostname = identity.get("hostname")
+                                target.discovery_vendor = identity.get("vendor")
                                 target.discovery_status = "observed"
                                 target.service_status = "pending"
                                 target.discovery_sources = [
-                                    source for source, found in (("nmap", nmap_observed), ("mdns", mdns_observed))
+                                    source
+                                    for source, found in (
+                                        ("nmap", nmap_observed),
+                                        ("mdns", mdns_observed),
+                                    )
                                     if target.ip in found
                                 ]
                             else:
@@ -267,22 +432,33 @@ class ScanSupervisor:
                         coverage.discovered_count = len(observed)
                         coverage.discovery_complete = True
                         coverage.service_skipped_count = len(coverage.targets) - len(observed)
-                        return current.model_copy(update={
-                            "phase": "service_scan",
-                            "coverage": coverage,
-                            "observations": observations,
-                        })
+                        return current.model_copy(
+                            update={
+                                "phase": "service_scan",
+                                "coverage": coverage,
+                                "observations": observations,
+                            }
+                        )
 
                     if not cancel_event.is_set():
                         await self._checkpoint(scan_id, commit_discovery)
             elif not cancel_event.is_set():
-                await self._checkpoint(scan_id, lambda current: current.model_copy(update={
-                    "phase": "service_scan",
-                    "coverage": current.coverage.model_copy(update={"discovery_complete": False}),
-                }))
-            for ip in target_hosts:
+                await self._checkpoint(
+                    scan_id,
+                    lambda current: current.model_copy(
+                        update={
+                            "phase": "service_scan",
+                            "coverage": current.coverage.model_copy(
+                                update={"discovery_complete": False}
+                            ),
+                        }
+                    ),
+                )
+
+            async def check_host(ip):
                 if cancel_event.is_set():
-                    break
+                    return
+
                 def mark_running(current, ip=ip):
                     coverage = current.coverage.model_copy(deep=True)
                     coverage.service_attempted_count += 1
@@ -295,21 +471,53 @@ class ScanSupervisor:
                 await self._checkpoint(scan_id, mark_running)
                 profile = document.policy.get("profile", "light")
                 deep = profile == DEEP_PROFILE
-                result: ProcessResult = await self.process_runner(
-                    host_command(
-                        self.nmap_path,
-                        ip,
-                        DEEP_PROFILE if deep else "light",
-                        interface,
-                    ),
-                    960 if deep else 75,
-                    cancel_event,
-                )
+                parsed = None
+                parse_error_code = "HOST_RESULT_INVALID"
+                for attempt in range(1, 3):
+
+                    def mark_attempt(current, attempt=attempt):
+                        coverage = current.coverage.model_copy(deep=True)
+                        for target in coverage.targets:
+                            if target.ip == ip:
+                                target.attempts = attempt
+                                target.reason_code = "retrying" if attempt > 1 else None
+                        return current.model_copy(update={"coverage": coverage})
+
+                    await self._checkpoint(scan_id, mark_attempt)
+                    result: ProcessResult = await self.process_runner(
+                        host_command(
+                            self.nmap_path, ip, DEEP_PROFILE if deep else "light", interface
+                        ),
+                        960 if deep else 210,
+                        cancel_event,
+                    )
+                    if result.cancelled or cancel_event.is_set() or result.overflow:
+                        break
+                    if not result.timed_out and result.returncode == 0:
+                        try:
+                            parsed = parse_host(
+                                result.stdout,
+                                ip,
+                                scan_id,
+                                ("nmap_discovery" if ip in nmap_observed else "mdns_advertisement")
+                                if document.target.get("mode") == "discover"
+                                else "known_host",
+                                profile_tcp_ports=PORTS if not deep else range(1, 65536),
+                                profile_udp_ports=UDP_PORTS if not deep else DEEP_UDP_PORTS,
+                                fill_unknown=not deep,
+                            )
+                            break
+                        except ValueError as exc:
+                            parse_error_code = (
+                                "HOST_SCAN_TIMEOUT"
+                                if "timed out" in str(exc)
+                                else "HOST_RESULT_INVALID"
+                            )
                 if retain_raw_xml and result.stdout:
                     await self.store.save_raw_output(
                         scan_id, f"host-{ip.replace('.', '-')}.xml", result.stdout
                     )
-                if result.cancelled:
+                if result.cancelled or cancel_event.is_set():
                     cancel_event.set()
                     await self._checkpoint(
                         scan_id,
@@ -317,97 +525,203 @@ class ScanSupervisor:
                             current, ip, "cancelled", "HOST_SCAN_CANCELLED", cancelled=True
                         ),
                     )
-                    break
+                    return
                 if result.timed_out or result.overflow or result.returncode != 0:
                     status = "timed_out" if result.timed_out else "failed"
+                    failure_code = (
+                        "HOST_SCAN_TIMEOUT"
+                        if result.timed_out
+                        else "HOST_OUTPUT_LIMIT"
+                        if result.overflow
+                        else "HOST_SCAN_FAILED"
+                    )
                     await self._checkpoint(
                         scan_id,
                         lambda current, ip=ip, status=status: self._mark_host_failure(
-                            current, ip, status, "HOST_SCAN_FAILED"
+                            current, ip, status, failure_code
                         ),
                     )
-                    continue
-                try:
-                    device, services = parse_host(
-                        result.stdout,
-                        ip,
-                        scan_id,
-                        ("nmap_discovery" if ip in nmap_observed else "mdns_advertisement")
-                        if document.target.get("mode") == "discover" else "known_host",
-                        profile_tcp_ports=(PORTS if not deep else range(1, 65536)),
-                        profile_udp_ports=UDP_PORTS if not deep else DEEP_UDP_PORTS,
-                        fill_unknown=not deep,
-                    )
-                except ValueError:
+                    return
+                if parsed is None:
                     await self._checkpoint(
                         scan_id,
                         lambda current, ip=ip: self._mark_host_failure(
-                            current, ip, "failed", "HOST_RESULT_INVALID"
+                            current,
+                            ip,
+                            "timed_out" if parse_error_code == "HOST_SCAN_TIMEOUT" else "failed",
+                            parse_error_code,
                         ),
                     )
-                    continue
+                    return
+                device, services = parsed
+                identity = discovery_details.get(ip, {})
+                from app.scanner.names import normalise_mac
+
+                compatible = (
+                    not device.mac
+                    or not identity.get("mac")
+                    or normalise_mac(device.mac) == normalise_mac(identity["mac"])
+                )
+                if compatible:
+                    device.mac = device.mac or identity.get("mac")
+                    device.vendor = device.vendor or identity.get("vendor")
                 if ip in nmap_observed or ip in mdns_observed:
-                    device.reachability = "observed"
-                    device.reachability_evidence = sorted(set([
-                        *device.reachability_evidence,
-                        "nmap_discovery_response" if ip in nmap_observed else "mdns_advertisement",
-                    ]))
-                if device.hostname is None:
-                    device.hostname = await self._local_hostname(ip)
+                    if ip in nmap_observed:
+                        device.reachability = "observed"
+                    elif device.reachability != "observed":
+                        device.reachability = "advertised"
+                    device.reachability_evidence = sorted(
+                        set(
+                            [
+                                *device.reachability_evidence,
+                                "nmap_discovery_response"
+                                if ip in nmap_observed
+                                else "mdns_advertisement",
+                            ]
+                        )
+                    )
+                from app.scanner.names import add_name
+
+                if device.hostname:
+                    add_name(device, device.hostname, "nmap", device.observed_at)
+                    device.hostname_observed_at = device.observed_at
+                if compatible:
+                    add_name(device, identity.get("hostname"), "nmap_discovery", device.observed_at)
+                add_name(device, await self._local_hostname(ip), "reverse_dns", device.observed_at)
                 device.profile = device.profile.model_validate(classify_device(device, services))
                 findings = evaluate_device(device, services)
+
                 def commit(current, device=device, services=services, findings=findings, ip=ip):
                     coverage = current.coverage.model_copy(deep=True)
                     coverage.service_completed_count += 1
                     for target in coverage.targets:
                         if target.ip == ip:
                             target.service_status = "completed"
-                    return current.model_copy(update={
-                        "devices": [*current.devices, device],
-                        "services": [*current.services, *services],
-                        "findings": [*current.findings, *findings],
-                        "coverage": coverage,
-                    })
+                            target.reason_code = None
+                    return current.model_copy(
+                        update={
+                            "devices": [*current.devices, device],
+                            "services": [*current.services, *services],
+                            "findings": [*current.findings, *findings],
+                            "coverage": coverage,
+                        }
+                    )
+
                 await self._checkpoint(scan_id, commit)
+
+            remaining_hosts = iter(target_hosts)
+
+            async def worker():
+                while not cancel_event.is_set():
+                    ip = next(remaining_hosts, None)
+                    if ip is None:
+                        return
+                    async with self._host_capacity:
+                        await check_host(ip)
+
+            workers = [asyncio.create_task(worker()) for _ in range(min(2, len(target_hosts)))]
+            try:
+                async with asyncio.timeout(self.host_stage_timeout_s):
+                    await asyncio.gather(*workers)
+            finally:
+                for task in workers:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*workers, return_exceptions=True)
+            await self._enrich_names(scan_id, cancel_event)
             latest = await self.store.load_scan(scan_id)
             if cancel_event.is_set():
+                await self._checkpoint(
+                    scan_id,
+                    lambda current: self._close_unfinished(
+                        current, "host_scan_cancelled", cancelled=True
+                    ),
+                )
                 final_state = "cancelled"
             elif latest.coverage.service_failed_count:
                 final_state = "partial" if latest.coverage.service_completed_count else "failed"
             else:
                 final_state = "completed"
-            should_explain = (
-                final_state in {"completed", "partial"}
-                and document.policy.get("ai_enabled", settings.ai_enabled)
-                and self.explanation_service is not None
-                and bool(latest.findings)
+            should_explain = final_state != "cancelled" and self.explanation_service is not None
+            await self._checkpoint(
+                scan_id,
+                lambda current: current.model_copy(
+                    update={
+                        "state": "running" if should_explain else final_state,
+                        "scan_outcome": final_state,
+                        "analysis_status": "running" if should_explain else "not_started",
+                        "phase": "analysis" if should_explain else "finished",
+                        "finished_at": None if should_explain else iso_z(utc_now()),
+                        "coverage": current.coverage.model_copy(
+                            update={
+                                "service_stage_complete": not cancel_event.is_set()
+                                and not current.coverage.service_failed_count,
+                            }
+                        ),
+                    }
+                ),
             )
-            await self._checkpoint(scan_id, lambda current: current.model_copy(update={
-                "state": final_state,
-                "phase": "analysis" if should_explain else "finished",
-                "finished_at": iso_z(utc_now()),
-                "coverage": current.coverage.model_copy(update={"service_stage_complete": not cancel_event.is_set()}),
-            }))
             if should_explain:
-                self._analysis_tasks[scan_id] = asyncio.create_task(
-                    self._run_explanations(scan_id)
-                )
-        except Exception:
+                self._analysis_tasks[scan_id] = asyncio.create_task(self._run_explanations(scan_id))
+                await self._analysis_tasks[scan_id]
+        except asyncio.CancelledError:
+            # The analysis task persists its cancellation state before propagating.
+            pass
+        except Exception as exc:
             logger.exception("Scan %s failed", scan_id)
-            await self._checkpoint(scan_id, lambda current: current.model_copy(update={
-                "state": "failed" if not current.devices else "partial",
-                "phase": "finished",
-                "finished_at": iso_z(utc_now()),
-                "errors": [*current.errors, {"code": "SCAN_FAILED", "message": "The scan did not complete.", "device_id": None}],
-            }))
+            from app.storage.json_store import DocumentTooLarge
+
+            code = (
+                "RESULT_SIZE_LIMIT"
+                if isinstance(exc, DocumentTooLarge)
+                else "SCAN_TIME_LIMIT"
+                if isinstance(exc, TimeoutError)
+                else "SCAN_FAILED"
+            )
+            await self.store.finish_scan(
+                scan_id,
+                lambda current: self._close_unfinished(current, code.lower()).model_copy(
+                    update={
+                        "state": "failed" if not current.devices else "partial",
+                        "phase": "finished",
+                        "finished_at": iso_z(utc_now()),
+                        "errors": [
+                            *current.errors,
+                            {
+                                "code": code,
+                                "message": (
+                                    "The result reached the storage limit; "
+                                    "earlier observations are "
+                                    "saved."
+                                )
+                                if code == "RESULT_SIZE_LIMIT"
+                                else (
+                                    "The device-check time limit was reached; "
+                                    "saved results remain available."
+                                )
+                                if code == "SCAN_TIME_LIMIT"
+                                else "The scan did not complete.",
+                                "device_id": None,
+                            },
+                        ],
+                    }
+                ),
+            )
+            if (
+                code != "RESULT_SIZE_LIMIT"
+                and self.explanation_service is not None
+                and not cancel_event.is_set()
+            ):
+                await self.request_analysis_after_failure(scan_id)
         finally:
             self._cancel_events.pop(scan_id, None)
             self._tasks.pop(scan_id, None)
 
     async def _run_explanations(self, scan_id: str) -> None:
         try:
-            async with self._analysis_capacity:
-                await self.explanation_service.explain_scan(scan_id)
+            async with asyncio.timeout(900):
+                async with self._analysis_capacity:
+                    await self.explanation_service.explain_scan(scan_id)
         except asyncio.CancelledError:
             await self._finish_explanations(scan_id, warning_code="AI_EXPLANATION_CANCELLED")
             raise
@@ -421,21 +735,40 @@ class ScanSupervisor:
 
     async def _finish_explanations(self, scan_id: str, warning_code: str | None = None) -> None:
         def finish(current):
-            warnings = current.warnings
-            if warning_code:
-                warnings = [
-                    *warnings,
-                    {
-                        "code": warning_code,
-                        "message": "Plain-language AI wording was unavailable; fixed guidance is shown.",
-                    },
-                ]
-            return current.model_copy(update={"phase": "finished", "warnings": warnings})
+            ready = not warning_code and current.analysis_status == "ready"
+            cancelled = warning_code == "AI_EXPLANATION_CANCELLED"
+            return current.model_copy(
+                update={
+                    "phase": "finished",
+                    "finished_at": iso_z(utc_now()),
+                    "state": "cancelled" if cancelled else (current.scan_outcome or "completed"),
+                    "analysis_status": "ready" if ready else "failed",
+                    "analysis_error": None
+                    if ready
+                    else warning_code or current.analysis_error or "invalid_provider_response",
+                }
+            )
 
         try:
-            await self._checkpoint(scan_id, finish)
+            await self.store.finish_scan(scan_id, finish)
         except (FileNotFoundError, ValueError):
             logger.warning("Could not finalize AI explanation state for scan %s", scan_id)
+
+    async def request_analysis_after_failure(self, scan_id: str) -> None:
+        await self._checkpoint(
+            scan_id,
+            lambda current: current.model_copy(
+                update={
+                    "scan_outcome": current.state,
+                    "state": "running",
+                    "phase": "analysis",
+                    "analysis_status": "running",
+                    "finished_at": None,
+                }
+            ),
+        )
+        self._analysis_tasks[scan_id] = asyncio.create_task(self._run_explanations(scan_id))
+        await self._analysis_tasks[scan_id]
 
     @staticmethod
     def _mark_host_failure(current, ip, status, code, *, cancelled=False):
@@ -448,14 +781,17 @@ class ScanSupervisor:
                 target.reason_code = code.lower()
         if cancelled:
             return current.model_copy(update={"coverage": coverage})
-        return current.model_copy(update={
-            "coverage": coverage,
-            "errors": [
-                *current.errors,
-                {
-                    "code": code,
-                    "message": "A host scan did not complete.",
-                    "device_id": None,
-                },
-            ],
-        })
+        return current.model_copy(
+            update={
+                "coverage": coverage,
+                "errors": [
+                    *current.errors,
+                    {
+                        "code": code,
+                        "message": f"The device check for {ip} did not complete ({status}).",
+                        "device_id": None,
+                        "target_ip": ip,
+                    },
+                ],
+            }
+        )

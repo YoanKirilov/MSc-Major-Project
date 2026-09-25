@@ -2,7 +2,6 @@ import asyncio
 import sys
 
 import pytest
-
 from app.scanner.runner import run_process
 
 
@@ -24,7 +23,9 @@ async def test_runner_stops_timeout():
 @pytest.mark.asyncio
 async def test_runner_stops_on_cancellation():
     cancelled = asyncio.Event()
-    task = asyncio.create_task(run_process([sys.executable, "-c", "import time; time.sleep(10)"], 10, cancelled))
+    task = asyncio.create_task(
+        run_process([sys.executable, "-c", "import time; time.sleep(10)"], 10, cancelled)
+    )
     await asyncio.sleep(0.05)
     cancelled.set()
     result = await asyncio.wait_for(task, timeout=5)
@@ -33,6 +34,8 @@ async def test_runner_stops_on_cancellation():
 
 @pytest.mark.asyncio
 async def test_runner_marks_output_overflow():
-    result = await run_process([sys.executable, "-c", "print('x' * 100)"], timeout_s=2, stdout_limit=10)
+    result = await run_process(
+        [sys.executable, "-c", "print('x' * 100)"], timeout_s=2, stdout_limit=10
+    )
     assert result.overflow
     assert len(result.stdout) <= 10

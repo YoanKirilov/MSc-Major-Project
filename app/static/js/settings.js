@@ -6,7 +6,8 @@ const interfaceSelect = document.querySelector('#interface-select');
 const retainRawXml = document.querySelector('#retain-raw-xml');
 const mdnsEnabled = document.querySelector('#mdns-enabled');
 const mdnsStatus = document.querySelector('#mdns-status');
-const aiEnabled = document.querySelector('#ai-enabled');
+const piholeEnabled = document.querySelector('#pihole-enabled');
+const piholeStatus = document.querySelector('#pihole-status');
 const aiStatus = document.querySelector('#ai-status');
 let revision = null;
 
@@ -17,7 +18,9 @@ async function loadSettings() {
       request('/api/status'),
     ]);
     revision = settings.revision;
-    allowedNetwork.value = settings.allowed_network || status.allowed_network || '';
+    allowedNetwork.value = settings.allowed_network || '';
+    allowedNetwork.placeholder = status.allowed_network ? `Automatic: ${status.allowed_network}` : 'Enter your authorised network range';
+    document.querySelector('#network-status').textContent = [status.detected_network ? `Active connection: ${status.detected_network}.` : '', status.network_warning || 'Confirm that you are authorised to scan this range.'].join(' ');
     interfaceSelect.replaceChildren();
     const automaticOption = document.createElement('option');
     automaticOption.value = '';
@@ -38,10 +41,14 @@ async function loadSettings() {
       : settings.mdns_enabled
         ? 'Local device announcements are unavailable. Turn this option off before saving settings.'
         : 'Optional local device announcements are unavailable in this installation.';
-    aiEnabled.checked = settings.ai_enabled;
+    piholeEnabled.checked = settings.pihole_enabled;
+    piholeEnabled.disabled = !status.pihole_configured && !settings.pihole_enabled;
+    piholeStatus.textContent = status.pihole_configured
+      ? 'Pi-hole connection configured. Names are extra context; they do not prove a device is online.'
+      : 'Optional: configure APP_PIHOLE_URL and APP_PIHOLE_PASSWORD on the server, then restart the app.';
     aiStatus.textContent = status.ai_available
-      ? 'The local AI model is ready. It may simplify wording, while scan evidence and the original rule-based actions stay unchanged.'
-      : 'The local AI model is not available. The report will use rule-based guidance even if AI explanations are enabled.';
+      ? `Ollama is ready (${status.ai_model}). Scan facts and original guidance remain available.`
+      : `Ollama is unavailable. Start Ollama and install ${status.ai_model} before scanning.`;
   } catch (error) {
     window.alert(error.message);
   }
@@ -59,7 +66,8 @@ form.addEventListener('submit', async (event) => {
     interface: interfaceSelect.value || null,
     retain_raw_xml: retainRawXml.checked,
     mdns_enabled: mdnsEnabled.checked,
-    ai_enabled: aiEnabled.checked,
+    ai_enabled: true,
+    pihole_enabled: piholeEnabled.checked,
   };
 
   try {

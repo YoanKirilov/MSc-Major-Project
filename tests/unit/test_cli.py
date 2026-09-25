@@ -1,8 +1,8 @@
-import pytest
 import asyncio
-import uvicorn
 import webbrowser
 
+import pytest
+import uvicorn
 from app.cli import main
 
 

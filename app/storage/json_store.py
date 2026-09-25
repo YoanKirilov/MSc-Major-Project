@@ -4,20 +4,24 @@ import asyncio
 import json
 import logging
 import os
-import shutil
 import re
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID, uuid4
 
+from app.schemas.common import iso_z, utc_now
+from app.schemas.scan import ScanDocument
+from app.schemas.settings import Settings, SettingsUpdate
 from filelock import FileLock
 
-from app.schemas.scan import ScanDocument
-from app.schemas.common import iso_z, utc_now
-from app.schemas.settings import Settings, SettingsUpdate
-
 logger = logging.getLogger(__name__)
+
+
+class DocumentTooLarge(ValueError):
+    pass
+
 
 class JsonStore:
     max_document_bytes = 20 * 1024 * 1024
@@ -75,12 +79,17 @@ class JsonStore:
         return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_keys)
 
     def _atomic_write(self, path: Path, payload: str, backup: Path | None = None) -> None:
+        # Check UTF-8 bytes before touching the existing file or its backup.
+        if len(payload.encode("utf-8")) > self.max_document_bytes:
+            raise DocumentTooLarge("managed JSON file exceeds the size limit")
         path.parent.mkdir(parents=True, exist_ok=True)
         if backup is not None and path.exists():
-            self._retry_windows_file_operation(lambda: shutil.copyfile(path, backup))
-        temp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
+            self._atomic_write(backup, path.read_text(encoding="utf-8"))
+        # A short, exclusively-created name avoids doubling long archive filenames.
+        fd, temporary = tempfile.mkstemp(prefix=".w-", suffix=".tmp", dir=path.parent)
+        temp_path = Path(temporary)
         try:
-            with temp_path.open("w", encoding="utf-8", newline="\n") as handle:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(payload)
                 handle.flush()
                 os.fsync(handle.fileno())
@@ -99,16 +108,53 @@ class JsonStore:
             except PermissionError as exc:
                 if getattr(exc, "winerror", None) not in {5, 32} or attempt == 5:
                     raise
-                time.sleep(min(0.05 * 2 ** attempt, 0.4))
+                time.sleep(min(0.05 * 2**attempt, 0.4))
 
     def _write_scan(self, document: ScanDocument) -> ScanDocument:
+        # model_copy(update=...) skips validation: validate BEFORE publishing JSON.
+        document = ScanDocument.model_validate(document.model_dump(mode="json"))
         scan_dir = self._scan_dir(document.scan_id)
         path = scan_dir / "scan.json"
-        payload = json.dumps(document.model_dump(mode="json"), ensure_ascii=False, allow_nan=False)
-        self._atomic_write(path, payload, scan_dir / "scan.previous.json" if path.exists() else None)
+
+        def encode():
+            return json.dumps(document.model_dump(mode="json"), ensure_ascii=False, allow_nan=False)
+
+        payload = encode()
+        archives = []
+        while document.guidance_history and (
+            len(document.guidance_history) > 3
+            or len(payload.encode("utf-8")) > self.max_document_bytes
+        ):
+            snapshot = document.guidance_history.pop(0)
+            name = f"guidance-{uuid4()}.json"
+            archives.append(
+                (name, json.dumps(snapshot.model_dump(mode="json"), ensure_ascii=False))
+            )
+            document.guidance_archives.append(name)
+            payload = encode()
+        # Validate the entire write set first. Never publish an unreadable report.
+        if any(
+            len(value.encode("utf-8")) > self.max_document_bytes
+            for value in [payload, *(value for _, value in archives)]
+        ):
+            raise DocumentTooLarge(
+                "scan evidence exceeds the JSON size limit; existing checkpoints are preserved"
+            )
+        for name, value in archives:
+            self._atomic_write(scan_dir / "guidance" / name, value)
+        self._atomic_write(
+            path, payload, scan_dir / "scan.previous.json" if path.exists() else None
+        )
+        # A successful primary write includes the overlaid state and advances
+        # revision. The old marker is now redundant; leave it inert if locked.
+        try:
+            (scan_dir / "terminal.json").unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove an absorbed terminal marker for %s", document.scan_id)
         summary = self._scan_summary(document)
         try:
             self._atomic_write(scan_dir / "summary.json", json.dumps(summary, ensure_ascii=False))
+            self._atomic_write(scan_dir / "progress.json", json.dumps(self._progress(document)))
         except OSError:
             logger.warning("Could not refresh scan history summary for %s", document.scan_id)
         return ScanDocument.model_validate(json.loads(payload))
@@ -138,7 +184,80 @@ class JsonStore:
         if not path.exists():
             raise FileNotFoundError(scan_id)
         data = self._read_json(path)
-        return ScanDocument.model_validate(data)
+        document = ScanDocument.model_validate(data)
+        if document.scan_id != str(UUID(str(scan_id))):
+            raise ValueError("Report ID does not match its storage folder")
+        terminal = path.with_name("terminal.json")
+        if terminal.is_file():
+            marker = self._read_json(terminal)
+            if (
+                marker.get("base_revision") == document.revision
+                and marker.get("scan_id") == document.scan_id
+            ):
+                allowed = {
+                    "state",
+                    "phase",
+                    "finished_at",
+                    "analysis_status",
+                    "analysis_error",
+                    "scan_outcome",
+                    "coverage",
+                    "errors",
+                    "warnings",
+                }
+                changes = marker.get("updates", {})
+                if not isinstance(changes, dict) or set(changes) - allowed:
+                    raise ValueError("Invalid terminal status fields")
+                document = ScanDocument.model_validate({**data, **changes})
+        return document
+
+    def _finish_scan(self, scan_id, mutate):
+        """Keep terminal status writable even when evidence fills the document.
+
+        The sidecar is revision-bound and never replaces observations. A later
+        successful write absorbs its state and makes the old marker inert.
+        """
+        with self._scan_lock(scan_id):
+            current = self._load_scan(scan_id)
+            updated = mutate(current.model_copy(deep=True))
+            if updated.phase != "finished" or updated.state in {"queued", "running"}:
+                raise ValueError("Terminal update must finish the job")
+            allowed = {
+                "state",
+                "phase",
+                "finished_at",
+                "analysis_status",
+                "analysis_error",
+                "scan_outcome",
+                "coverage",
+                "errors",
+                "warnings",
+            }
+            before = current.model_dump(mode="json")
+            after = updated.model_dump(mode="json")
+            if any(
+                before[key] != after[key]
+                for key in ("devices", "services", "findings", "observations", "target")
+            ):
+                raise ValueError("Terminal update cannot change evidence")
+            updated.revision = current.revision + 1
+            try:
+                return self._write_scan(updated)
+            except DocumentTooLarge:
+                # Compare to the primary, not an already overlaid terminal state.
+                # Otherwise a second terminal update could erase the first one.
+                primary = self._read_json(self._scan_dir(scan_id) / "scan.json")
+                updates = {key: after[key] for key in allowed if primary.get(key) != after[key]}
+                marker = {
+                    "scan_id": current.scan_id,
+                    "base_revision": current.revision,
+                    "updates": updates,
+                }
+                self._atomic_write(self._scan_dir(scan_id) / "terminal.json", json.dumps(marker))
+                return self._load_scan(scan_id)
+
+    async def finish_scan(self, scan_id, mutate):
+        return await asyncio.to_thread(self._finish_scan, scan_id, mutate)
 
     def _create_scan(self, document: ScanDocument) -> ScanDocument:
         with self._scan_lock(document.scan_id):
@@ -149,6 +268,61 @@ class JsonStore:
 
     async def load_scan(self, scan_id: UUID | str) -> ScanDocument:
         return await asyncio.to_thread(self._load_scan, scan_id)
+
+    @staticmethod
+    def _progress(document):
+        coverage = document.coverage.model_dump(mode="json")
+        coverage["targets"] = [
+            {"service_status": item.service_status, "attempts": item.attempts}
+            for item in document.coverage.targets
+        ]
+        return {
+            "scan_id": document.scan_id,
+            "source": document.source,
+            "revision": document.revision,
+            "state": document.state,
+            "phase": document.phase,
+            "analysis_status": document.analysis_status,
+            "target": {"mode": document.target.get("mode")},
+            "coverage": coverage,
+            "device_count": len(document.devices),
+            "finding_count": len(document.findings),
+        }
+
+    def _load_progress(self, scan_id):
+        folder = self._scan_dir(scan_id)
+        primary = folder / "scan.json"
+        cache = folder / "progress.json"
+        if not primary.is_file():
+            raise FileNotFoundError(scan_id)
+        if not (folder / "terminal.json").exists():
+            try:
+                if cache.stat().st_mtime_ns >= primary.stat().st_mtime_ns:
+                    data = self._read_json(cache)
+                    if data.get("scan_id") == str(scan_id) and data.get("state") in {
+                        "queued",
+                        "running",
+                        "completed",
+                        "partial",
+                        "failed",
+                        "cancelled",
+                    }:
+                        return data
+            except (OSError, ValueError):
+                pass
+        return self._progress(self._load_scan(scan_id))
+
+    async def load_progress(self, scan_id):
+        return await asyncio.to_thread(self._load_progress, scan_id)
+
+    async def load_guidance_archive(self, scan_id: str, name: str) -> dict:
+        document = await self.load_scan(scan_id)
+        if (
+            not re.fullmatch(r"guidance-[0-9a-f-]{36}\.json", name)
+            or name not in document.guidance_archives
+        ):
+            raise FileNotFoundError(name)
+        return await asyncio.to_thread(self._read_json, self._scan_dir(scan_id) / "guidance" / name)
 
     def _update_scan(
         self,
@@ -164,7 +338,9 @@ class JsonStore:
             updated.revision = current.revision + 1
             return self._write_scan(updated)
 
-    async def update_scan(self, scan_id: UUID, mutate: Callable, expected_revision: int | None = None) -> ScanDocument:
+    async def update_scan(
+        self, scan_id: UUID, mutate: Callable, expected_revision: int | None = None
+    ) -> ScanDocument:
         return await asyncio.to_thread(self._update_scan, scan_id, mutate, expected_revision)
 
     def _list_scans(self, *, source: str | None, offset: int, limit: int) -> dict[str, Any]:
@@ -182,17 +358,23 @@ class JsonStore:
                 summary_file = scan_dir / "summary.json"
                 item = None
                 try:
-                    if (summary_file.is_file() and not summary_file.is_symlink()
-                            and summary_file.stat().st_mtime_ns >= scan_file.stat().st_mtime_ns):
+                    if (
+                        not (scan_dir / "terminal.json").exists()
+                        and summary_file.is_file()
+                        and not summary_file.is_symlink()
+                        and summary_file.stat().st_mtime_ns >= scan_file.stat().st_mtime_ns
+                    ):
                         cached = self._read_json(summary_file)
-                        if (cached.get("scan_id") == scan_dir.name
-                                and cached.get("storage_status") == "ok"
-                                and isinstance(cached.get("created_at"), str)):
+                        if (
+                            cached.get("scan_id") == scan_dir.name
+                            and cached.get("storage_status") == "ok"
+                            and isinstance(cached.get("created_at"), str)
+                        ):
                             item = cached
                 except (OSError, ValueError, TypeError):
                     pass
                 if item is None:
-                    doc = ScanDocument.model_validate(self._read_json(scan_file))
+                    doc = self._load_scan(scan_dir.name)
                     item = self._scan_summary(doc)
                 if source is not None and item["source"] != source:
                     continue
@@ -200,18 +382,25 @@ class JsonStore:
                 items.append(item)
             except Exception:
                 if source in {None, "live", "demo"}:
-                    items.append({
-                        "scan_id": scan_dir.name,
-                        "state": None,
-                        "source": None,
-                        "created_at": None,
-                        "device_count": None,
-                        "finding_count": None,
-                        "highest_severity": None,
-                        "storage_status": "unreadable",
-                    })
+                    items.append(
+                        {
+                            "scan_id": scan_dir.name,
+                            "state": None,
+                            "source": None,
+                            "created_at": None,
+                            "device_count": None,
+                            "finding_count": None,
+                            "highest_severity": None,
+                            "storage_status": "unreadable",
+                        }
+                    )
         items.sort(key=lambda item: item["created_at"] or "", reverse=True)
-        return {"items": items[offset: offset + limit], "total": len(items), "offset": offset, "limit": limit}
+        return {
+            "items": items[offset : offset + limit],
+            "total": len(items),
+            "offset": offset,
+            "limit": limit,
+        }
 
     async def list_scans(self, *, source: str | None, offset: int, limit: int) -> dict[str, Any]:
         return await asyncio.to_thread(
@@ -231,7 +420,7 @@ class JsonStore:
             if not scan_dir.is_dir() or not scan_file.is_file():
                 continue
             try:
-                document = ScanDocument.model_validate(self._read_json(scan_file))
+                document = self._load_scan(scan_dir.name)
             except Exception:
                 continue
             if document.source == "live" and (
@@ -263,13 +452,14 @@ class JsonStore:
         with self._scan_lock(scan_id):
             path = self._scan_dir(scan_id) / "raw" / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            temp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid4().hex}.tmp")
+            fd, temporary = tempfile.mkstemp(prefix=".w-", suffix=".tmp", dir=path.parent)
+            temp_path = Path(temporary)
             try:
-                with temp_path.open("wb") as handle:
+                with os.fdopen(fd, "wb") as handle:
                     handle.write(payload)
                     handle.flush()
                     os.fsync(handle.fileno())
-                os.replace(temp_path, path)
+                self._retry_windows_file_operation(lambda: os.replace(temp_path, path))
             finally:
                 if temp_path.exists():
                     temp_path.unlink()

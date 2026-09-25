@@ -95,7 +95,9 @@ def _browse(scope: str, interface_ip: str, duration_s: float, cancel_event: asyn
         if browser is not None:
             browser.cancel()
         zc.close()
-    return sorted(observations.values(), key=lambda item: (item.ip, item.service_type, item.advertised_name))
+    return sorted(
+        observations.values(), key=lambda item: (item.ip, item.service_type, item.advertised_name)
+    )
 
 
 async def browse_mdns(

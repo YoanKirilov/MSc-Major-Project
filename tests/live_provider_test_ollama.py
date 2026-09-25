@@ -1,13 +1,13 @@
 import os
 
 import pytest
-
 from app.explanations import ExplanationService, OllamaExplanationProvider
+from app.explanations.service import PROMPT_VERSION
+from app.explanations.wording import wording_choices
+from app.risk.engine import evaluate_device
 from app.schemas.scan import Device, Finding, ScanDocument, Service
 from app.schemas.settings import SettingsUpdate
 from app.storage.json_store import JsonStore
-from app.risk.engine import evaluate_device
-from app.explanations.wording import wording_choices
 from tests.fixtures.fixtures import make_telnet_scan
 
 
@@ -25,6 +25,13 @@ async def test_local_ollama_explanation_is_validated_and_persisted(tmp_path):
         devices=[Device.model_validate(fixture["device"])],
         services=[Service.model_validate(fixture["service"])],
         findings=[Finding.model_validate(fixture["finding"])],
+        state="completed",
+        scan_outcome="completed",
+        coverage={
+            "candidate_count": 1,
+            "service_completed_count": 1,
+            "service_stage_complete": True,
+        },
     )
     document.findings = evaluate_device(document.devices[0], document.services)
     store = JsonStore(tmp_path)
@@ -35,20 +42,27 @@ async def test_local_ollama_explanation_is_validated_and_persisted(tmp_path):
     await ExplanationService(store, provider, enabled=True).explain_scan(document.scan_id)
 
     saved = await store.load_scan(document.scan_id)
+    assert saved.report_explanation is not None
     assert saved.ai_requests_used == 1
-    assert saved.explanations[0].status in {"ready", "fallback"}
-    if saved.explanations[0].status == "ready":
-        assert saved.explanations[0].source == "ai"
-    else:
-        assert saved.explanations[0].source == "fixed"
-        assert saved.explanations[0].fallback_reason in {"invalid_provider_response", "not_simpler"}
+    assert saved.analysis_status == "ready"
+    assert saved.explanations[0].status == "ready"
+    assert saved.explanations[0].source == "ai"
+    assert saved.explanations[0].prompt_version == PROMPT_VERSION
+    assert saved.report_explanation.status == "ready"
+    assert "meaning" in saved.report_explanation.ai_fields
+    assert "meaning" in saved.explanations[0].ai_fields
+    assert saved.explanations[0].content.meaning != document.findings[0].fixed_explanation.meaning
     assert saved.explanations[0].content
     assert saved.findings[0].severity == "high"
     assert saved.findings[0].actions == document.findings[0].actions
     record = saved.explanations[0]
     original = document.findings[0]
     assert record.content.meaning in wording_choices(original.fixed_explanation.meaning)
-    assert record.content.why_it_matters in wording_choices(original.fixed_explanation.why_it_matters)
-    for action, step, check in zip(original.actions, record.content.recommended_steps, record.content.how_to_check, strict=True):
+    assert record.content.why_it_matters in wording_choices(
+        original.fixed_explanation.why_it_matters
+    )
+    for action, step, check in zip(
+        original.actions, record.content.recommended_steps, record.content.how_to_check, strict=True
+    ):
         assert step in wording_choices(action.text)
         assert check in wording_choices(action.verification)

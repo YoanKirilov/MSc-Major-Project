@@ -28,7 +28,9 @@ def _float_env(name: str, default: float, minimum: float, maximum: float) -> flo
 
 @dataclass
 class AppConfig:
-    data_dir: Path = field(default_factory=lambda: Path(user_data_dir("network-assessor", appauthor=False)))
+    data_dir: Path = field(
+        default_factory=lambda: Path(user_data_dir("network-assessor", appauthor=False))
+    )
     port: int = 8765
     nmap_path: str | None = None
     ai_provider: str = "ollama"
@@ -37,12 +39,16 @@ class AppConfig:
     ai_timeout_s: float = 60.0
     allowed_network: str | None = None
     max_concurrent_scans: int = 2
+    pihole_url: str | None = None
+    pihole_password: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
         data_dir = os.getenv("APP_DATA_DIR")
         return cls(
-            data_dir=Path(data_dir) if data_dir else Path(user_data_dir("network-assessor", appauthor=False)),
+            data_dir=Path(data_dir)
+            if data_dir
+            else Path(user_data_dir("network-assessor", appauthor=False)),
             port=_integer_env("APP_PORT", 8765, 1, 65535),
             nmap_path=os.getenv("APP_NMAP_PATH") or None,
             ai_provider=os.getenv("APP_AI_PROVIDER", "ollama").strip().lower(),
@@ -51,6 +57,8 @@ class AppConfig:
             ai_timeout_s=_float_env("APP_AI_TIMEOUT_SECONDS", 60.0, 1.0, 300.0),
             allowed_network=os.getenv("APP_ALLOWED_NETWORK") or None,
             max_concurrent_scans=_integer_env("APP_MAX_CONCURRENT_SCANS", 2, 1, 8),
+            pihole_url=os.getenv("APP_PIHOLE_URL") or None,
+            pihole_password=os.getenv("APP_PIHOLE_PASSWORD") or None,
         )
 
 
@@ -59,29 +67,61 @@ def load_config() -> AppConfig:
 
 
 def _is_rfc1918(network: ipaddress.IPv4Network) -> bool:
-    return any(network.subnet_of(private) for private in (
-        ipaddress.ip_network("10.0.0.0/8"),
-        ipaddress.ip_network("172.16.0.0/12"),
-        ipaddress.ip_network("192.168.0.0/16"),
-    ))
+    return any(
+        network.subnet_of(private)
+        for private in (
+            ipaddress.ip_network("10.0.0.0/8"),
+            ipaddress.ip_network("172.16.0.0/12"),
+            ipaddress.ip_network("192.168.0.0/16"),
+        )
+    )
 
 
 def detect_private_network() -> str | None:
-    """Find an active RFC1918 IPv4 subnet suitable for the bounded Light scan."""
+    """Identify the default-route network, not an arbitrary virtual adapter.
+
+    Return its real size; choosing a bounded scan target is a separate decision.
+    """
     try:
         if os.name == "nt":
-            result = subprocess.run(["ipconfig"], capture_output=True, text=True, timeout=3, check=False)
+            result = subprocess.run(
+                ["ipconfig"], capture_output=True, text=True, timeout=3, check=False
+            )
         else:
-            result = subprocess.run(["ip", "-o", "-f", "inet", "addr", "show"], capture_output=True, text=True, timeout=3, check=False)
+            result = subprocess.run(
+                ["ip", "-o", "-f", "inet", "addr", "show"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
     except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
         return None
 
     if os.name != "nt":
-        for address, prefix in re.findall(r"inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)", result.stdout):
+        try:
+            routes = subprocess.run(
+                ["ip", "-4", "route", "show", "default"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        devices = set(re.findall(r"\bdev\s+(\S+)", routes.stdout))
+        if routes.returncode != 0 or len(devices) != 1:
+            return None
+        selected = next(iter(devices))
+        for line in result.stdout.splitlines():
+            match = re.search(r"^\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)", line)
+            if not match or match.group(1).split("@")[0] != selected:
+                continue
+            address, prefix = match.group(2), match.group(3)
             network = ipaddress.ip_network(f"{address}/{prefix}", strict=False)
-            if isinstance(network, ipaddress.IPv4Network) and network.prefixlen >= 24 and _is_rfc1918(network):
+            if isinstance(network, ipaddress.IPv4Network) and _is_rfc1918(network):
                 return str(network)
         return None
 
@@ -92,21 +132,55 @@ def detect_private_network() -> str | None:
         if not address_match or not mask_match:
             continue
         try:
-            network = ipaddress.ip_network(f"{address_match.group(1)}/{mask_match.group(1)}", strict=False)
+            network = ipaddress.ip_network(
+                f"{address_match.group(1)}/{mask_match.group(1)}", strict=False
+            )
         except ValueError:
             continue
-        if not isinstance(network, ipaddress.IPv4Network) or network.prefixlen < 24 or not _is_rfc1918(network):
+        if not isinstance(network, ipaddress.IPv4Network) or not _is_rfc1918(network):
             continue
         has_gateway = bool(re.search(r"Default Gateway[^:]*:\s*\d+\.\d+\.\d+\.\d+", section))
-        candidates.append((has_gateway, network))
+        if has_gateway:
+            candidates.append((has_gateway, network))
     if not candidates:
         return None
-    candidates.sort(key=lambda candidate: not candidate[0])
-    return str(candidates[0][1])
+    networks = {str(candidate[1]) for candidate in candidates}
+    return next(iter(networks)) if len(networks) == 1 else None
 
 
 def resolve_allowed_network(config: AppConfig) -> str | None:
-    return config.allowed_network or detect_private_network()
+    if config.allowed_network:
+        return config.allowed_network
+    detected = detect_private_network()
+    return detected if detected and ipaddress.ip_network(detected).prefixlen >= 24 else None
+
+
+def network_warning(scope: str | None, detected: str | None) -> str | None:
+    try:
+        configured = ipaddress.ip_network(scope, strict=True) if scope else None
+        active = ipaddress.ip_network(detected, strict=True) if detected else None
+        if configured and not isinstance(configured, ipaddress.IPv4Network):
+            raise ValueError("IPv4 scope required")
+    except ValueError:
+        return "The network range is invalid. Set an authorised private IPv4 range in Settings."
+    if not detected:
+        return (
+            "The active network could not be identified. Confirm your "
+            "authorised range and interface in Settings."
+        )
+    if configured and not configured.subnet_of(active):
+        return (
+            "The saved scan range differs from the active network. Select the "
+            "intended interface and authorised range in Settings before "
+            "scanning."
+        )
+    if not scope:
+        return (
+            "The active network is larger than the automatic scan limit. "
+            "Select an authorised /24 or smaller range in Settings; the app "
+            "will not choose another adapter."
+        )
+    return None
 
 
 def resolve_nmap_path(config: AppConfig) -> str | None:
@@ -142,7 +216,9 @@ def nmap_preflight(config: AppConfig) -> tuple[bool, str | None]:
     if not executable:
         return False, None
     try:
-        result = subprocess.run([executable, "-V"], capture_output=True, text=True, timeout=3, check=False)
+        result = subprocess.run(
+            [executable, "-V"], capture_output=True, text=True, timeout=3, check=False
+        )
     except (OSError, subprocess.SubprocessError):
         return False, None
     if result.returncode != 0:
@@ -207,7 +283,7 @@ def doctor_report() -> dict[str, Any]:
     config = load_config()
     nmap_available, nmap_version = nmap_preflight(config)
     return {
-        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "python_version": ".".join(str(part) for part in sys.version_info[:3]),
         "os": sys.platform,
         "nmap_available": nmap_available,
         "nmap_version": nmap_version,

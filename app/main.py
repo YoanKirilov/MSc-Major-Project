@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from filelock import FileLock, Timeout
 
 from .api import demo as demo_api
 from .api import scans as scans_api
@@ -18,12 +19,36 @@ from .demo.adapter import DemoFindingsAdapter
 from .demo.runs import DemoRunStore
 from .explanations import ExplanationService, OllamaExplanationProvider
 from .jobs.supervisor import ScanSupervisor
+from .scanner.pihole import PiholeClient
 from .security.session import SessionManager
-from .storage.json_store import JsonStore
+from .storage.json_store import DocumentTooLarge, JsonStore
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Own the data folder before recovering jobs or touching persisted state.
+    # An OS lock is released on process exit; a leftover file is not a stale lock.
+    data_dir = Path(load_config().data_dir).resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(data_dir / "app-instance.lock"), thread_local=False)
+    try:
+        lock.acquire(timeout=0)
+    except Timeout as exc:
+        raise RuntimeError(
+            (
+                "Network Assessor is already using this data folder. Use the "
+                "existing app window or stop that instance before restarting."
+            )
+        ) from exc
+    try:
+        async with owned_lifespan(app):
+            yield
+    finally:
+        lock.release()
+
+
+@asynccontextmanager
+async def owned_lifespan(app: FastAPI):
     config = load_config()
     data_dir = Path(config.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -31,8 +56,12 @@ async def lifespan(app: FastAPI):
     app.state.runtime_status_lock = asyncio.Lock()
     app.state.runtime_status_cache = None
     app.state.store = JsonStore(data_dir)
-    app.state.storage_writable_at_startup = await asyncio.to_thread(app.state.store.storage_writable)
-    app.state.session_manager = getattr(app.state, "initial_session_manager", None) or SessionManager()
+    app.state.storage_writable_at_startup = await asyncio.to_thread(
+        app.state.store.storage_writable
+    )
+    app.state.session_manager = (
+        getattr(app.state, "initial_session_manager", None) or SessionManager()
+    )
     app.state.demo_data = DemoFindingsAdapter()
     app.state.demo_runs = DemoRunStore(data_dir / "demo-runs", app.state.demo_data)
     explanation_provider = None
@@ -50,11 +79,18 @@ async def lifespan(app: FastAPI):
         explanation_provider,
         enabled=True,
     )
+    app.state.pihole = None
+    if config.pihole_url and config.pihole_password:
+        try:
+            app.state.pihole = PiholeClient(config.pihole_url, config.pihole_password)
+        except ValueError:
+            pass
     app.state.supervisor = ScanSupervisor(
         app.state.store,
         nmap_path=resolve_nmap_path(config) or "nmap",
         explanation_service=app.state.explanations,
         max_concurrent_scans=config.max_concurrent_scans,
+        pihole_client=app.state.pihole,
     )
     await app.state.supervisor.reconcile_incomplete()
     try:
@@ -84,6 +120,18 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
             },
         )
 
+    @app.exception_handler(DocumentTooLarge)
+    async def result_size_error(_request: Request, _exc: DocumentTooLarge):
+        return JSONResponse(
+            status_code=413,
+            content={
+                "detail": (
+                    "This update exceeds the local report size limit. The previous "
+                    "saved report is still available."
+                )
+            },
+        )
+
     @app.get("/")
     async def home(request: Request):
         return templates.TemplateResponse(request=request, name="dashboard.html", context={})
@@ -92,9 +140,15 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     async def settings_page(request: Request):
         return templates.TemplateResponse(request=request, name="settings.html", context={})
 
+    @app.get("/history")
+    async def history_page(request: Request):
+        return templates.TemplateResponse(request=request, name="history.html", context={})
+
     @app.get("/scans/{scan_id}")
     async def scan_page(request: Request, scan_id: str):
-        return templates.TemplateResponse(request=request, name="scan.html", context={"scan_id": scan_id})
+        return templates.TemplateResponse(
+            request=request, name="scan.html", context={"scan_id": scan_id}
+        )
 
     app.include_router(session_api.router)
     app.include_router(scans_api.router)

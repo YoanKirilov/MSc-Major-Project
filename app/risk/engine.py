@@ -6,7 +6,6 @@ from app.schemas.scan import EvidenceItem, Finding, FixedExplanation
 
 from .catalogue import RULE_CATALOGUE
 
-
 SERVICE_RULES = {
     "telnet": "R01",
     "ftp": "R02",

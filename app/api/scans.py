@@ -6,13 +6,20 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request
 
 from app.api.dependencies import require_session
-from app.config import nmap_interface_ipv4, nmap_preflight, resolve_allowed_network, resolve_nmap_path
+from app.config import (
+    detect_private_network,
+    network_warning,
+    nmap_interface_ipv4,
+    nmap_preflight,
+    resolve_allowed_network,
+    resolve_nmap_path,
+)
 from app.explanations.service import PROMPT_VERSION
 from app.risk.catalogue import RULESET_VERSION
 from app.risk.guidance import guidance_status
 from app.scanner.commands import DEEP_PROFILE, DEEP_UDP_PORTS, PORTS, PROFILE_ID, UDP_PORTS
 from app.scanner.mdns import mdns_available
-from app.schemas.api import DemoScanRequest, RefreshGuidanceRequest, ScanCreateRequest
+from app.schemas.api import RefreshGuidanceRequest, ScanCreateRequest
 from app.schemas.scan import ScanDocument
 from app.security.scope import validate_target
 
@@ -53,22 +60,6 @@ async def get_scan(request: Request, scan_id: str):
     }
 
 
-@router.post("/demo-scans", status_code=201)
-async def create_demo_scan(request: Request, body: DemoScanRequest):
-    require_session(request, csrf=True)
-    scan_id = str(uuid4())
-    document = ScanDocument(
-        scan_id=scan_id,
-        source="demo",
-        state="completed",
-        phase="finished",
-        target={"mode": "demo", "cidr": None, "hosts": []},
-        finished_at="2026-09-20T00:00:00Z",
-    )
-    await request.app.state.store.create_scan(document)
-    return {"scan_id": scan_id, "state": "completed", "status_url": f"/scans/{scan_id}"}
-
-
 @router.post("/scans", status_code=202)
 async def create_scan(request: Request, body: ScanCreateRequest):
     require_session(request, csrf=True)
@@ -81,15 +72,21 @@ async def create_live_scan(request: Request, body: ScanCreateRequest):
     return await _create_validated_live_scan(request, body)
 
 
-async def _create_validated_live_scan(request: Request, body: ScanCreateRequest):
+async def _create_validated_live_scan(
+    request: Request, body: ScanCreateRequest, retry_of: str | None = None
+):
     if not body.authorised:
         raise HTTPException(status_code=422, detail="Authorisation is required")
     if not await asyncio.to_thread(request.app.state.store.storage_writable):
         raise HTTPException(status_code=503, detail="The local data folder is not writable.")
-    scanner_available, scanner_version = await asyncio.to_thread(nmap_preflight, request.app.state.config)
+    scanner_available, scanner_version = await asyncio.to_thread(
+        nmap_preflight, request.app.state.config
+    )
     nmap_path = resolve_nmap_path(request.app.state.config)
     if not scanner_available or not nmap_path:
         raise HTTPException(status_code=503, detail="Nmap is not installed or configured.")
+    # Pick up a newly installed Nmap without retaining the startup fallback path.
+    request.app.state.supervisor.nmap_path = nmap_path
     if body.mode not in {"discover", "known_hosts"}:
         raise HTTPException(status_code=422, detail="Unsupported scan mode")
     if body.profile not in {"light", DEEP_PROFILE}:
@@ -100,6 +97,17 @@ async def _create_validated_live_scan(request: Request, body: ScanCreateRequest)
         raise HTTPException(status_code=422, detail="Deep scans require exactly one host")
     settings = await request.app.state.store.load_settings()
     scope = settings.allowed_network or resolve_allowed_network(request.app.state.config)
+    detected = await asyncio.to_thread(detect_private_network)
+    if scope and detected and network_warning(scope, detected):
+        bound = (
+            await asyncio.to_thread(
+                nmap_interface_ipv4, request.app.state.config, scope, settings.interface
+            )
+            if settings.interface
+            else None
+        )
+        if not bound:
+            raise HTTPException(status_code=409, detail=network_warning(scope, detected))
     target_cidr = body.cidr or scope if body.mode == "discover" else body.cidr
     try:
         validated = validate_target(
@@ -113,6 +121,7 @@ async def _create_validated_live_scan(request: Request, body: ScanCreateRequest)
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    ai_available = await request.app.state.explanations.provider_available()
     mdns_interface_ip = None
     if settings.mdns_enabled and body.mode == "discover":
         if not mdns_available():
@@ -121,7 +130,9 @@ async def _create_validated_live_scan(request: Request, body: ScanCreateRequest)
             nmap_interface_ipv4, request.app.state.config, scope, settings.interface
         )
         if mdns_interface_ip is None:
-            raise HTTPException(status_code=422, detail="No single local interface matches the mDNS scan scope")
+            raise HTTPException(
+                status_code=422, detail="No single local interface matches the mDNS scan scope"
+            )
     scan_id = str(uuid4())
     targets = [
         {"ip": host, "discovery_status": "not_run", "service_status": "pending"}
@@ -141,10 +152,29 @@ async def _create_validated_live_scan(request: Request, body: ScanCreateRequest)
             "retain_raw_xml": settings.retain_raw_xml,
             "mdns_enabled": bool(mdns_interface_ip),
             "mdns_interface_ip": mdns_interface_ip,
-            "ai_enabled": settings.ai_enabled,
+            "ai_enabled": True,
+            "pihole_enabled": settings.pihole_enabled,
+            "retry_of": retry_of,
         },
         coverage={"candidate_count": len(validated.candidates), "targets": targets},
-        versions={"app": "0.1.0", "rules": RULESET_VERSION, "profiling": "1.0.0", "prompt": PROMPT_VERSION, "nmap": scanner_version},
+        versions={
+            "app": "0.1.0",
+            "rules": RULESET_VERSION,
+            "profiling": "1.0.0",
+            "prompt": PROMPT_VERSION,
+            "nmap": scanner_version,
+        },
+        warnings=[]
+        if ai_available
+        else [
+            {
+                "code": "AI_PREFLIGHT_UNAVAILABLE",
+                "message": (
+                    "Ollama was unavailable before scanning. Report preparation will "
+                    "be attempted after the observations are saved."
+                ),
+            }
+        ],
     )
     await request.app.state.store.create_scan(document)
     try:
@@ -175,6 +205,65 @@ async def get_live_scan(request: Request, scan_id: str):
     return payload
 
 
+@router.get("/live-scans/{scan_id}/progress")
+async def get_live_progress(request: Request, scan_id: str):
+    require_session(request)
+    try:
+        progress = await request.app.state.store.load_progress(scan_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Live scan result not found") from exc
+    if progress["source"] != "live":
+        raise HTTPException(status_code=404, detail="Live scan result not found")
+    return progress
+
+
+@router.post("/live-scans/{scan_id}/retry-hosts", status_code=202)
+async def retry_unfinished_hosts(request: Request, scan_id: str, body: RefreshGuidanceRequest):
+    require_session(request, csrf=True)
+    try:
+        document = await request.app.state.store.load_scan(scan_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Scan not found") from exc
+    if (
+        document.source != "live"
+        or document.phase != "finished"
+        or document.revision != body.expected_revision
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="The report changed or is still running. Reload before retrying.",
+        )
+    hosts = [
+        target.ip
+        for target in document.coverage.targets
+        if target.service_status in {"failed", "timed_out", "cancelled", "pending", "running"}
+        and (document.target.get("mode") == "known_hosts" or target.discovery_status == "observed")
+    ]
+    if not hosts:
+        raise HTTPException(
+            status_code=409, detail="There are no unfinished device checks to retry."
+        )
+    return await _create_validated_live_scan(
+        request,
+        ScanCreateRequest(
+            mode="known_hosts",
+            hosts=hosts,
+            profile=document.policy.get("profile", "light"),
+            authorised=True,
+        ),
+        retry_of=scan_id,
+    )
+
+
+@router.get("/live-scans/{scan_id}/guidance/{name}")
+async def get_archived_guidance(request: Request, scan_id: str, name: str):
+    require_session(request)
+    try:
+        return await request.app.state.store.load_guidance_archive(scan_id, name)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Saved guidance not found") from exc
+
+
 @router.post("/live-scans/{scan_id}/refresh-guidance")
 async def refresh_saved_guidance(request: Request, scan_id: str, body: RefreshGuidanceRequest):
     require_session(request, csrf=True)
@@ -185,9 +274,14 @@ async def refresh_saved_guidance(request: Request, scan_id: str, body: RefreshGu
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="Live scan result not found") from exc
     try:
-        updated = await request.app.state.supervisor.refresh_guidance(scan_id, body.expected_revision)
+        updated = await request.app.state.supervisor.refresh_guidance(
+            scan_id, body.expected_revision
+        )
     except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=409, detail="The report changed or is still busy. Reload it before refreshing guidance.") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="The report changed or is still busy. Reload it before refreshing guidance.",
+        ) from exc
     return {"scan_id": scan_id, "revision": updated.revision}
 
 
@@ -200,18 +294,15 @@ async def simplify_saved_scan(request: Request, scan_id: str):
         raise HTTPException(status_code=404, detail="Live scan not found") from exc
     if document.source != "live":
         raise HTTPException(status_code=404, detail="Live scan not found")
-    settings = await request.app.state.store.load_settings()
-    if not settings.ai_enabled:
-        raise HTTPException(status_code=409, detail="Enable local AI wording in Settings first.")
     if not await request.app.state.explanations.provider_available():
         raise HTTPException(status_code=503, detail="The local Ollama model is not available.")
     try:
         await request.app.state.supervisor.request_explanations(scan_id)
     except RuntimeError as exc:
-        if str(exc) == "AI_REQUEST_LIMIT":
-            raise HTTPException(status_code=429, detail="AI wording was requested too many times for this report.") from exc
         if str(exc) in {"SCAN_BUSY", "SCAN_NOT_READY"}:
-            raise HTTPException(status_code=409, detail="This report is not ready for AI wording.") from exc
+            raise HTTPException(
+                status_code=409, detail="This report is not ready for AI wording."
+            ) from exc
         if str(exc) in {"AI_DISABLED", "AI_NOT_CONFIGURED"}:
             raise HTTPException(status_code=503, detail="Local AI wording is unavailable.") from exc
         raise

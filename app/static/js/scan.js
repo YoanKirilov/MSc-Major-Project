@@ -30,10 +30,29 @@ const scanProblems = document.querySelector('#scan-problems');
 const searchInput = document.querySelector('#searchInput');
 const filterButtons = [...document.querySelectorAll('.filter-chip')];
 const nextStepsList = document.querySelector('#nextStepsList');
+const reportContent = document.querySelector('#report-content');
+const retryHostsButton = document.querySelector('#retryHostsButton');
+const guidanceArchives = document.querySelector('#guidance-archives');
+const reportFirstStep = document.querySelector('#report-first-step');
+const reportChecks = document.querySelector('#report-checks');
 let selectedFinding = null;
 let currentData = null;
 let activeFilter = 'all';
 let searchTerm = '';
+
+retryHostsButton.addEventListener('click', async () => {
+  if (!currentData) return;
+  retryHostsButton.disabled = true;
+  try {
+    const result = await request(`/api/live-scans/${scanId}/retry-hosts`, {
+      method: 'POST', body: JSON.stringify({ expected_revision: currentData.revision }),
+    });
+    window.location.href = `/scans/${result.scan_id}`;
+  } catch (error) {
+    status.textContent = error.message;
+    retryHostsButton.disabled = false;
+  }
+});
 
 searchInput.addEventListener('input', () => {
   searchTerm = searchInput.value.trim().toLowerCase();
@@ -56,7 +75,8 @@ runAgainButton.addEventListener('click', async () => {
   runAgainButton.textContent = 'Starting...';
   const profile = currentData.policy?.profile || 'light';
   const deep = profile === 'deep-tcp-v1';
-  const hosts = deep ? (currentData.target?.hosts || currentData.devices.map((device) => device.ip)) : [];
+  const hosts = (deep || currentData.target?.mode === 'known_hosts')
+    ? (currentData.target?.hosts || currentData.devices.map((device) => device.ip)) : [];
   const body = {
     mode: deep ? 'known_hosts' : (currentData.target?.mode || 'discover'),
     profile,
@@ -84,7 +104,6 @@ simplifyButton.addEventListener('click', async () => {
   simplifyButton.disabled = true;
   try {
     const aiStatus = await request('/api/status');
-    if (!aiStatus.ai_enabled) throw new Error('Enable local AI wording in Settings first.');
     if (!aiStatus.ai_available) throw new Error('The local Ollama model is unavailable. Check AI settings.');
     await request(`/api/live-scans/${scanId}/explanations`, { method: 'POST', body: '{}' });
     status.textContent = 'Local AI is checking optional wording. The saved scan facts are unchanged.';
@@ -141,6 +160,7 @@ function explanationFor(finding) {
     aiFields: record?.ai_fields?.length ? record.ai_fields : (record ? ['meaning', 'why_it_matters'] : []),
     title: record?.display_title || finding.title,
     limitations: record?.display_limitations || finding.limitations,
+    rejectedFields: record?.rejected_fields || {},
   };
 }
 
@@ -202,8 +222,11 @@ function showDetail(finding) {
     section.append(text('h4', heading), text('p', value));
     return section;
   };
-  detailPanel.append(block('What was observed', explanation.content.meaning), block('Why it matters', explanation.content.why_it_matters));
-  detailPanel.append(block('What this does not prove', explanation.limitations.join(' ')));
+  detailPanel.append(block('What we found', explanation.content.meaning), block('What this means for you', explanation.content.why_it_matters));
+  detailPanel.append(block('What we could not confirm', explanation.limitations.join(' ')));
+  if (Object.keys(explanation.rejectedFields).length) {
+    detailPanel.append(block('Why some original wording remains', 'Some AI suggestions did not pass the factual checks. The original wording was kept for: ' + Object.keys(explanation.rejectedFields).join(', ')));
+  }
   const previous = currentData.guidance_history?.[0]?.findings?.find((item) => item.finding_id === finding.finding_id);
   if (previous) {
     const saved = document.createElement('details');
@@ -237,7 +260,7 @@ function showDetail(finding) {
     detailPanel.append(safeChecks);
   }
   const actions = text('div', '', 'detail-block recommendation');
-  actions.append(text('h4', 'Recommended steps'));
+  actions.append(text('h4', 'What to do, and how to check it'));
   const list = document.createElement('ol');
   list.className = 'remediation-list';
   finding.actions.forEach((action, index) => {
@@ -293,7 +316,7 @@ function renderFindings(data) {
     ? ((visible.length === currentFindings.length
       ? `Showing all ${currentFindings.length} findings.${explanationNote}`
       : `Showing ${visible.length} of ${currentFindings.length} findings from this scan.${explanationNote}`))
-    : emptyFindingMessage(data);
+    : emptyFindingMessage(data) + explanationNote;
   if (!visible.length) {
     findingsList.append(text('div', currentFindings.length
       ? 'No findings match the selected filter or search.'
@@ -332,6 +355,8 @@ function renderNextSteps(data) {
   const steps = prioritise(data.findings).flatMap((finding) => (finding.actions || []).slice(0, 1).map((action) => ({ finding, action }))).slice(0, 3);
   if (!steps.length) {
     nextStepsList.append(text('li', emptyFindingMessage(data), 'empty-state'));
+    const overview = currentOverview(data);
+    (overview?.content.recommended_steps || []).forEach((step) => nextStepsList.append(text('li', step)));
     return;
   }
   steps.forEach(({ finding, action }, index) => {
@@ -351,6 +376,22 @@ function renderNextSteps(data) {
     copy.append(text('strong', explanation.title), text('p', device ? `${device.hostname || 'Device'} · ${device.ip}` : 'Observed device'), text('p', guidance));
     nextStepsList.append(item);
   });
+}
+
+function currentOverview(data) {
+  const record = data.report_explanation;
+  return data.analysis_status === 'ready' && record?.content
+    && record.prompt_version === data.guidance_status?.ai_prompt_version ? record : null;
+}
+
+function renderBeginnerGuide(data) {
+  const overview = currentOverview(data);
+  const unfinished = (data.coverage?.service_failed_count || 0) > 0 || ['partial', 'failed', 'cancelled'].includes(data.state);
+  reportFirstStep.textContent = overview?.content.recommended_steps?.join(' ') || (unfinished
+    ? 'Review any listed items, then retry the unfinished device checks. Missing results cannot tell you whether those devices are safe.'
+    : data.findings.length ? 'Start with the first item below. Identify the device and follow the suggested checks before changing its settings.'
+      : 'Read what the scan managed to check. No listed items does not mean everything is safe.');
+  reportChecks.textContent = [coverageSummary(data), ...(overview?.content.how_to_check || [])].join(' ');
 }
 
 function renderDevices(data) {
@@ -391,10 +432,25 @@ function renderDevices(data) {
       device.hostname || 'Unknown device',
       device.ip,
       deviceCategory(device),
-      device.reachability === 'observed' ? 'Responded' : 'Not confirmed',
+      device.reachability_evidence?.some((item) => ['open_port_response', 'closed_port_response'].includes(item))
+        ? 'Responded to a service check'
+        : device.reachability_evidence?.includes('nmap_discovery_response') ? 'Responded to discovery'
+          : device.discovery_method === 'mdns_advertisement' || device.reachability === 'advertised'
+            ? 'Advertised by mDNS; service response not confirmed' : 'Not confirmed',
       services.map((item) => formatServiceLabel(item)).join(', ') || 'None found in selected checks',
     ].forEach((value) => row.append(text('td', value)));
     row.append(checkCell, text('td', String(deviceFindings.length)));
+    if (device.hostname_source || device.vendor) {
+      const sources = { nmap: 'scan response', reverse_dns: 'local name lookup', mdns: 'device announcement',
+        pihole_dhcp: 'Pi-hole address lease', pihole_network: 'Pi-hole history', nmap_discovery: 'Nmap discovery' };
+      const nameDetails = document.createElement('details');
+      nameDetails.append(text('summary', 'About this name'));
+      nameDetails.append(text('p', `Source: ${sources[device.hostname_source] || 'scan'}. ${device.hostname_observed_at ? `Recorded: ${device.hostname_observed_at}.` : ''}`));
+      nameDetails.append(text('p', device.hostname_conflict ? 'Sources reported different names; the alternatives are listed below.' : `Name confidence: ${device.hostname_confidence || 'low'}. Reported names do not verify a device identity.`));
+      if (device.vendor) nameDetails.append(text('p', `Network adapter manufacturer: ${device.vendor}. This does not identify the device model.`));
+      (device.name_candidates || []).forEach((item) => nameDetails.append(text('p', `${item.name} — ${sources[item.source] || item.source}, ${item.observed_at}`)));
+      row.children[0].append(nameDetails);
+    }
     deviceTableBody.append(row);
   });
 }
@@ -409,13 +465,33 @@ function renderAdvertisements(data) {
 }
 
 function render(data) {
-  const openServices = data.services.filter((service) => service.state === 'open').length;
+  const openServices = (data.services || []).filter((service) => service.state === 'open').length;
   const stateLabels = {
     queued: 'Waiting to start', running: 'Scanning', completed: 'Completed',
-    partial: 'Partly completed', failed: 'Could not complete', cancelled: 'Cancelled',
+    partial: 'Some checks could not finish', failed: 'Could not complete', cancelled: 'Cancelled',
   };
+  const preparing = ['queued', 'running'].includes(data.state) || data.phase === 'analysis';
+  const analysisFailed = data.analysis_status === 'failed';
+  reportContent.hidden = preparing;
+  runAgainButton.disabled = preparing;
+  retryHostsButton.hidden = preparing || !(data.coverage?.targets || []).some((target) => ['failed', 'timed_out', 'cancelled', 'pending', 'running'].includes(target.service_status) && (data.target?.mode === 'known_hosts' || target.discovery_status === 'observed'));
+  retryHostsButton.disabled = preparing;
+  if (preparing) {
+    currentData = data;
+    title.textContent = data.phase === 'analysis' ? 'Making your results easier to understand.' : 'Checking your devices.';
+    lead.textContent = data.phase === 'analysis' ? 'Ollama is reading the saved results. Your report will appear when preparation finishes.' : 'Your report will appear after the scan and AI explanation finish.';
+    status.textContent = coverageSummary(data);
+    state.textContent = 'In progress';
+    simplifyButton.hidden = true;
+    refreshGuidanceButton.hidden = true;
+    return;
+  }
   title.textContent = data.state === 'completed' ? 'Your local scan is ready.' : `${stateLabels[data.state] || 'Scan status unknown'}.`;
-  lead.textContent = `Recorded ${data.devices.length} device result${data.devices.length === 1 ? '' : 's'} and ${openServices} open connection${openServices === 1 ? '' : 's'} among the selected checks.`;
+  if (data.state === 'partial') {
+    const unchecked = data.coverage?.service_failed_count || 0;
+    title.textContent = `Scan finished; ${unchecked} device${unchecked === 1 ? '' : 's'} could not be checked.`;
+  }
+  lead.textContent = `Saved results for ${data.devices.length} device${data.devices.length === 1 ? '' : 's'}. Found ${openServices} service${openServices === 1 ? '' : 's'} accepting requests. A service is a device feature that other devices can contact.`;
   const fallbackTcpPorts = [21, 22, 23, 80, 443, 445, 554, 1883, 3389, 5900, 8080, 8443];
   const tcpPorts = data.policy?.tcp_ports || data.policy?.ports || fallbackTcpPorts;
   const udpPorts = data.policy?.udp_ports || [];
@@ -436,20 +512,41 @@ function render(data) {
   count.textContent = data.findings.length;
   ring.style.setProperty('--score', Math.min(100, data.findings.length * 12));
   coverage.textContent = coverageSummary(data);
+  const overview = data.report_explanation;
+  if (data.analysis_status === 'ready' && overview?.content && overview.prompt_version === data.guidance_status?.ai_prompt_version) {
+    lead.textContent = overview.content.meaning;
+    status.textContent = [overview.content.why_it_matters, ...(overview.display_limitations || [])].join(' ');
+  }
+  if (analysisFailed) {
+    status.textContent = 'Simplification unavailable—retry. Your factual results and original guidance are shown below.';
+  }
   scanProblems.replaceChildren();
-  const problems = [...(data.errors || []), ...(data.warnings || [])];
+  const problems = [...(data.errors || []).filter((item) => !item.target_ip), ...(data.warnings || []).filter((item) => !(item.code === 'AI_PREFLIGHT_UNAVAILABLE' && data.analysis_status === 'ready'))];
   (data.coverage?.targets || []).filter((target) => ['failed', 'timed_out', 'cancelled'].includes(target.service_status)).forEach((target) => {
-    const reason = target.service_status === 'timed_out' ? 'took too long and stopped' : 'did not finish';
-    problems.push({ message: `The device check for ${target.ip} ${reason}. Its remaining checks were not assessed.` });
+    const reasons = { host_scan_timeout: 'timed out', host_result_invalid: 'returned an incomplete or invalid result',
+      host_output_limit: 'returned more output than the scanner can retain', host_scan_failed: 'ended with a scanner error',
+      result_size_limit: 'could not be saved within the report size limit', scan_failed: 'stopped because the scan encountered an error',
+      scan_time_limit: 'did not finish within the scan time budget',
+      host_scan_cancelled: 'was cancelled', process_restarted: 'was interrupted when the app stopped' };
+    const reason = reasons[target.reason_code] || 'did not finish';
+    problems.push({ message: `The device check for ${target.ip} ${reason} after ${target.attempts || 1} attempt(s). Its remaining checks were not assessed.` });
   });
   scanProblems.hidden = !problems.length;
   if (problems.length) {
-    scanProblems.append(text('strong', 'What could not be completed'));
+    scanProblems.append(text('strong', 'Scan notes and unfinished checks'));
     const list = document.createElement('ul');
     problems.forEach((problem) => list.append(text('li', problem.message || 'A check did not complete.')));
     scanProblems.append(list);
   }
   const outdatedAi = (data.explanations || []).some((record) => record.source === 'ai' && record.prompt_version !== data.guidance_status?.ai_prompt_version);
+  guidanceArchives.replaceChildren();
+  (data.guidance_archives || []).forEach((name) => {
+    if (!/^guidance-[0-9a-f-]{36}\.json$/.test(name)) return;
+    const link = document.createElement('a');
+    link.href = `/api/live-scans/${scanId}/guidance/${name}`;
+    link.textContent = 'Archived guidance (JSON)';
+    guidanceArchives.append(link, text('span', ' '));
+  });
   refreshGuidanceButton.hidden = !data.guidance_status?.refresh_available;
   refreshGuidanceButton.disabled = data.phase !== 'finished' || ['queued', 'running'].includes(data.state);
   guidanceNotice.textContent = data.guidance_status?.refresh_available
@@ -466,15 +563,20 @@ function render(data) {
   renderDevices(data);
   renderAdvertisements(data);
   renderNextSteps(data);
-  simplifyButton.hidden = !['completed', 'partial'].includes(data.state) || !data.findings.length;
-  simplifyButton.disabled = data.phase === 'analysis' || data.ai_requests_used >= 12;
-  simplifyButton.textContent = data.ai_requests_used >= 12
-    ? 'AI request limit reached'
-    : data.ai_requests_used ? 'Try local AI wording again' : 'Simplify this saved report';
+  renderBeginnerGuide(data);
+  simplifyButton.hidden = !['completed', 'partial', 'failed', 'cancelled'].includes(data.state);
+  simplifyButton.disabled = preparing;
+  simplifyButton.textContent = analysisFailed ? 'Retry report preparation' : 'Prepare this saved report with Ollama';
 }
 
 async function poll() {
   try {
+    const progress = await request(`/api/live-scans/${scanId}/progress`);
+    if (['queued', 'running'].includes(progress.state) || progress.phase === 'analysis') {
+      render(progress);
+      window.setTimeout(poll, 1000);
+      return;
+    }
     const data = await request(`/api/live-scans/${scanId}`);
     render(data);
     if (data.state === 'queued' || data.state === 'running' || data.phase === 'analysis') {

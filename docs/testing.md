@@ -1,5 +1,102 @@
 # Testing status
 
+## Architecture fixes verification - 25 September 2026
+
+- Offline Python: **170 passed**, two opt-in tests deselected; **86% statement coverage**.
+  Isolated `.pytest-fixes-final07` storage; no existing saved reports changed.
+- JavaScript: **16 passed** across dashboard, report and Live Server bridge suites.
+- Real Edge and local Ollama: **2 passed**, using `.pytest-fixes-final-browser07`.
+  Browser scans/provider responses are synthetic. The Ollama test calls only the local
+  `llama3.2:3b` model and now requires accepted, changed plain-language meaning in both
+  the overview and finding, plus unchanged original severity and actions.
+- Final combined rerun after the visual wording correction: **172 passed** in
+  `.pytest-fixes-handoff08` (170 offline plus browser and local Ollama). The correction
+  avoids telling readers to look for unfinished checks on a fully completed report.
+- Full `ruff check app tests scripts` and `ruff format --check app tests scripts`: passed.
+  `pip check` passed in both development/runtime environments; Git whitespace checks passed.
+- Fresh wheel built into `.pytest-fixes-final-wheel07`, installed in `.venv-package`,
+  and checked with `python -I scripts/verify_package.py`: **four pages, seven static
+  assets, demo catalogue read, demo create and reopen passed**. This fixes the missing
+  packaged `app/demo/findings.json` found by the preceding audit.
+- The final template was rebuilt/reinstalled from `.pytest-fixes-handoff-wheel08`;
+  the same package verification passed again.
+- New regressions cover default-route selection on Windows/Linux, shared-network scope
+  mismatch rejection, authenticated lightweight polling, bounded host concurrency and
+  time budget, final status at the JSON size cap, repeated terminal updates, partial
+  Pi-hole failures, discovery identity through Pi-hole matching, naming/classification,
+  AI field-level rejection audit, and non-destructive previous-checkpoint recovery.
+
+No live Nmap, mDNS, DNS or Pi-hole network check was performed. The user confirmed the
+current shared network is not authorised; live testing is explicitly deferred until
+home. Real Pi-hole API compatibility, Ubuntu lab behaviour and comprehension by actual
+nontechnical participants are **not** established by these synthetic tests.
+
+Run the complete offline checks with:
+
+```powershell
+python -m pytest -m "not live_lab and not live_provider and not browser" --basetemp <fresh-folder>
+node tests/dashboard_ui.test.mjs
+node tests/report_ui.test.mjs
+node tests/live_server_bridge.test.mjs
+python -m ruff check app tests scripts
+python -m ruff format --check app tests scripts
+```
+
+Earlier dated results below are historical, not the current test count or network scope.
+
+## Implementation brief verification — 24 September 2026
+
+Implemented automatic AI report preparation, the JSON write-size boundary and guidance
+archives, failed-report access, known-host rescans, longer technical evidence, precise
+mDNS status, saved history, bounded host retries, name provenance and optional Pi-hole.
+See [implementation status](implementation-status.md) for all eleven items and remaining work.
+
+Verification uses new temporary data folders and isolated Python environments:
+
+- Offline Python regression suite: **143 passed**, two opt-in tests deselected.
+- JavaScript report and Live Server suites: **9 passed**. All six JavaScript modules
+  passed syntax checks; Ruff's `F` checks passed for application code.
+- Real local Ollama, `llama3.2:3b`: **1 passed** with a synthetic report. Its analysis
+  status was `ready`; the saved overview and finding wording were inspected. This is
+  model integration evidence, not a completed human comprehension study.
+- The final overview wording was rechecked with local Ollama alongside nine focused
+  workflow cases: **10 passed**. A subsequent offline regression also covers cancellation
+  before an AI task starts, preventing a report from remaining stuck in analysis.
+- Real headless Microsoft Edge: **1 passed** with synthetic Nmap/provider responses.
+  Verified dashboard waits through analysis, report display, history reopen, Light
+  known-host rescan, factual results during an AI outage and AI retry without rescanning.
+- Dependency lock installation and `pip check`: passed in isolated environments.
+- Wheel built and installed in a clean runtime environment. Importing with Python `-I`
+  confirmed the installed package served **four pages and seven static assets**.
+
+The Windows sandbox still denies pytest temporary-folder access; the successful runs
+used the approved test runner outside that sandbox with fresh, dedicated folders.
+Warnings include Python 3.14/pytest-asyncio deprecations and the installed Starlette
+TestClient's HTTP client deprecation. They did not fail verification.
+
+Commands from the project root (replace temporary paths with new unused folders):
+
+```powershell
+python -m pytest -m "not live_lab and not live_provider and not browser" --basetemp <fresh-folder>
+node tests/report_ui.test.mjs
+node tests/live_server_bridge.test.mjs
+$env:RUN_LIVE_OLLAMA = "1"
+python -m pytest tests/live_provider_test_ollama.py --basetemp <another-fresh-folder>
+$env:RUN_BROWSER_TESTS = "1"
+python -m pytest tests/browser_test_workflow.py --basetemp <browser-fresh-folder>
+python -m build --wheel
+# After installing the wheel in a clean environment:
+python -I scripts/verify_package.py
+```
+
+Not yet verified against a real Pi-hole instance or an authorised live network in this
+session. The saved scope was `192.168.0.0/24`, while detection reported `192.168.91.0/24`;
+the live target is awaiting confirmation. Ubuntu/WSL is not installed on this machine.
+The Ubuntu lab and nontechnical-reader study remain pending; their protocols are in
+[evaluation instructions](evaluation.md). Existing saved scans were not modified.
+
+Earlier verification history follows; descriptions of optional AI below are historical.
+
 ## Source cleanup — 23 September 2026
 
 Removed the unused standalone prototype, orphaned styles, uncalled backend stubs,
@@ -86,3 +183,22 @@ Live scan evidence: the repaired Nmap 7.991/Npcap 1.88 stack completed scan `f67
 The active Wi-Fi scope was then identified as `192.168.0.0/24` and scanned with the same bounded profile. Scan `374670da-9017-439e-98ec-ac51dc6ae87c` completed with 10 observed devices, 7 open selected TCP services, and 4 deterministic review findings. After discovery, UI progress uses discovered-host count as the denominator so the percentage reflects actual service-scan work rather than all 254 possible addresses.
 
 The latest scan `d34cff71-a15b-47a2-b850-c3cde0eda545` completed with 11 devices, 7 open selected TCP services, and 4 findings. Local hostname resolution identified `Namaiki.cable.virginm.net` for `192.168.0.216`; other hosts had no resolvable name and remain labelled `Unknown device`. The results UI now uses device name/IP and service port instead of internal rule/service identifiers.
+## Follow-up verification: 24 September 2026
+
+- `python -m pytest -m "not live_lab and not live_provider and not browser" --basetemp .pytest-brief-review-fix04`:
+  150 passed, 2 deselected. Includes exclusive app ownership, lock release after a
+  startup failure, short temporary names, invalid-update preservation and atomic
+  backup/replacement failure tests. The long-path guidance archive case passes.
+- `node tests/dashboard_ui.test.mjs`, `node tests/report_ui.test.mjs`, and
+  `node tests/live_server_bridge.test.mjs`: 16 passed. Covers status/session/storage
+  distinctions, refresh during analysis, backend recovery without browser storage,
+  completed-report reopening, retry after connection loss, and report overview actions.
+- `RUN_BROWSER_TESTS=1 RUN_LIVE_OLLAMA=1 python -m pytest tests/browser_test_workflow.py tests/live_provider_test_ollama.py --basetemp .pytest-fix03`:
+  2 passed. Edge uses synthetic network/AI for browser flow; the separate provider
+  test calls the real local llama3.2:3b model with synthetic facts. Its saved report
+  was `analysis_status=ready`, prompt 4.1.0. The synthetic browser screenshot was
+  visually inspected for readable layout and visible limitations.
+- `python -m app doctor` verified Nmap 7.991 in `.venv` and `.venv-brief`.
+  No authorised-network Nmap run was performed. Pi-hole was not connected.
+- Python F-series lint and JavaScript syntax checks passed. Existing deprecation
+  warnings remain; they are separate from functional test failures.
