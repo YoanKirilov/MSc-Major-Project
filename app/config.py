@@ -148,10 +148,10 @@ def detect_private_network() -> str | None:
     return next(iter(networks)) if len(networks) == 1 else None
 
 
-def resolve_allowed_network(config: AppConfig) -> str | None:
+def resolve_allowed_network(config: AppConfig, detected: str | None = None) -> str | None:
+    """Choose the scope from an existing observation; never run OS commands here."""
     if config.allowed_network:
         return config.allowed_network
-    detected = detect_private_network()
     return detected if detected and ipaddress.ip_network(detected).prefixlen >= 24 else None
 
 

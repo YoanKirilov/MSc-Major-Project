@@ -11,6 +11,16 @@ from app.config import (
 )
 
 
+def test_scope_selection_reuses_observation_without_os_commands(monkeypatch):
+    def forbidden():
+        raise AssertionError("Scope selection must not probe or block the event loop")
+
+    monkeypatch.setattr("app.config.detect_private_network", forbidden)
+    assert resolve_allowed_network(AppConfig(), "192.168.0.0/24") == "192.168.0.0/24"
+    assert resolve_allowed_network(AppConfig(), "10.240.108.0/22") is None
+    assert resolve_allowed_network(AppConfig()) is None
+
+
 def test_default_config_uses_user_data_dir():
     cfg = AppConfig()
     assert cfg.port == 8765

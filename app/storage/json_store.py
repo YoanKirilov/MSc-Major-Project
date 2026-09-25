@@ -12,11 +12,26 @@ from typing import Any, Callable
 from uuid import UUID, uuid4
 
 from app.schemas.common import iso_z, utc_now
+from app.schemas.projections import HistorySummary, ProgressSnapshot
 from app.schemas.scan import ScanDocument
 from app.schemas.settings import Settings, SettingsUpdate
 from filelock import FileLock
 
 logger = logging.getLogger(__name__)
+
+TERMINAL_FIELDS = frozenset(
+    {
+        "state",
+        "phase",
+        "finished_at",
+        "analysis_status",
+        "analysis_error",
+        "scan_outcome",
+        "coverage",
+        "errors",
+        "warnings",
+    }
+)
 
 
 class DocumentTooLarge(ValueError):
@@ -76,7 +91,17 @@ class JsonStore:
                 result[key] = value
             return result
 
-        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_keys)
+        def reject_nonfinite(value):
+            raise ValueError("non-finite JSON number")
+
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_nonfinite,
+        )
+        if not isinstance(data, dict):
+            raise ValueError("managed JSON root must be an object")
+        return data
 
     def _atomic_write(self, path: Path, payload: str, backup: Path | None = None) -> None:
         # Check UTF-8 bytes before touching the existing file or its backup.
@@ -155,7 +180,7 @@ class JsonStore:
         try:
             self._atomic_write(scan_dir / "summary.json", json.dumps(summary, ensure_ascii=False))
             self._atomic_write(scan_dir / "progress.json", json.dumps(self._progress(document)))
-        except OSError:
+        except (OSError, DocumentTooLarge):
             logger.warning("Could not refresh scan history summary for %s", document.scan_id)
         return ScanDocument.model_validate(json.loads(payload))
 
@@ -194,19 +219,8 @@ class JsonStore:
                 marker.get("base_revision") == document.revision
                 and marker.get("scan_id") == document.scan_id
             ):
-                allowed = {
-                    "state",
-                    "phase",
-                    "finished_at",
-                    "analysis_status",
-                    "analysis_error",
-                    "scan_outcome",
-                    "coverage",
-                    "errors",
-                    "warnings",
-                }
                 changes = marker.get("updates", {})
-                if not isinstance(changes, dict) or set(changes) - allowed:
+                if not isinstance(changes, dict) or set(changes) - TERMINAL_FIELDS:
                     raise ValueError("Invalid terminal status fields")
                 document = ScanDocument.model_validate({**data, **changes})
         return document
@@ -222,17 +236,6 @@ class JsonStore:
             updated = mutate(current.model_copy(deep=True))
             if updated.phase != "finished" or updated.state in {"queued", "running"}:
                 raise ValueError("Terminal update must finish the job")
-            allowed = {
-                "state",
-                "phase",
-                "finished_at",
-                "analysis_status",
-                "analysis_error",
-                "scan_outcome",
-                "coverage",
-                "errors",
-                "warnings",
-            }
             before = current.model_dump(mode="json")
             after = updated.model_dump(mode="json")
             if any(
@@ -247,7 +250,9 @@ class JsonStore:
                 # Compare to the primary, not an already overlaid terminal state.
                 # Otherwise a second terminal update could erase the first one.
                 primary = self._read_json(self._scan_dir(scan_id) / "scan.json")
-                updates = {key: after[key] for key in allowed if primary.get(key) != after[key]}
+                updates = {
+                    key: after[key] for key in TERMINAL_FIELDS if primary.get(key) != after[key]
+                }
                 marker = {
                     "scan_id": current.scan_id,
                     "base_revision": current.revision,
@@ -299,15 +304,9 @@ class JsonStore:
             try:
                 if cache.stat().st_mtime_ns >= primary.stat().st_mtime_ns:
                     data = self._read_json(cache)
-                    if data.get("scan_id") == str(scan_id) and data.get("state") in {
-                        "queued",
-                        "running",
-                        "completed",
-                        "partial",
-                        "failed",
-                        "cancelled",
-                    }:
-                        return data
+                    validated = ProgressSnapshot.model_validate(data, strict=True)
+                    if validated.scan_id == str(UUID(str(scan_id))):
+                        return validated.model_dump(mode="json")
             except (OSError, ValueError):
                 pass
         return self._progress(self._load_scan(scan_id))
@@ -364,13 +363,11 @@ class JsonStore:
                         and not summary_file.is_symlink()
                         and summary_file.stat().st_mtime_ns >= scan_file.stat().st_mtime_ns
                     ):
-                        cached = self._read_json(summary_file)
-                        if (
-                            cached.get("scan_id") == scan_dir.name
-                            and cached.get("storage_status") == "ok"
-                            and isinstance(cached.get("created_at"), str)
-                        ):
-                            item = cached
+                        cached = HistorySummary.model_validate(
+                            self._read_json(summary_file), strict=True
+                        )
+                        if cached.scan_id == scan_dir.name:
+                            item = cached.model_dump(mode="json")
                 except (OSError, ValueError, TypeError):
                     pass
                 if item is None:

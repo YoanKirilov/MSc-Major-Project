@@ -1,11 +1,58 @@
 import asyncio
 import json
+import os
 
 import pytest
 from app.schemas.scan import ScanDocument
 from app.schemas.settings import Settings, SettingsUpdate
 from app.storage import json_store as store_module
 from app.storage.json_store import JsonStore
+
+
+@pytest.mark.parametrize("payload", ["[]", "null", "42", '{"value": NaN}', '{"value": Infinity}'])
+def test_managed_json_rejects_wrong_root_and_nonfinite_numbers(temp_store, payload):
+    path = temp_store.data_root / "invalid.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        temp_store._read_json(path)
+
+
+@pytest.mark.parametrize("cache_name", ["progress.json", "summary.json"])
+@pytest.mark.parametrize("damage", ["array", "missing_source", "wrong_count", "wrong_nested_type"])
+@pytest.mark.asyncio
+async def test_invalid_caches_fall_back_to_primary(temp_store, cache_name, damage):
+    scan = ScanDocument(
+        scan_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        source="demo",
+        target={"mode": "demo"},
+        state="completed",
+        phase="finished",
+    )
+    await temp_store.create_scan(scan)
+    folder = temp_store.data_root / "scans" / scan.scan_id
+    cache = folder / cache_name
+    data = json.loads(cache.read_text(encoding="utf-8"))
+    if damage == "array":
+        data = []
+    elif damage == "missing_source":
+        del data["source"]
+    elif damage == "wrong_count":
+        data["device_count"] = "not a count"
+    elif cache_name == "progress.json":
+        data["coverage"]["targets"] = {}
+    else:
+        data["state"] = {}
+    cache.write_text(json.dumps(data), encoding="utf-8")
+    future = (folder / "scan.json").stat().st_mtime + 10
+    os.utime(cache, (future, future))
+    if cache_name == "progress.json":
+        result = await temp_store.load_progress(scan.scan_id)
+    else:
+        result = (await temp_store.list_scans(source="demo", offset=0, limit=20))["items"][0]
+        assert result["storage_status"] == "ok"
+    assert result["source"] == "demo"
+    assert result["device_count"] == 0
+    assert result["state"] == "completed"
 
 
 @pytest.fixture

@@ -1,4 +1,5 @@
 {
+  "archived_note": "Historical snapshot only. Current status is in docs/implementation-status.md and docs/testing.md.",
   "spec_version": "1.0",
   "project": "network-assessor",
   "updated_at": "2026-09-21T00:00:00Z",

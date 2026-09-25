@@ -4,7 +4,8 @@
     {
       "label": "NetGuard: Start backend",
       "type": "process",
-      "command": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": { "command": "${workspaceFolder}/.venv/Scripts/python.exe" },
       "args": ["-m", "app", "serve", "--port", "8765"],
       "options": { "cwd": "${workspaceFolder}" },
       "isBackground": true,
@@ -15,6 +16,16 @@
         "pattern": { "regexp": "^(.+):(\\d+): (error): (.+)$", "file": 1, "line": 2, "severity": 3, "message": 4 },
         "background": { "activeOnStart": true, "beginsPattern": "Started server process", "endsPattern": "Open this local session URL:" }
       }
+    },
+    {
+      "label": "NetGuard: Check offline",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": { "command": "${workspaceFolder}/.venv/Scripts/python.exe" },
+      "args": ["scripts/check.py"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
     }
   ]
 }

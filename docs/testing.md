@@ -1,5 +1,32 @@
 # Testing status
 
+## Full code/workspace recheck - 25 September 2026
+
+Latest verification, after organisation and additional storage fixes:
+
+- `python scripts/check.py --browser --ollama`: **187 Python tests passed** (185 offline,
+  real Edge with synthetic scanner/provider, and real local Ollama with synthetic facts).
+  **16 JavaScript tests**, all six module syntax checks, complete Ruff lint and formatting
+  also passed. Artifacts: `.test-artifacts/checks-bc77e5df3d/`.
+- A fresh wheel under `.test-artifacts/package-recheck/` was installed in `.venv-package`.
+  Installed-package checks passed for four pages, seven static assets and demo read/create/
+  reopen; `pip check` passed. No app runtime data was used by these checks.
+- Read-only data validation: 23 configured reports and 63 historical preview reports were
+  readable, referenced guidance was readable, and device/report IDs matched. No existing
+  report was updated, recovered or deleted. Historical preview queued/running records were
+  not treated as live jobs.
+- Added regressions for invalid JSON roots/non-finite numbers, corrupt cache fallback,
+  recovered-device ownership and pure network scope selection without repeated OS commands.
+- Existing pytest-asyncio/Python 3.14 and Starlette test-client deprecation warnings remain;
+  they were reported, not suppressed or represented as runtime errors.
+
+See [architecture](architecture.md) and [workspace organisation](workspace.md) for the
+current map, cleanup archive and limitations. No current-network scanning was performed;
+actual Pi-hole, home-network, Ubuntu and participant checks remain outstanding.
+
+Older output directories referenced below were archived during cleanup; their dated
+records are historical and their original contents can be recovered from the cleanup ZIP.
+
 ## Architecture fixes verification - 25 September 2026
 
 - Offline Python: **170 passed**, two opt-in tests deselected; **86% statement coverage**.

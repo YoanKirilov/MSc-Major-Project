@@ -13,6 +13,19 @@ ServiceState = Literal[
 FindingSeverity = Literal["high", "medium", "low", "informational"]
 FindingConfidence = Literal["high", "medium", "low"]
 ScanSource = Literal["live", "demo"]
+ScanState = Literal["queued", "running", "completed", "partial", "failed", "cancelled"]
+ScanPhase = Literal["queued", "discovery", "service_scan", "analysis", "finished"]
+AnalysisStatus = Literal["not_started", "running", "ready", "failed"]
+HostCheckState = Literal[
+    "not_scheduled",
+    "pending",
+    "running",
+    "completed",
+    "failed",
+    "timed_out",
+    "cancelled",
+    "skipped",
+]
 
 
 class DeviceProfile(StrictModel):
@@ -138,16 +151,7 @@ class ExplanationRecord(StrictModel):
 class TargetLedgerEntry(StrictModel):
     ip: str
     discovery_status: Literal["not_run", "observed", "not_seen", "unknown"] = "not_run"
-    service_status: Literal[
-        "not_scheduled",
-        "pending",
-        "running",
-        "completed",
-        "failed",
-        "timed_out",
-        "cancelled",
-        "skipped",
-    ] = "not_scheduled"
+    service_status: HostCheckState = "not_scheduled"
     reason_code: str | None = None
     attempts: int = 0
     discovery_sources: list[Literal["nmap", "mdns"]] = Field(default_factory=list)
@@ -192,8 +196,8 @@ class ScanDocument(StrictModel):
     created_at: str = Field(default_factory=lambda: iso_z(utc_now()))
     started_at: str | None = None
     finished_at: str | None = None
-    state: Literal["queued", "running", "completed", "partial", "failed", "cancelled"] = "queued"
-    phase: Literal["queued", "discovery", "service_scan", "analysis", "finished"] = "queued"
+    state: ScanState = "queued"
+    phase: ScanPhase = "queued"
     target: dict[str, object] = Field(
         default_factory=lambda: {"mode": "discover", "cidr": None, "hosts": []}
     )
@@ -217,7 +221,7 @@ class ScanDocument(StrictModel):
     guidance_archives: list[str] = Field(default_factory=list)
     report_explanation: ExplanationRecord | None = None
     scan_outcome: Literal["completed", "partial", "failed", "cancelled"] | None = None
-    analysis_status: Literal["not_started", "running", "ready", "failed"] = "not_started"
+    analysis_status: AnalysisStatus = "not_started"
     analysis_error: str | None = None
     guidance_updated_at: str | None = None
     ai_requests_used: int = 0

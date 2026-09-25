@@ -96,8 +96,8 @@ async def _create_validated_live_scan(
     if body.profile == DEEP_PROFILE and len(body.hosts) != 1:
         raise HTTPException(status_code=422, detail="Deep scans require exactly one host")
     settings = await request.app.state.store.load_settings()
-    scope = settings.allowed_network or resolve_allowed_network(request.app.state.config)
     detected = await asyncio.to_thread(detect_private_network)
+    scope = settings.allowed_network or resolve_allowed_network(request.app.state.config, detected)
     if scope and detected and network_warning(scope, detected):
         bound = (
             await asyncio.to_thread(

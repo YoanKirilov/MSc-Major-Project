@@ -148,6 +148,11 @@ Saved scan JSON can contain device addresses, hostnames, and optional raw Nmap X
 
 ## Code layout
 
+See the [current architecture review](docs/architecture.md) for responsibilities and
+remaining limitations, and [workspace organisation](docs/workspace.md) for cleanup,
+recoverable archives and the one-command check runner. Historical build notes and the
+old UI screenshot live under `docs/archive/` and `docs/reference/`, not in runtime code.
+
 | Location | Responsibility |
 | --- | --- |
 | `app/main.py`, `app/cli.py`, `app/config.py` | Web app assembly, startup, environment configuration, and diagnostics |
@@ -165,6 +170,9 @@ The live pages are `dashboard.html` (`/`), `scan.html` (`/scans/{scan_id}`), `se
 ## Testing and current limits
 
 Install development dependencies with `python -m pip install -e ".[dev]"`. Run offline Python checks from the project root:
+
+For all offline Python/JavaScript/lint checks together, run `python scripts/check.py`
+or the VS Code **NetGuard: Check offline** task. Run artifacts stay in `.test-artifacts/`.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -m "not live_lab and not live_provider and not browser"

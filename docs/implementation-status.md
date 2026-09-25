@@ -3,6 +3,18 @@
 This is the handover for the eleven agreed items. Verification details are in
 `testing.md`; external evaluation steps are in `evaluation.md`.
 
+## Latest code organisation/recheck
+
+The subsequent full review is in `architecture.md`; cleanup and repeatable commands are
+in `workspace.md`. Added strict cache projections with fallback to saved evidence, fixed
+device ownership on report recovery, and removed duplicate/blocking scope detection.
+Shared status definitions were consolidated without rewriting the overall architecture.
+Latest checks: **187 Python tests, 16 JavaScript tests, browser/local Ollama, lint,
+formatting and installed-package verification passed**. Saved data and Git work were
+preserved. Fifty old generated folders were archived and removed; the empty `front end`
+folder is locked by another process and remains. Historical notes/screenshot are organised
+under `docs/archive/` and `docs/reference/`. Live network testing is still deferred.
+
 ## Architecture audit fixes (25 September 2026)
 
 Completed in dependency order, without scanning the current shared network:

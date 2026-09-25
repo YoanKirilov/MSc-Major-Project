@@ -84,7 +84,7 @@ async def status(request: Request):
     supervisor = request.app.state.supervisor
     active_scan_ids = supervisor.active_scan_ids
     detected = await asyncio.to_thread(detect_private_network)
-    scope = settings.allowed_network or await asyncio.to_thread(resolve_allowed_network, config)
+    scope = settings.allowed_network or resolve_allowed_network(config, detected)
     return {
         "app_version": "0.1.0",
         "scanner_available": runtime["scanner_available"],

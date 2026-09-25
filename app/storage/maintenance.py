@@ -63,6 +63,8 @@ def maintain(data_dir, action, *, scan_id=None, older_than_days=90, apply=False)
 
                 document = ScanSupervisor._interrupted_document(document)
             document.scan_id = str(uuid4())
+            for device in document.devices:
+                device.scan_id = document.scan_id
             document.revision = 1
             document.warnings.append(
                 {

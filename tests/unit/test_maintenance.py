@@ -2,7 +2,7 @@ import json
 from uuid import uuid4
 
 import pytest
-from app.schemas.scan import ScanDocument
+from app.schemas.scan import Device, ScanDocument
 from app.storage.json_store import JsonStore
 from app.storage.maintenance import maintain
 from filelock import FileLock, Timeout
@@ -76,3 +76,17 @@ def test_backup_recovery_never_revives_an_interrupted_job(tmp_path):
     assert recovered.phase == "finished"
     assert recovered.state == "failed"
     assert recovered.coverage.service_completed_count == 0
+
+
+def test_recovered_devices_belong_to_the_new_report(tmp_path):
+    store, doc = make_report(tmp_path)
+    device = Device(device_id="device", scan_id=doc.scan_id, ip="192.168.0.2")
+    store._update_scan(
+        doc.scan_id, lambda current: current.model_copy(update={"devices": [device]}), None
+    )
+    store._update_scan(doc.scan_id, lambda current: current, None)
+    result = maintain(tmp_path, "recover", scan_id=doc.scan_id, apply=True)
+    recovered = store._load_scan(result["recovered_scan_id"])
+    assert recovered.devices[0].scan_id == recovered.scan_id
+    assert recovered.devices[0].device_id == device.device_id
+    assert store._load_scan(doc.scan_id).devices[0].scan_id == doc.scan_id

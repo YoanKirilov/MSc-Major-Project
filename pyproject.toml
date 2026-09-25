@@ -53,6 +53,7 @@ markers = [
   "browser: opt-in browser workflow with synthetic scan/provider responses",
 ]
 addopts = "-q"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 100
