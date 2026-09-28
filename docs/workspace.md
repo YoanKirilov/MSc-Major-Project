@@ -3,6 +3,24 @@
 Keep application code in `app/`, tests in `tests/`, operational helpers in `scripts/`,
 and explanation/decisions/evaluation records in `docs/`.
 
+The device-detail implementation is organised into focused parts:
+
+- `app/jobs/enrichment.py`: optional-check scheduling, cancellation and checkpoints.
+- `app/scanner/details.py`: bounded HTTP, UPnP and selective NetBIOS requests.
+- `app/scanner/observations.py`: pure interpretation and safe, bounded detail formatting.
+- `app/profiling/history.py`: conservative comparisons of saved evidence.
+
+AI wording validation is separate from orchestration: `app/explanations/validation.py`
+contains the pure acceptance rules; `service.py` owns provider calls, batching and saves.
+The 27 September extraction preserves the validator body and prior service entry point.
+`tests/unit/test_layout.py` now checks module reachability and this delegation. Nothing
+was deleted during this review; generated verification outputs remain in ignored folders.
+
+The follow-up import audit reached all non-initialiser application modules from the
+entry points, and the page/asset regression covers every shipped static asset. This is
+evidence of use, not proof that every branch is needed. No source file was deleted merely
+to make the tree smaller; saved reports and historical documentation remain intact.
+
 ## Repeatable verification
 
 After installing the development dependencies in your chosen virtual environment:

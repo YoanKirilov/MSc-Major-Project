@@ -5,24 +5,59 @@
       "label": "NetGuard: Start backend",
       "type": "process",
       "command": "${workspaceFolder}/.venv/bin/python",
-      "windows": { "command": "${workspaceFolder}/.venv/Scripts/python.exe" },
-      "args": ["-m", "app", "serve", "--port", "8765"],
-      "options": { "cwd": "${workspaceFolder}" },
+      "windows": {
+        "command": "${workspaceFolder}/.venv/Scripts/python.exe"
+      },
+      "args": [
+        "-m",
+        "app",
+        "serve",
+        "--port",
+        "8765"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "isBackground": true,
-      "runOptions": { "runOn": "folderOpen", "instanceLimit": 1 },
-      "presentation": { "reveal": "silent", "focus": false, "panel": "dedicated" },
+      "runOptions": {
+        "runOn": "folderOpen",
+        "instanceLimit": 1
+      },
+      "presentation": {
+        "reveal": "silent",
+        "focus": false,
+        "panel": "dedicated"
+      },
       "problemMatcher": {
         "owner": "netguard",
-        "pattern": { "regexp": "^(.+):(\\d+): (error): (.+)$", "file": 1, "line": 2, "severity": 3, "message": 4 },
-        "background": { "activeOnStart": true, "beginsPattern": "Started server process", "endsPattern": "Open this local session URL:" }
+        "pattern": {
+          "regexp": "^(.+):(\\d+): (error): (.+)$",
+          "file": 1,
+          "line": 2,
+          "severity": 3,
+          "message": 4
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Started server process",
+          "endsPattern": "Open this local session URL:"
+        }
       }
     },
     {
       "label": "NetGuard: Start backend with Pi-hole",
       "type": "process",
       "command": "${workspaceFolder}/.venv/bin/python",
-      "windows": { "command": "${workspaceFolder}/.venv/Scripts/python.exe" },
-      "args": ["-m", "app", "serve", "--port", "8765"],
+      "windows": {
+        "command": "${workspaceFolder}/.venv/Scripts/python.exe"
+      },
+      "args": [
+        "-m",
+        "app",
+        "serve",
+        "--port",
+        "8765"
+      ],
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
@@ -32,23 +67,48 @@
         }
       },
       "isBackground": true,
-      "runOptions": { "instanceLimit": 1 },
-      "presentation": { "reveal": "always", "focus": false, "panel": "dedicated" },
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "presentation": {
+        "reveal": "always",
+        "focus": false,
+        "panel": "dedicated"
+      },
       "problemMatcher": {
         "owner": "netguard",
-        "pattern": { "regexp": "^(.+):(\\d+): (error): (.+)$", "file": 1, "line": 2, "severity": 3, "message": 4 },
-        "background": { "activeOnStart": true, "beginsPattern": "Started server process", "endsPattern": "Open this local session URL:" }
+        "pattern": {
+          "regexp": "^(.+):(\\d+): (error): (.+)$",
+          "file": 1,
+          "line": 2,
+          "severity": 3,
+          "message": 4
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Started server process",
+          "endsPattern": "Open this local session URL:"
+        }
       }
     },
     {
       "label": "NetGuard: Check offline",
       "type": "process",
       "command": "${workspaceFolder}/.venv/bin/python",
-      "windows": { "command": "${workspaceFolder}/.venv/Scripts/python.exe" },
-      "args": ["scripts/check.py"],
-      "options": { "cwd": "${workspaceFolder}" },
+      "windows": {
+        "command": "${workspaceFolder}/.venv/Scripts/python.exe"
+      },
+      "args": [
+        "scripts/check.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": [],
-      "presentation": { "reveal": "always", "panel": "dedicated" }
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     }
   ],
   "inputs": [

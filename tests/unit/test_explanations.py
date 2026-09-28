@@ -91,6 +91,57 @@ class FakeProvider:
 
 
 @pytest.mark.asyncio
+async def test_retry_only_regenerates_rejected_items(tmp_path):
+    store, document = await make_stored_scan(tmp_path)
+    bad_id = document.findings[0].finding_id
+
+    class OnceInvalidProvider(FakeProvider):
+        async def generate(self, findings):
+            response = await super().generate(findings)
+            if len(self.calls) == 1:
+                for item in response.explanations:
+                    if item.finding_id == bad_id:
+                        original = next(f for f in findings if f["finding_id"] == bad_id)
+                        item.title = original["verified_title"]
+                        item.meaning = "This device is completely safe."
+                        item.why_it_matters = original["verified_why_it_matters"]
+            return response
+
+    provider = OnceInvalidProvider()
+    result = await ExplanationService(store, provider).explain_scan(document.scan_id)
+    assert len(provider.calls) == 2
+    assert [item["finding_id"] for item in provider.calls[1]] == [bad_id]
+    assert result.analysis_status == "ready"
+    assert result.findings == document.findings
+    assert result.services == document.services
+
+
+@pytest.mark.asyncio
+async def test_bad_batch_does_not_skip_later_findings(tmp_path):
+    store, document = await make_stored_scan(tmp_path)
+    findings = [
+        document.findings[0].model_copy(update={"finding_id": str(uuid4())}) for _ in range(8)
+    ]
+    await store.update_scan(
+        document.scan_id, lambda current: current.model_copy(update={"findings": findings})
+    )
+
+    class BadFirstBatch(FakeProvider):
+        async def generate(self, payload):
+            response = await super().generate(payload)
+            if len(self.calls) <= 2:
+                raise ValueError("invalid_provider_response")
+            return response
+
+    provider = BadFirstBatch()
+    result = await ExplanationService(store, provider).explain_scan(document.scan_id)
+    assert len(provider.calls) == 3
+    assert result.analysis_status == "failed"
+    assert result.analysis_error == "invalid_provider_response"
+    assert all(item.status == "ready" for item in result.explanations[-3:])
+
+
+@pytest.mark.asyncio
 async def test_explanation_service_persists_and_reuses_valid_ai_wording(tmp_path):
     store, document = await make_stored_scan(tmp_path)
     provider = FakeProvider()
@@ -386,7 +437,21 @@ async def test_ollama_provider_requests_schema_constrained_local_output():
         model="test-model",
         transport=httpx.MockTransport(handler),
     )
-    result = await provider.generate([{"finding_id": "finding-1"}])
+    result = await provider.generate(
+        [
+            {
+                "finding_id": "finding-1",
+                "reviewed_choices": {
+                    "title": ["Service found"],
+                    "meaning": ["A service that needs checking was found."],
+                    "why_it_matters": ["It may be available to other devices in your home."],
+                    "limitations": [],
+                    "recommended_steps": [],
+                    "how_to_check": [],
+                },
+            }
+        ]
+    )
 
     assert result.explanations[0].finding_id == "finding-1"
 

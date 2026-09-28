@@ -1,5 +1,20 @@
 # Implementation decisions
 
+- A missing current mDNS reply must not silently erase all recognition of a previously
+  observed device, but an old label must not be presented as freshly confirmed. Reuse
+  recent direct name observations only with the same scope and nonduplicated MAC,
+  retaining the original timestamp/report and an explicit historical display label.
+  Do not refresh cached-name age by copying, match only by IP, overwrite fresh labels,
+  or use historical names as new device-type evidence. The first naming regression
+  comparison showed missing TV advertisements, not a name-removal rule.
+
+- Follow-up review: separate pure observation formatting from network collectors and
+  optional enrichment scheduling from the supervisor lifecycle. Keep source failures
+  isolated and distinguish collection errors from timeouts. History port selections
+  must be explicitly present in both reports; guessed service labels cannot strengthen
+  device classification. Verified by failing-then-passing regression cases and a full
+  240-test Python rerun; see `testing.md` for precise boundaries.
+
 - Richer Light/Deep details share one bounded post-Nmap collector stage. No full UDP
   sweep, packet capture, credentials or additional Deep targets are introduced. HTTP
   and UPnP requests stay on the observed device IP, do not inherit proxies and never

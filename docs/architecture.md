@@ -1,6 +1,6 @@
 # Architecture and workspace review
 
-Reviewed 25 September 2026. This is the current map; dated build snapshots under
+Reviewed 27 September 2026. This is the current map; dated build snapshots under
 `archive/` and older testing entries are historical, not the current implementation.
 
 ## Overall assessment
@@ -11,7 +11,8 @@ It is **not** a production multi-user service: do not expose it to the internet 
 run several server workers against one data folder. No database migration is needed
 for the current scope; JSON remains the storage format.
 
-The latest Pi-hole setup extension is **implemented but untested**: deployment files are
+The Pi-hole connector/setup configuration has synthetic regression coverage; actual
+Pi-hole deployment and name extraction remain **unverified**. Deployment files are
 under `deployment/pihole/`, separate from the Python package; backend credentials may
 come from a bounded private UTF-8 file. Status reports local configuration errors, not
 connection health, and never probes Pi-hole. See [deployment boundaries](pihole-setup.md).
@@ -42,17 +43,63 @@ Browser templates + JavaScript
 | `app/explanations/` | Redacted structured input, Ollama, reviewed wording and fallback audit |
 | `app/schemas/` | Primary data and validated history/progress projections |
 | `app/storage/` | Atomic JSON, locks, bounded files, archives and explicit recovery |
-| `app/templates/`, `static/` | Four pages, shared layout, CSS and six active JS modules |
+| `app/templates/`, `static/` | Four pages, shared layout, CSS and seven active JS modules |
 | `app/demo/` | Fictional demonstration data; separate from real scan observations |
 | `tests/`, `scripts/` | Automated checks, installed-package verification and cleanup tooling |
 
-All five HTML templates, six JavaScript modules and the stylesheet are referenced by
+All five HTML templates, seven JavaScript modules and the stylesheet are referenced by
 active pages/imports. The asset-traversal integration test checks that every shipped
 static file is reachable. All substantive Python modules are reachable from the app/CLI;
 package initialisers are retained. No live source module was removed just because it
 looked unfamiliar or had no direct HTML reference.
 
-## Problems found and fixed in this review
+## Implemented follow-up improvements - 27 September 2026
+
+The latest run passed **306 Python and 24 JavaScript tests**, including a synthetic
+browser workflow and real local Ollama. The installed wheel and read-only desktop/mobile
+view of the previous home report also passed. See `testing.md` for exact artifacts.
+
+- `explanations/presentation.py` creates response-only plain-language views from the
+  existing approved choices. It does not rewrite evidence, model output or prompts.
+  Original guidance stays expandable; editorial choices are not labelled new AI output.
+- `AnalysisProgress` is optional in schema-v1 reports and their polling projections.
+  AI checkpoints persist waiting/preparing/finished, total/completed/active counts and
+  attempt number. Only accepted complete records count as prepared; retries reuse them.
+- Shared browser API code formats validation arrays and guards browser storage access.
+  The in-memory token fallback retains CSRF checks and does not conceal expired sessions.
+- AI status wording checks the overview and finding records, including prompt versions,
+  before claiming that the displayed report has current successful AI review.
+- Nmap zero-host output explicitly reporting one down target raises `HostUnreachable`;
+  absent or contradictory counts remain invalid output. Failed checks stay unassessed.
+- JSON settings/report lock acquisition is bounded at five seconds. HTTP contention
+  returns 503 with `Retry-After`, not a forced write. Locks are never bypassed; persistent
+  external contention must be resolved before further writes can succeed.
+
+No new network probes were introduced by the clearer web-page instructions; they are
+plain text derived from saved probed web-service facts, with HTTP/certificate warnings.
+Historical scan errors are retained as recorded, even where new runs classify them better.
+
+## Earlier end-to-end recheck - 27 September 2026
+
+Reviewed startup/instance ownership, session and scope boundaries, job lifecycle,
+optional collectors, JSON checkpoints/recovery, AI validation and browser presentation.
+The final Windows check passed 290 Python and 18 JavaScript tests, including synthetic
+browser workflow and real local Ollama. Statement coverage was 88%; this is not proof
+that all branches, operating systems or real-network outcomes are covered.
+
+Moved the pure sentence validator into `explanations/validation.py`, leaving batching,
+provider calls, retries and persistence in `service.py`. The validator body is unchanged;
+the service keeps its prior static entry point. Prompt/version, approved wording and
+stored evidence are unchanged. New layout regressions verify this delegation and that
+all substantive Python modules are reachable by imports from the CLI entry point.
+Together with the existing asset traversal, no unused application file was identified.
+
+No new blocking regression was found in these checks. The then-open zero-host Nmap
+classification and beginner-language/action gaps are resolved by the follow-up above;
+`live-check-20260926.md` records the original observations. Saved reports were checked read-only, and the previous
+live report was reopened on desktop/mobile. No new network scan was performed.
+
+## Earlier review fixes (25 September 2026)
 
 - Malformed cached progress/history could raise an error or hide a readable report.
   Caches now have explicit schemas and fall back to the authoritative saved document.
@@ -68,6 +115,25 @@ looked unfamiliar or had no direct HTML reference.
 
 ## Safety and AI boundaries
 
+The readability follow-up separates output-schema construction (`explanations/format.py`),
+field-preserving retries (`explanations/retries.py`), pure acceptance validation
+(`explanations/validation.py`) and pure display helpers
+(`static/js/presentation.mjs`). `wording_schema` 1.0.1 is stored alongside prompt 4.2.1;
+the reviewed source choices are unchanged, so accepted wording can remain cached.
+Partially accepted records retain accepted fields but keep analysis retryable until
+all rejected fields resolve or the bounded attempt/time budget ends. Original factual
+guidance remains available on failure. The provider schema narrows generation; the
+application's source-bound validation remains the acceptance boundary. See the
+[Ollama structured-output interface](https://docs.ollama.com/capabilities/structured-outputs).
+
+Nicknames live in `nicknames.json` with a revision, cross-process lock, atomic replacement
+and previous-version backup, bounded to 200 assignments of 80 characters each. A
+session/Origin/CSRF-protected PUT endpoint edits annotations. Report responses expose
+them separately from devices; scan JSON and AI payloads are unchanged. Same-report
+assignments use explicit device IDs; cross-report reuse requires scope, unique MAC,
+an earlier finished anchor within seven days and no ambiguous assignments. Name-source
+metadata remains intact. Invalid nickname storage does not hide a readable scan report.
+
 Ollama selects reviewed plain-language alternatives; it is not an autonomous scanner or
 a source of new vulnerability claims. IPs, MACs, hostnames and raw XML stay out of model
 input. Severity and evidence remain rule-owned. Rejected wording has field-level reasons;
@@ -80,8 +146,10 @@ names alone never establish reachability or identity. Real instance verification
 
 ### Shared Light/Deep enrichment
 
-`scanner/details.py` collects small structured `DeviceDetail` records after Nmap, before
-Ollama. Both profiles use this path. mDNS discovery-mode observations are reused;
+`jobs/enrichment.py` schedules and saves optional details after Nmap, before Ollama.
+`scanner/details.py` owns network requests; `scanner/observations.py` owns pure evidence
+interpretation and bounded `DeviceDetail` formatting. History comparison imports the
+pure helper, not the HTTP collector. Both profiles use this path. mDNS observations are reused;
 known-host mode browses with an explicit host filter, applied before the discovery cap.
 No additional host is added to a Deep scan. Announcements and UPnP descriptions are
 labelled as device claims; only Nmap evidence determines service-check coverage.
@@ -101,29 +169,63 @@ not claim that a MAC proves identity, a changed service proves an attack, or no 
 match means a newly connected device. Existing schema-v1 reports load with empty detail
 lists; no destructive migration is needed. Identity metadata stays out of Ollama input.
 
+The follow-up review fixed empty UPnP fields aborting optional checks, missing port
+metadata being treated as a comparable history profile, and collector errors being
+labelled as timeouts. Independent optional collectors now continue after a source fails.
+Only probed open-service identities can strengthen a device-type suggestion; names
+inferred from the port number do not count as confirmed evidence. New reports record
+enrichment version 1.0.1 and profiling version 1.1.1. Earlier reports remain unchanged.
+
+The naming-reliability follow-up replaces blocking mDNS callback lookups with a bounded
+async browser: four seconds, four lookup slots, 750 ms per attempt, at most two attempts
+for each of 64 service instances. Cancellation closes the browser and all pending lookups.
+Explicit friendly names are preferred over generated service instance IDs; advertised
+hostnames provide a fallback and RAOP hardware prefixes are removed from display labels.
+If no current name is available, history may supply a clearly labelled previous name
+from a direct observation within seven days, using the existing scope/MAC/duplicate guards.
+Historical labels retain original dates, never extend their lifetime through copies,
+never override fresh names or influence device type, and preserve prior conflicts.
+
+The async API is documented in the [python-zeroconf reference](https://python-zeroconf.readthedocs.io/en/latest/api.html).
+
 ## Remaining limitations and recommended order
 
-1. **External validation:** an explicitly authorised home-network device, actual Pi-hole,
-   and the intended Ubuntu setup. No current-network scan is authorised or performed.
-2. **Reader evaluation:** run the documented nontechnical-user study; retain evidence of
+1. **Verify the implemented fixes in future authorised use:** zero-host classification,
+   consistent beginner wording, web-page instructions and saved AI counts are covered
+   by automated checks and retained-evidence replay. This pass did not run a new scan.
+2. **External validation:** the 26 September Light checks exercised the richer collectors;
+   see their dated report. Controlled Deep/lab verification, actual Pi-hole when installed,
+   and the intended Ubuntu setup still need evidence. No new live scan ran in this review.
+3. **Reader evaluation:** run the documented nontechnical-user study; retain evidence of
    what people understand, not only model/test success.
-3. **Continuous checks:** add CI for the supported Windows/Linux Python versions. Local
-   `scripts/check.py` is ready; a passing Windows run is not a Linux compatibility claim.
-4. **Maintenance scale:** JSON checkpoints rewrite full documents. History uses caches but
+4. **Continuous checks:** `.github/workflows/checks.yml` defines offline, synthetic-browser
+   and installed-wheel checks on Windows/Ubuntu with Python 3.12/3.14. It must still run
+   after commit/push; a passing local Windows run is not a Linux compatibility claim.
+5. **Maintenance scale:** JSON checkpoints rewrite full documents. History uses caches but
    still enumerates report folders. Retention is preview-only; export/import, permanent
    deletion, incompatible-schema migration and a maintenance UI remain future features.
-5. **Targeted refactoring:** the supervisor, explanation service and scan-page controller
+6. **Targeted refactoring:** the supervisor, explanation service and scan-page controller
    are the largest modules. Extract host execution, analysis scheduling and report rendering
    when extending those areas, under existing regression tests; a wholesale rewrite would
    not itself improve correctness.
-6. **Dependency upkeep:** current tests emit pytest-asyncio/Python 3.14 and Starlette test
+7. **Dependency upkeep:** current tests emit pytest-asyncio/Python 3.14 and Starlette test
    client deprecation warnings. They are not runtime failures, but should be resolved before
    upgrading Python/framework versions. Keep runtime and development locks aligned.
+8. **Progress/readability:** a persisted `enrichment` phase now displays "Gathering device
+   details" before AI starts, including after refresh. Rule-based device cards precede
+   the technical table and include failed targets without parsed device records.
+   Evaluate readability with the reader-study kit rather than assuming it is proven.
+
+AI retries regenerate only rejected items, preserving accepted items from that batch.
+An invalid-output batch does not prevent later batches being attempted; provider outages
+still stop after the bounded retry. The existing overall analysis deadline remains in force.
+Nmap parser failures retain reviewed, safe diagnostic text without exposing raw output.
 
 ## Data checked, not rewritten
 
-The configured data folder contains 23 readable reports (13 completed, six partial,
-three failed, one cancelled). The historical `.preview-data` contains 63 readable reports,
+The latest audit of the configured data folder found 30 readable, unchanged reports
+(17 completed, eight partial, three failed, two cancelled). The earlier audit of the
+historical `.preview-data` found 63 readable reports,
 including old queued/running records; it is not the active job queue and was not reconciled.
 Referenced guidance JSON is readable and device/report IDs match in both sets.
 This checks storage consistency, not the truth of historical network observations.

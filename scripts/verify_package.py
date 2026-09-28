@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from importlib import import_module
 from pathlib import Path
 
 import app
@@ -14,6 +15,9 @@ def main():
     installed = Path(app.__file__).resolve().parent
     if "site-packages" not in str(installed):
         raise RuntimeError("Verification imported the checkout rather than the installed wheel")
+    for name in ("app.jobs.enrichment", "app.scanner.observations", "app.profiling.history"):
+        module = import_module(name)
+        assert Path(module.__file__).resolve().is_relative_to(installed), name
     with tempfile.TemporaryDirectory(prefix="netguard-package-") as temporary:
         os.environ["APP_DATA_DIR"] = temporary
         os.environ["APP_PORT"] = "8765"

@@ -254,6 +254,15 @@ input.deep-host-field { padding: 10px 12px; color: var(--text); background: var(
 .device-section { padding: 68px 0 74px; border-bottom: 1px solid var(--line); }
 .device-section > div:first-child { margin-bottom: 24px; }
 .device-table-wrap { width: 100%; min-width: 0; }
+.device-summaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 16px; margin-bottom: 28px; }
+.review-count { color: var(--text); text-align: center; }
+.review-count strong { display: block; font-size: 3rem; }
+.review-count span, .review-count p, .review-count small { display: block; color: var(--muted); line-height: 1.6; }
+.result-summary-card .status-label { color: var(--cyan); }
+.result-summary-card .status-label i { background: var(--cyan); }
+.device-summary { padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: rgba(13,25,33,.8); overflow-wrap: anywhere; }
+.device-summary h3 { margin-top: 0; }
+.device-summary p { color: var(--muted); line-height: 1.6; font-size: .9rem; }
 .device-table { width: 100%; border-collapse: collapse; overflow: hidden; background: rgba(13,25,33,.8); border: 1px solid var(--line); border-radius: 12px; font-size: .8rem; }
 .device-table th, .device-table td { padding: 13px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
 .device-table th { color: var(--muted); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }

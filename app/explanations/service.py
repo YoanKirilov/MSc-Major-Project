@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import json
-import re
 from hashlib import sha256
 from typing import Annotated, Protocol
 from urllib.parse import urlparse
@@ -12,13 +11,22 @@ import httpx
 from pydantic import Field
 
 from app.schemas.common import StrictModel, iso_z, utc_now
-from app.schemas.scan import ExplanationRecord, Finding, FixedExplanation, ScanDocument
+from app.schemas.scan import (
+    AnalysisProgress,
+    ExplanationRecord,
+    Finding,
+    FixedExplanation,
+    ScanDocument,
+)
 from app.storage.json_store import JsonStore
 
+from .format import FORMAT_VERSION, reviewed_output_schema
 from .report import report_input
+from .retries import field_locked, needs_retry, retained_values, retry_payload
+from .validation import validated_line
 from .wording import wording_choices
 
-PROMPT_VERSION = "4.2.0"
+PROMPT_VERSION = "4.2.1"
 ShortText = Annotated[str, Field(min_length=1, max_length=600)]
 ShortList = Annotated[list[ShortText], Field(max_length=8)]
 AI_BATCH_SIZE = 6
@@ -136,7 +144,7 @@ class OllamaExplanationProvider:
                 },
                 {"role": "user", "content": prompt},
             ],
-            "format": GeneratedExplanationBatch.model_json_schema(),
+            "format": reviewed_output_schema(findings),
             "options": {"temperature": 0},
         }
         async with httpx.AsyncClient(
@@ -226,7 +234,11 @@ class ExplanationService:
         records_by_id = {
             record.finding_id: record
             for record in existing
-            if (record.status == "ready" or record.fallback_reason == "not_simpler")
+            if (
+                record.status == "ready"
+                or record.fallback_reason == "not_simpler"
+                or record.rejected_fields
+            )
             and record.input_hash == hashes.get(record.finding_id)
             and record.provider == provider_name
             and record.model == model
@@ -237,43 +249,75 @@ class ExplanationService:
             report_finding,
             *sorted(document.findings, key=lambda item: priority[item.severity]),
         ]
-        selected = [finding for finding in all_findings if finding.finding_id not in records_by_id]
+        selected = [
+            finding
+            for finding in all_findings
+            if finding.finding_id not in records_by_id
+            or needs_retry(records_by_id[finding.finding_id])
+        ]
         requested_at = iso_z(utc_now())
+
+        def progress(*, active=0, attempt=0, finished=False):
+            return AnalysisProgress(
+                state="finished" if finished else "preparing",
+                total=len(all_findings),
+                completed=sum(not needs_retry(record) for record in records_by_id.values()),
+                active=active,
+                attempt=attempt,
+            )
+
         await self.store.update_scan(
             scan_id,
             lambda current: current.model_copy(
                 update={
                     "analysis_status": "running",
                     "analysis_error": None,
-                    "versions": {**current.versions, "prompt": PROMPT_VERSION},
+                    "analysis_progress": progress(),
+                    "versions": {
+                        **current.versions,
+                        "prompt": PROMPT_VERSION,
+                        "wording_schema": FORMAT_VERSION,
+                    },
                 }
             ),
         )
         stop_reason = None
         for start in range(0, len(selected), AI_BATCH_SIZE):
             batch_findings = selected[start : start + AI_BATCH_SIZE]
-            batch_payload = [safe_by_id[finding.finding_id] for finding in batch_findings]
+            pending = list(batch_findings)
             for _attempt in range(2):
                 try:
                     if self.provider is None:
                         raise RuntimeError("provider_not_configured")
+                    batch_progress = progress(active=len(pending), attempt=_attempt + 1)
                     await self.store.update_scan(
                         scan_id,
-                        lambda current: current.model_copy(
+                        lambda current, batch_progress=batch_progress: current.model_copy(
                             update={
                                 "ai_requests_used": current.ai_requests_used + 1,
+                                "analysis_progress": batch_progress,
                             }
                         ),
                     )
                     generated = await asyncio.wait_for(
-                        self.provider.generate(batch_payload), timeout=180
+                        self.provider.generate(
+                            [
+                                retry_payload(
+                                    safe_by_id[item.finding_id],
+                                    records_by_id.get(item.finding_id),
+                                    item,
+                                )
+                                for item in pending
+                            ]
+                        ),
+                        timeout=180,
                     )
                     generated_by_id = {item.finding_id: item for item in generated.explanations}
                     if len(generated_by_id) != len(generated.explanations):
                         raise ValueError("duplicate_finding_id")
-                    if set(generated_by_id) != {finding.finding_id for finding in batch_findings}:
+                    if set(generated_by_id) != {finding.finding_id for finding in pending}:
                         raise ValueError("finding_id_mismatch")
-                    for finding in batch_findings:
+                    for finding in pending:
                         record = self._build_validated_record(
                             finding,
                             generated_by_id[finding.finding_id],
@@ -284,17 +328,17 @@ class ExplanationService:
                             completed_at=iso_z(utc_now()),
                             consent_revision=settings.ai_consent_revision,
                             choices=safe_by_id[finding.finding_id]["reviewed_choices"],
+                            previous=records_by_id.get(finding.finding_id),
                         )
                         if finding.finding_id == report_finding.finding_id:
                             record.display_limitations = (
                                 record.display_limitations or finding.limitations
                             )
                         records_by_id[finding.finding_id] = record
-                    if any(
-                        records_by_id[item.finding_id].status != "ready"
-                        and records_by_id[item.finding_id].fallback_reason != "not_simpler"
-                        for item in batch_findings
-                    ):
+                    pending = [
+                        item for item in pending if needs_retry(records_by_id[item.finding_id])
+                    ]
+                    if pending:
                         raise ValueError("invalid_provider_response")
                     stop_reason = None
                     break
@@ -306,6 +350,7 @@ class ExplanationService:
                 lambda current: current.model_copy(
                     update={
                         "report_explanation": records_by_id.get(report_finding.finding_id),
+                        "analysis_progress": progress(),
                         "explanations": [
                             records_by_id[item.finding_id]
                             for item in document.findings
@@ -314,7 +359,9 @@ class ExplanationService:
                     }
                 ),
             )
-            if stop_reason:
+            # Invalid wording in one batch must not prevent later findings being tried.
+            # Transport failures still stop promptly; the supervisor bounds total time.
+            if stop_reason and stop_reason != "invalid_provider_response":
                 break
         for finding in all_findings:
             if finding.finding_id not in records_by_id:
@@ -327,10 +374,7 @@ class ExplanationService:
                     requested_at=requested_at,
                     consent_revision=settings.ai_consent_revision,
                 )
-        failed = any(
-            record.status != "ready" and record.fallback_reason != "not_simpler"
-            for record in records_by_id.values()
-        )
+        failed = any(needs_retry(record) for record in records_by_id.values())
         return await self.store.update_scan(
             scan_id,
             lambda current: current.model_copy(
@@ -338,6 +382,7 @@ class ExplanationService:
                     "explanations": [records_by_id[item.finding_id] for item in document.findings],
                     "report_explanation": records_by_id[report_finding.finding_id],
                     "analysis_status": "failed" if failed else "ready",
+                    "analysis_progress": progress(finished=True),
                     "analysis_error": (stop_reason or "invalid_provider_response")
                     if failed
                     else None,
@@ -372,162 +417,8 @@ class ExplanationService:
             content=finding.fixed_explanation,
         )
 
-    @staticmethod
-    def _validated_line(
-        original: str,
-        candidate: str | None,
-        *,
-        field: str,
-        rule_id: str,
-        reviewed_choices: list[str] | None = None,
-    ) -> tuple[str, bool]:
-        if candidate is None or candidate.strip().casefold() == original.strip().casefold():
-            return original, False
-        # Exact source-bound alternatives are the acceptance boundary. Regex checks
-        # below explain rejections; they are not proof of semantic equivalence.
-        if candidate.strip() in (reviewed_choices or wording_choices(original))[1:]:
-            return candidate.strip(), True
-        source = original.casefold()
-        output = candidate.casefold()
-        max_words = 16 if field == "title" else 35
-        if len(candidate.split()) > max_words or len(candidate.split()) > len(original.split()) + 8:
-            raise ValueError("rewrite_too_long")
-        if any(not char.isprintable() for char in candidate):
-            raise ValueError("invalid_provider_response")
-        disallowed = (
-            "anyone",
-            "everyone",
-            "others",
-            "strangers",
-            "any information",
-            "all information",
-            "everything sent",
-            "attacker",
-            "hacker",
-            "completely safe",
-            "definitely safe",
-            "guaranteed safe",
-            "has been hacked",
-            "is hacked",
-            "is compromised",
-            "no risk",
-            "not secure",
-            "unsafe",
-            "vulnerable",
-            "exposed",
-            "verified explanation",
-            "original text",
-            "input data",
-            "that claim",
-        )
-        if any(phrase in output and phrase not in source for phrase in disallowed):
-            raise ValueError("unsupported_absolute_claim")
-        guarded_terms = (
-            "someone",
-            "password",
-            "credential",
-            "malware",
-            "internet",
-            "sensitive",
-            "compromised",
-            "hacked",
-            "exploit",
-            "crack",
-            "cve",
-            "cipher",
-            "packet",
-            "protocol",
-            "tls",
-            "ssl",
-        )
-        if any(
-            re.search(rf"\b{re.escape(term)}\b", output)
-            and not re.search(rf"\b{re.escape(term)}\b", source)
-            for term in guarded_terms
-        ):
-            raise ValueError("unsupported_security_concept")
-        if re.search(r"\b(may|might|could|can|normally|usually|possibly)\b", source):
-            if not re.search(
-                r"\b(may|might|could|can|normally|usually|possibly|typically|often|generally)\b",
-                output,
-            ):
-                raise ValueError("qualifier_removed")
-        if re.search(r"\b(did not|does not|was not|were not|not checked|without|no)\b", source):
-            if not re.search(r"\b(not|never|without|no|didn't|doesn't|cannot|can't)\b", output):
-                raise ValueError("limitation_removed")
-        for source_marker, output_pattern in (
-            (r"\bonly\b", r"\b(only|just)\b"),
-            (r"\bif\b", r"\b(if|when)\b"),
-            (r"\bbefore\b", r"\b(before|first|prior)\b"),
-            (r"\bolder\b", r"\b(older|old|legacy)\b"),
-        ):
-            if re.search(source_marker, source) and not re.search(output_pattern, output):
-                raise ValueError("condition_removed")
-        if re.search(r"\b(?:this|the) scan did not\b", source):
-            if not (
-                re.search(r"\b(scan|we|our test|checks)\b", output)
-                and re.search(r"\b(not|never|didn't|wasn't|cannot|can't|untested)\b", output)
-                and re.search(
-                    r"\b(check|checked|test|tested|try|tried|verify|verified|confirm|confirmed|tell|know)\b",
-                    output,
-                )
-            ):
-                raise ValueError("scan_limitation_removed")
-            required_topics = {
-                "R01": (r"\b(sign|login|log-in)\b", r"\b(use|access|who)\b"),
-                "R02": (r"\b(protected|alternative|encrypt)\b",),
-                "R03": (r"\b(redirect|https|page)\b",),
-                "R04": (r"\b(sign|access|permission|rule)\b",),
-                "R05": (r"\b(folder|permission)\b",),
-                "R06": (r"\b(connect|message|protected|encrypt)\b",),
-            }
-            if any(not re.search(pattern, output) for pattern in required_topics.get(rule_id, ())):
-                raise ValueError("scan_limitation_changed")
-        if re.findall(r"\b\d+\b", source) != re.findall(r"\b\d+\b", output):
-            raise ValueError("number_changed")
-        if field == "title":
-            anchors = {
-                "R01": r"\btelnet\b",
-                "R02": r"\bftp\b",
-                "R03": r"\bhttp\b",
-                "R04": r"\b(remote|desktop|control)\b",
-                "R05": r"\b(file|sharing|folder)\b",
-                "R06": r"\bmqtt\b",
-                "R07": r"\b(connection|port)\b",
-            }
-            anchor = anchors.get(rule_id)
-            if anchor and not re.search(anchor, output):
-                raise ValueError("service_name_removed")
-        if field in {"recommended_steps", "how_to_check"}:
-            risky_new_commands = ("disable", "delete", "reset", "install", "update", "open", "off")
-            if any(
-                re.search(rf"\b{word}\b", output) and not re.search(rf"\b{word}\b", source)
-                for word in risky_new_commands
-            ):
-                raise ValueError("new_action")
-            allowed_starts = {
-                "if",
-                "when",
-                "first",
-                "check",
-                "review",
-                "look",
-                "confirm",
-                "verify",
-                "compare",
-                "ask",
-                "find",
-                "limit",
-                "restrict",
-                "use",
-                "choose",
-                "make",
-            }
-            if candidate.split()[0].strip(".!,:").casefold() not in allowed_starts:
-                raise ValueError("new_action")
-            if re.search(r"\bask\b", source) and not re.search(r"\b(ask|contact)\b", output):
-                raise ValueError("action_precaution_removed")
-        raise ValueError("unreviewed_rewrite")
+    # Keep the existing internal entry point while isolating the acceptance boundary.
+    _validated_line = staticmethod(validated_line)
 
     def _build_validated_record(
         self,
@@ -541,15 +432,19 @@ class ExplanationService:
         completed_at: str,
         consent_revision: int,
         choices: dict | None = None,
+        previous: ExplanationRecord | None = None,
     ) -> ExplanationRecord:
         ai_fields: list[str] = []
         rejected = False
         rejected_fields = {}
+        retained = retained_values(previous, finding) if previous and previous.content else {}
 
         def accept(
             original: str, candidate: str | None, field: str, index: int | None = None
         ) -> str:
             nonlocal rejected
+            if field_locked(previous, field, index):
+                candidate = retained[field][index] if index is not None else retained[field]
             try:
                 value, changed = self._validated_line(
                     original,
@@ -574,10 +469,25 @@ class ExplanationService:
             originals: list[str], candidates: list[str] | None, field: str
         ) -> list[str]:
             nonlocal rejected
-            if candidates is None:
+            if (
+                previous
+                and previous.rejected_fields
+                and not any(
+                    key == field or key.startswith(f"{field}[") for key in previous.rejected_fields
+                )
+            ):
+                candidates = retained[field]
+            if candidates is None and not previous:
                 return originals
-            if len(candidates) != min(len(originals), 8):
+            if candidates is None or len(candidates) != min(len(originals), 8):
                 rejected = True
+                if previous and previous.rejected_fields:
+                    for index in range(min(len(originals), 8)):
+                        if not field_locked(previous, field, index):
+                            rejected_fields[f"{field}[{index}]"] = "list_length_changed"
+                    if field in previous.ai_fields:
+                        ai_fields.append(field)
+                    return retained[field]
                 rejected_fields[field] = "list_length_changed"
                 return originals
             return [

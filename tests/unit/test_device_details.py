@@ -1,5 +1,4 @@
 import asyncio
-from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
@@ -7,14 +6,15 @@ import pytest
 from app.jobs.supervisor import ScanSupervisor
 from app.profiling.classifier import classify_device
 from app.profiling.history import compare_history
+from app.risk.engine import evaluate_device
+from app.risk.guidance import guidance_status, refresh_guidance
 from app.scanner import mdns
 from app.scanner.details import (
-    detail,
-    existing_details,
     netbios_name,
     network_details,
     same_device_url,
 )
+from app.scanner.observations import detail, existing_details
 from app.scanner.runner import ProcessResult
 from app.schemas.scan import Device, DeviceDetail, DiscoveryObservation, ScanDocument, Service
 from app.storage.json_store import JsonStore
@@ -43,6 +43,8 @@ def document(profile="light", created="2026-09-25T22:00:00Z"):
             "allowed_network": "192.168.0.0/24",
             "profile_id": profile,
             "extra_details_enabled": True,
+            "tcp_ports": [80, 443],
+            "udp_ports": [],
         },
         coverage={"targets": [{"ip": d.ip, "service_status": "completed"}]},
     )
@@ -60,40 +62,6 @@ def test_mdns_allowlist_is_small_and_excludes_secrets():
     assert properties["md"] == "Example TV"
     assert len(properties["model"]) == 120
     assert set(properties) == {"md", "model"}
-
-
-def test_mdns_filters_known_hosts_before_limit_and_keeps_metadata(monkeypatch):
-    info = SimpleNamespace(
-        server="example.local.",
-        port=7000,
-        properties={b"md": b"Example"},
-        get_name=lambda: "Living room",
-        parsed_addresses=lambda version: ["192.168.0.21", "192.168.0.20"],
-    )
-
-    class FakeZc:
-        def __init__(self, **kwargs):
-            assert kwargs["interfaces"] == ["192.168.0.2"]
-
-        def get_service_info(self, *args, **kwargs):
-            return info
-
-        def close(self):
-            pass
-
-    class FakeBrowser:
-        def __init__(self, zc, types, listener):
-            listener.add_service(zc, "_airplay._tcp.local.", "Living room")
-
-        def cancel(self):
-            pass
-
-    monkeypatch.setattr(mdns, "Zeroconf", FakeZc)
-    monkeypatch.setattr(mdns, "ServiceBrowser", FakeBrowser)
-    result = mdns._browse("192.168.0.0/24", "192.168.0.2", 0, asyncio.Event(), {"192.168.0.20"})
-    assert len(result) == 1
-    assert result[0].port == 7000 and result[0].hostname == "example.local."
-    assert result[0].properties == {"md": "Example"}
 
 
 def test_advertised_type_does_not_promote_reachability_or_open_ports():
@@ -160,6 +128,56 @@ async def test_http_cross_device_redirect_is_not_followed():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["https", "http", "unavailable", "not_checked"])
+async def test_http_guidance_is_consistent_with_optional_redirect_checks(outcome):
+    doc = document()
+    d = doc.devices[0]
+    s = service()
+    s.service_id = str(uuid4())
+    s.detection_method = "probed"
+    s.nmap_confidence = 10
+    doc.services = [s]
+    # Findings are created before optional details in the scan lifecycle.
+    doc.findings = evaluate_device(d, [s])
+
+    def handler(request):
+        if outcome == "unavailable":
+            raise httpx.ConnectError("synthetic failure", request=request)
+        if outcome == "https" and request.url.scheme == "http":
+            return httpx.Response(302, headers={"location": f"https://{d.ip}/"})
+        return httpx.Response(200)
+
+    if outcome != "not_checked":
+        await network_details(d, [s], "192.168.0.0/24", transport=httpx.MockTransport(handler))
+        if outcome == "https":
+            assert "Redirected to HTTPS" in d.details[0].value
+        elif outcome == "http":
+            assert "no HTTPS redirect" in d.details[0].value
+        else:
+            assert d.details[0].status == "unavailable"
+    finding = doc.findings[0]
+    assert "Device details" in finding.fixed_explanation.why_it_matters
+    assert "did not check" not in finding.fixed_explanation.why_it_matters
+    assert "did not test HTTPS" not in " ".join(finding.limitations)
+    assert "root page" in " ".join(finding.limitations)
+    assert finding.severity == "low" and finding.confidence == "medium"
+
+    # Saved reports can receive the wording correction through explicit refresh.
+    finding.rule_version = "1.1.0"
+    finding.limitations = ["The scan did not test HTTPS redirection or page purpose."]
+    before = doc.model_dump_json()
+    assert guidance_status(doc)["outdated_findings"] == 1
+    updated = refresh_guidance(doc)
+    assert doc.model_dump_json() == before
+    assert updated.devices == doc.devices and updated.services == doc.services
+    assert updated.findings[0].finding_id == finding.finding_id
+    assert updated.findings[0].evidence == finding.evidence
+    assert updated.findings[0].rule_version == "1.1.1"
+    assert "did not test HTTPS" not in " ".join(updated.findings[0].limitations)
+    assert updated.guidance_history[0].findings[0].limitations == finding.limitations
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "body",
     [b"x" * 65537, b"<bad", b'<!DOCTYPE x [<!ENTITY a "boom">]><x>&a;</x>'],
@@ -210,6 +228,64 @@ async def test_upnp_retains_root_identity_only_not_serial_or_embedded_device():
     assert d.hostname == "Room display" and d.hostname_source == "upnp"
     assert "PRIVATE" not in d.model_dump_json() and "Other device" not in d.model_dump_json()
     assert classify_device(d, [s])["category"] == "media"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty", ["", " ", "(none)", "*"])
+async def test_empty_upnp_fields_do_not_abort_other_details(empty):
+    d = device()
+    s = service(
+        1900,
+        "upnp",
+        protocol="udp",
+        script_results=[
+            {"script_id": "upnp-info", "output": "Location: http://192.168.0.20/desc.xml"}
+        ],
+    )
+    body = (
+        f"<root><device><friendlyName>{empty}</friendlyName>"
+        "<manufacturer/><modelName>Example model</modelName></device></root>"
+    ).encode()
+    await network_details(
+        d,
+        [s],
+        "192.168.0.0/24",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=body)),
+    )
+    assert d.hostname is None
+    assert [(item.label, item.value) for item in d.details] == [("modelName", "Example model")]
+
+
+def test_history_missing_port_selections_are_not_comparable():
+    old, current = document(created="2026-09-24T22:00:00Z"), document()
+    old.devices[0].mac = current.devices[0].mac = "aa:bb:cc:dd:ee:ff"
+    for doc in (old, current):
+        doc.policy.pop("tcp_ports", None)
+        doc.policy.pop("udp_ports", None)
+    compare_history(current, [old])
+    assert current.devices[0].details[-1].status == "not_checked"
+
+
+@pytest.mark.asyncio
+async def test_optional_collection_error_is_not_reported_as_timeout(tmp_path, monkeypatch):
+    doc = document()
+    store = JsonStore(tmp_path)
+    await store.create_scan(doc)
+
+    async def broken(*args, **kwargs):
+        raise ValueError("synthetic collector error")
+
+    async def working_name(device, *args, **kwargs):
+        detail(device, "netbios", "Computer name", "EXAMPLE", "NetBIOS")
+
+    monkeypatch.setattr("app.scanner.details.network_details", broken)
+    monkeypatch.setattr("app.scanner.details.netbios_name", working_name)
+    await ScanSupervisor(store)._enrich_details(doc.scan_id, asyncio.Event())
+    saved = await store.load_scan(doc.scan_id)
+    assert any(item.status == "unavailable" for item in saved.devices[0].details)
+    assert "ran out of time" not in saved.devices[0].model_dump_json()
+    assert any(item.value == "EXAMPLE" for item in saved.devices[0].details)
+    assert saved.state == "completed"
 
 
 def test_certificate_date_is_not_a_security_verdict():

@@ -1,0 +1,1 @@
+participant_id,condition,scenario,order,model,prompt_version,report_version,ai_fallback,q1_answer,q1_score,q2_answer,q2_score,q3_answer,q3_score,q4_answer,q4_score,time_seconds,clarity_1_to_5,confidence_1_to_5,help_requested,confusing_words,second_reviewer_notes

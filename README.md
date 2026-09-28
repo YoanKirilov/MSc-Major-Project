@@ -14,12 +14,31 @@ The report describes what the selected checks observed. A missing finding does n
 - Seven deterministic finding rules for selected services, with evidence, severity, limitations, and actions. Device type hints are conservative. Incomplete or failed checks remain visible in the report.
 - Automatic Ollama preparation for the report overview and all findings, including reports with no findings or unsuccessful checks. The model selects reviewed alternatives tied to the saved facts. Original guidance remains available; an AI outage opens the factual report with an explicit retry message.
 - Actions on a saved report to refresh guidance or retry AI preparation without rescanning. Unfinished host checks can be retried in a new scan limited to those devices. **Saved reports** reopens local history.
-- Host checks receive at most two attempts, with separate timeout, scanner-error, invalid-output, output-limit and cancellation reasons. Light checks allow up to 180 seconds per host inside Nmap and 210 seconds per process; Deep limits remain 900/960 seconds. Two host workers share a global two-process limit, with a 30-minute host-stage budget; unfinished checks remain explicit.
+- Host checks receive at most two attempts, with separate unreachable-device, timeout, scanner-error, invalid-output, output-limit and cancellation reasons. Light checks allow up to 180 seconds per host inside Nmap and 210 seconds per process; Deep limits remain 900/960 seconds. Two host workers share a global two-process limit, with a 30-minute host-stage budget; unfinished checks remain explicit.
 - Device names combine Nmap discovery/service results, reverse DNS and optional mDNS, recording source, time and disagreements. Optional Pi-hole v6 integration adds names from address leases or matched historical records. A failed Pi-hole source does not discard names from another working source. A name does not establish reachability or device identity.
 - Local JSON storage with validated documents, per-scan locks, atomic writes, previous-version backups, and compact history summaries. The backend also supports labelled fictional demo data and saved demo runs.
 - A loopback-only web server with a bootstrap session URL, an HTTP-only session cookie, and Origin and CSRF checks for changes. The configured scan scope is checked on the server.
 
 ## Requirements and installation
+
+Recent usability improvements include a refresh-safe **Gathering device details** stage,
+plain-language device cards above the technical table, and targeted Ollama retries that
+preserve accepted explanations. Failed devices and historical names remain explicit.
+Partly accepted AI wording now offers **Retry remaining wording**. Neutral counts show
+the actual priority breakdown, and repeated actions are grouped by affected devices.
+Relevant saved web checks appear beside explanations with their limitations.
+Reports consistently prefer reviewed plain-language guidance while retaining original
+wording and AI provenance. Device cards list observed features; confirmed web services
+include safe address-bar instructions. AI preparation shows saved explanation counts
+after refresh. Validation errors and busy storage have readable messages, and blocked
+browser session storage no longer prevents startup. Settings/report lock acquisition
+is limited to five seconds; a busy API operation returns a retryable response.
+Use **Add your own nickname** on a device card to assign a local label; edit and clear
+it to remove it. Nicknames are not detected names or proof of identity. Reuse across
+reports requires a recent, unique same-scope adapter-address match, never just an IP.
+Windows/Ubuntu automation is configured in `.github/workflows/checks.yml`; it does not
+run live network scans. See [verification status](docs/testing.md) and the
+[reader-study kit](docs/evaluation-session.md).
 
 - Python **3.11 or newer**.
 - Nmap for real scans. Install it separately and make it available on `PATH`, or set `APP_NMAP_PATH` to the executable. On Windows, a normal Nmap installation is detected in the usual Program Files location when possible. Run `doctor` below to verify it. Demo data and offline tests do not need Nmap.
@@ -79,11 +98,14 @@ Each scan request must include an authorisation flag. The server restricts disco
 ### Richer device details in both scan modes
 
 Enable **mDNS** in Settings to collect short local announcements. The browser listens
-on the selected local interface for about 2.5 seconds, keeping at most 64 announcements
+on the selected local interface for about four seconds, keeping at most 64 announcements
 from eight devices. Reaching a limit is disclosed; absence of an announcement does not
 mean absence of a device. Known-host scans retain only requested hosts, although mDNS
 browsing itself uses local multicast. Only selected model/manufacturer TXT fields are
-kept, not arbitrary TXT data, serial numbers or passwords.
+kept, plus an explicit friendly-name field when advertised, not arbitrary TXT data,
+serial numbers or passwords. Up to four service-information lookups run concurrently,
+each with a 750 ms wait and one retry, rather than blocking announcement callbacks.
+At most 64 distinct service instances are resolved during this bounded window.
 
 The shared extra-information stage has two workers and a 30-second budget, separate
 from mDNS, history lookup and process cleanup. It checks at most two observed HTTP
@@ -107,6 +129,13 @@ does not prove an attack, and an unmatched device is not labelled a new intruder
 Existing reports are not rewritten; these details appear on newly collected reports.
 Raw device metadata remains local and is not added to Ollama input.
 
+If a device does not supply a name this time, a direct name observation from the last
+seven days may be shown as **previously reported**. This requires the same configured
+network and a matching, nonduplicated MAC address; matching only an IP is insufficient.
+The original observation time and source report are retained. Historical names do not
+renew their own expiry, override fresh names, establish reachability, or strengthen
+device classification. Earlier conflicting names remain marked as conflicting.
+
 ### Local AI report preparation
 
 Install Ollama separately, start it locally, and download the default model:
@@ -119,7 +148,7 @@ The default provider is Ollama at `http://127.0.0.1:11434`. The dashboard and Se
 
 The backend first saves factual scan results, then sends selected structured facts to the loopback Ollama API. IP and MAC addresses, hostnames, device/service IDs and raw scanner output are excluded. The report overview covers device and service counts, findings, coverage, failed checks and next steps. Each accepted sentence must match a reviewed alternative for its source; AI cannot change severity, evidence or rule-based actions.
 
-Requests use batches of up to six items, prioritise higher-severity findings, and have at most two attempts per batch. There is no silent 24-finding cutoff. A 15-minute overall deadline includes waiting for the local model slot; individual calls have a 180-second ceiling in addition to the configured HTTP timeout. Accepted batches are saved and reused on retry. Failed preparation shows original guidance with a visible retry message, and accepted originals are not falsely labelled rewritten. Model, prompt version, input hash, output and failure reasons are stored. Readability still requires evaluation with nontechnical readers.
+Requests use batches of up to six items, prioritise higher-severity findings, and have at most two attempts per batch. There is no silent 24-finding cutoff. A 15-minute overall deadline includes waiting for the local model slot; individual calls have a 180-second ceiling in addition to the configured HTTP timeout. Accepted batches and progress counts are saved and reused on retry. Failed preparation shows reviewed rule-based guidance with a visible retry message. The display consistently prefers approved plain-language alternatives, including where the model retained original wording; this editorial choice is not presented as new AI output. Original guidance and model, prompt version, input hash, output and failure reasons remain available. Readability still requires evaluation with nontechnical readers.
 
 ### Optional Pi-hole names
 

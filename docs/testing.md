@@ -1,5 +1,295 @@
 # Testing status
 
+## Fixes and usability improvements verified - 27 September 2026
+
+Final command: `.venv-brief/Scripts/python.exe scripts/check.py --browser --ollama`.
+Artifacts: `.test-artifacts/checks-cf166d0d36/`.
+
+- **306 Python tests passed**: 304 offline, one real Edge workflow using synthetic
+  scanner/provider responses, and one real local-Ollama test using synthetic facts.
+- **24 JavaScript tests passed**, plus seven JavaScript syntax checks and Ruff
+  lint/format (92 Python files). The runner now includes the shared API-client tests.
+- New regressions cover structured validation messages, blocked browser storage,
+  stale/missing AI records, unreachable hosts in both profiles, bounded storage locks,
+  unchanged evidence, plain report projections, and persisted AI batch counts/cache reuse.
+  The browser verifies refresh during AI preparation and the new feature labels.
+- Fresh installed wheel passed dependencies, four pages, eight assets and demo
+  create/read/reopen: `.test-artifacts/package-f877ed050f/`.
+- Reopened the previous isolated home report in Edge at desktop/mobile sizes: nine
+  saved wording records validated, all finding panels opened, refresh passed, no
+  JS/HTTP errors or page overflow. Its saved scan hash is unchanged. Read-only report
+  display now consistently uses reviewed plain-language choices and shows safe
+  address-bar instructions for confirmed web services. Artifacts remain under
+  `.test-artifacts/live-review-cnxvbgno/` (`review.json` and screenshots).
+- Replayed eleven retained host results and reproduced all eight findings. Replaying
+  the two retained zero-host results now raises `HostUnreachable`, not generic invalid
+  output. Historical report reason codes were not rewritten.
+- All **30 production reports** still validate, none changed; largest 179,875 bytes.
+
+The first full pass found a browser assertion expecting the old capitalised outage
+message; it was updated to the explicit AI-outage message and the final full run passed.
+Existing dependency deprecations remain (1,091 warnings); they are not test failures.
+No new network scan, Pi-hole installation, production-data migration, commit/push or
+running-backend restart was performed. Actual Pi-hole, controlled live Deep, Ubuntu/CI
+and nontechnical-reader evaluation remain pending. Older entries below are historical;
+their three readability/classification follow-ups are now implemented.
+
+## End-to-end architecture and organisation check - 27 September 2026
+
+Final command: `.venv-brief/Scripts/python.exe scripts/check.py --browser --ollama`,
+with pytest coverage enabled through `PYTEST_ADDOPTS` and an isolated coverage file.
+
+- **290 Python tests and 18 JavaScript tests passed**, seven JavaScript syntax checks,
+  Ruff lint/format (90 Python files). Run: `.test-artifacts/checks-c8915fa3eb/`.
+- **88% Python statement coverage** (2,920/3,301 statements). Storage 92%, supervisor
+  89%, AI orchestration 92%, pure validator 81%, scan/settings APIs 71%. Coverage
+  identifies testing gaps, not a reliability score. JSON report:
+  `.test-artifacts/end-to-end-20260927/final-coverage.json`.
+- The browser check uses synthetic Light/Deep observations and provider failures;
+  the separate local-Ollama test uses synthetic facts. Refresh, saved history,
+  rejected wording/retry, nickname edit/removal and expired-session paths remain covered.
+- The previous real report reopened in Edge at desktop/mobile sizes: nine wording
+  records validated, all finding panels opened, refresh passed, no JS/HTTP errors
+  or page overflow, saved scan hash unchanged. Replaying its eleven retained Nmap
+  host results reproduced all eight findings. This is replay, not a fresh scan.
+- All **30 production reports** read successfully without changes (largest 179,875 bytes).
+- Fresh installed wheel: dependencies, four pages, eight assets, demo create/read/reopen
+  passed; includes the extracted validator. `.test-artifacts/package-6f975c7a34/`.
+- The `.venv` used by VS Code passes `pip check` and `python -m app doctor`, reporting
+  Nmap 7.991 and a configured AI provider. Real model availability was tested separately.
+
+Organisation only: extracted 155 lines of pure validation from the AI service; compared
+the function body unchanged after dedenting/renaming. New tests check the existing
+service entry point delegates to that validator and all substantive application modules
+are import-reachable. All shipped HTML/JS/CSS remains referenced. No source, reports,
+virtual environments or user task changes were removed.
+
+The three known follow-ups from the live review remain open, as do actual Pi-hole,
+controlled live Deep/lab, Ubuntu/remote CI and nontechnical-reader evaluation. Existing
+Starlette/httpx and pytest-asyncio deprecations remain (1,019 warnings in the final run).
+No new network scan, commit, push or running-backend restart was performed.
+
+## Final regression recheck - 27 September 2026
+
+- Full runner with `--browser --ollama`: **288 Python tests and 18 JavaScript tests
+  passed**, plus seven JavaScript syntax checks and Ruff lint/format (88 Python files).
+  Artifacts: `.test-artifacts/checks-0ea1be58d7/`. Existing dependency deprecations
+  remain visible (1,019 warnings); no test failures.
+- Fresh installed wheel passed dependency consistency, four pages, eight static
+  assets and demo create/read/reopen: `.test-artifacts/package-0061941096/`.
+- The actual `.venv` referenced by VS Code tasks imports the app, passes `pip check`,
+  and resolves Nmap 7.991. `tasks.json` parses; its current edit is formatting-only.
+- Read-only audit: all **30 saved reports** validate, none were changed, largest
+  179,875 bytes. The two most recent completed reports have ready AI, two requests
+  each and zero rejected fields; the intervening report was cancelled, not failed.
+- Replayed the previous isolated live scan: eleven host results and all eight
+  findings still match retained evidence. No new network scan was run.
+
+The three follow-ups in `live-check-20260926.md` remain unfixed: classify zero-host
+Nmap output separately from invalid data, consistently prefer beginner wording, and
+give usable instructions for opening a device page/understanding feature counts.
+Real Pi-hole, Ubuntu/remote CI and participant comprehension remain unverified.
+No application code, user task edits, running backend or saved reports were changed.
+
+## Beginner-report brief implementation verification — 26 September 2026
+
+- `.venv-brief/Scripts/python.exe scripts/check.py --browser --ollama`: **288 Python
+  tests passed** (286 offline, one Edge workflow, one local Ollama synthetic-facts test),
+  **18 JavaScript tests**, seven JS syntax checks, Ruff lint and formatting (88 Python
+  files). Artifacts: `.test-artifacts/checks-f172d9877d/`.
+- New regressions cover partial-field retry across requests, preserved accepted list
+  elements, constrained output shape, nickname edit/removal/revision conflicts, no
+  IP-only reuse, scope/age/future/duplicate-MAC safeguards, corrupt annotations leaving
+  reports accessible, request boundaries, neutral counts and readable check labels.
+- Edge exercised nickname creation with literal `<script>` text, reload and removal,
+  both scan profiles, AI outage/retry and existing progress/session flows. PUT now
+  participates in both the server Origin/CSRF boundary and browser header handling.
+- Real `llama3.2:3b`, disposable copy of the latest report: **16 rejected fields → 0**,
+  **two additional requests**, ready status, every previously accepted field preserved,
+  original scan file hash unchanged and devices/services/findings/coverage identical.
+  Artifacts: `.test-artifacts/brief-ai-719a1wph/verification.json`.
+- That copy was reopened in Edge at 1440 px and 390 px: eight wording records validated
+  against approved choices, all finding panels opened, refresh passed, no JS/HTTP errors
+  or page-level horizontal overflow, saved report unchanged. Screenshots and extracted
+  text are under `.test-artifacts/brief-ai-719a1wph/`; they contain private identifiers.
+- Fresh wheel/runtime-lock installation passed `pip check`, four pages, **eight assets**,
+  and demo create/read/reopen. Artifacts: `.test-artifacts/package-9a975d7b43/`.
+
+During development the old output shape still allowed wrong action ordering and the
+first stricter schema used a boolean keyword unsupported by the local provider. The
+final schema uses compatible object forms plus exact ordered choices for short lists;
+the application still independently validates all output. The live-provider test now
+allows the documented one bounded retry, while requiring ready status, no rejected
+fields and validated wording. No factual validation was weakened to pass tests.
+
+Existing Starlette/httpx and pytest-asyncio/Python 3.14 deprecation warnings remain.
+No new live network scan was run. Existing user reports and the running backend were
+not modified. This is software and wording verification, not a completed human study.
+
+## Live scan followed by full checks — 26 September 2026
+
+See [the live evidence and beginner-readability review](live-check-20260926.md).
+One authorised home Light scan completed all ten discovered host checks, recorded
+11 open services and seven review items (three low, four informational), and prepared
+AI explanations in two requests. The full suite then passed: **276 Python tests and
+17 JavaScript tests**, browser/local-Ollama checks, lint, formatting and syntax checks.
+Fresh installed-wheel verification passed; all 27 existing reports read successfully.
+
+The review found a confirmed AI retry gap: partially accepted records are cached as
+ready, so another preparation request does not retry their rejected fields. Sixteen
+fields retained original text in this scan. Other follow-ups concern the count-based
+red ring, exposed internal field names, repetitive/generic actions and unknown-device
+recognition. No application-code fix was made in this checks-only turn.
+
+## Progress, device summaries and AI retry follow-through - 26 September 2026
+
+Final command: `.venv-brief/Scripts/python.exe scripts/check.py --browser --ollama`.
+
+- **274 offline Python tests passed.** New cases cover persisted enrichment progress,
+  targeted AI retry, continuation after an invalid batch and sanitised parser diagnostics.
+- **1 real Edge workflow passed** with synthetic scanner/provider responses, including
+  refresh while gathering details, refresh during AI, device cards, saved history,
+  AI outage/retry, expired sessions, and Light/Deep report paths.
+- **1 real local Ollama test passed**, using synthetic facts; not a live network scan.
+- **17 JavaScript tests**, six syntax checks, Ruff lint and formatting passed (83 Python
+  files). Full-run artifacts: `.test-artifacts/checks-5b11c7ad2b/`.
+- `scripts/check_package.py` built a wheel, installed it with all runtime lock pins in
+  a fresh Windows/Python 3.14 environment, passed `pip check`, and served four pages,
+  seven assets and demo create/read/reopen from the installed package. Artifacts:
+  `.test-artifacts/package-11d81b4818/`. A subsequent parser change only wrapped long
+  diagnostic string literals for lint; final source tests above cover that change.
+
+The initial sandboxed test invocation failed because Windows denied access to its
+temporary test directory. The approved isolated reruns passed; no production data or
+permissions were changed to bypass this. Existing Starlette/httpx and pytest-asyncio/
+Python 3.14 deprecation warnings remain visible.
+
+Prepared `.github/workflows/checks.yml` for Windows/Ubuntu, Python 3.12/3.14, synthetic
+browser checks and fresh-wheel verification. Action commit pins were resolved from
+official GitHub repositories. It was not committed, pushed or run remotely; Ubuntu
+compatibility is not yet established. The reader-study session kit and empty results
+template are prepared, not completed participant research.
+
+No live network scan, Pi-hole request or rewrite of existing user reports was performed.
+The previous `HOST_RESULT_INVALID` live failure lacks retained XML; the exact cause is
+still unknown. New failures now preserve reviewed diagnostic detail instead of only
+the broad invalid-output category. Restart the normal backend to load these changes.
+
+## Review fixes - 26 September 2026
+
+Fixed three issues found during code review:
+
+- Light scan parsing now retains explicit protocol/port states from Nmap
+  `extraports` summaries. Closed summaries establish a response; ambiguous,
+  malformed or out-of-profile entries do not. Deep scans retain response evidence
+  without expanding bulk non-open summaries into thousands of service records.
+- Discovery passes its candidate addresses to mDNS before the eight-host cap and
+  filters saved announcements to the requested target range. A synthetic /30
+  scan within a busy /24 exercises the complete supervisor/browser path.
+- HTTP guidance now points to any recorded optional redirect check and explains
+  its root-page limitation. It no longer asserts that redirection was never tested.
+  Rule R03 is 1.1.1, the ruleset is 1.2.1, and reviewed-wording cache version is
+  4.2.1. Existing reports can receive the correction through explicit guidance refresh.
+
+Verification: `.venv-brief/Scripts/python.exe scripts/check.py` passed **270 Python
+tests** (18 added regression cases), **16 JavaScript tests**, six JavaScript syntax
+checks, Ruff lint and formatting. Artifacts: `.test-artifacts/checks-9db3732d5a/`.
+Existing Starlette and pytest-asyncio deprecation warnings remain. Tests used
+isolated data; no saved user reports were changed. No live network scan, real
+browser workflow or live Ollama check was run for these fixes.
+
+## mDNS name reliability and authorised home scan - 25 September 2026
+
+The two latest user reports both contained 11 device results, but names fell from
+three to two. The missing TV name had the same recorded MAC in both reports; its
+AirPlay/Google Cast announcements were absent in the later report. All announcements
+that were collected had been assigned names, and neither mDNS cap was reached. This
+establishes missing observations, not that the new classification rules erased names.
+Serial 300 ms lookups in a short discovery window were a plausible reliability weakness,
+not a proven explanation for the TV's silence.
+
+Implemented nonblocking mDNS lookup workers, a four-second collection window and one
+retry per service; explicit friendly-name/hostname fallbacks; RAOP display-prefix cleanup;
+and visibly historical names from recent direct observations matched by scope/MAC.
+Historical labels cannot override fresh names, extend their own age, imply reachability,
+or strengthen device classification. Conflicting prior labels stay marked as conflicting.
+
+Verification before scanning: **254 Python tests passed** (252 offline, real Edge with
+synthetic scans, and real local Ollama with synthetic facts), **16 JavaScript tests**,
+six JS syntax checks and Ruff lint/format passed. Artifacts:
+`.test-artifacts/checks-168224e841/`. Additional historical-label assertions subsequently
+passed in the report JavaScript suite. New regressions cover mDNS retry/concurrency,
+cancellation cleanup, name preference, stale/future/cross-network/duplicate/IP-reuse
+rejection, fresh-name precedence and preservation of historical conflicts.
+
+The user explicitly requested a live scan. Active Wi-Fi was confirmed inside the saved
+home range before starting one **Light** scan through the authenticated application API.
+The currently open app and its data folder were left untouched. The check used isolated
+storage with copies of recent same-scope reports to exercise historical-name fallback.
+
+| Live result | Observation |
+| --- | --- |
+| Discovered devices | 10 |
+| Completed device checks | 9 |
+| Unfinished device checks | 1; invalid Nmap host result after two attempts |
+| Confirmed open services | 11 |
+| Findings | 7: three low, four informational |
+| Current name sources | 1 mDNS, 1 reverse DNS |
+| Historical name | Sony TV restored with same-MAC match, historical label and prior conflict |
+| Total named devices | 3; **only two were current name observations** |
+| Fresh mDNS advertisements | 2, from one device; no fresh TV advertisement |
+| AI | Initially six findings plus overview ready; one response invalid. Saved-evidence retry completed all seven findings and overview with one additional request. Evidence unchanged. |
+| Real browser | Historical label/provenance, unfinished-check disclosure, refresh and no JS errors passed |
+
+This is a **partial scan**, not a claim that every device was checked. The naming
+workaround worked, but the live run does not prove increased fresh mDNS response rate.
+The unfinished host check and occasional invalid Ollama response remain follow-up issues.
+No Pi-hole installation/query, Deep scan, wider network or packet capture was involved.
+
+Private local artifacts: `.test-artifacts/live-names-kwlhe1ul/`; report ID
+`78093192-6934-4e7d-890a-41e70cfd803f`; screenshots `report.png` and `historical-name.png`.
+These remain outside Git and the normal app history. Restart the normal backend before
+using the updated naming code for a new scan. Existing reports were not rewritten.
+
+## Follow-up fault review and organisation - 25 September 2026
+
+Final `python scripts/check.py --browser --ollama`: **240 Python tests passed**
+(238 offline, one real Edge synthetic-network workflow, one real local Ollama test
+with synthetic facts). **16 JavaScript tests**, all six JS syntax checks, Ruff lint
+and formatting passed. Artifacts: `.test-artifacts/checks-ce405808ea/`.
+
+Eight new regression cases first reproduced four defects, then passed after fixes:
+
+- Empty, whitespace and placeholder UPnP fields raised `TypeError`, aborting later
+  optional details. Empty values are now skipped without dropping valid model metadata.
+- Missing saved port selections compared equal and allowed unjustified service-history
+  comparisons. Both reports must now contain explicit port-selection lists.
+- Optional collection errors also acquired a timeout/cancellation explanation and
+  prevented the next independent lookup. Errors, unfinished work and successful sources
+  are now kept distinct; a failing web collector does not suppress computer-name lookup.
+- Port-table guesses or unknown service identification counted as confirmed device-type
+  evidence. Only probed open-service names now strengthen a type suggestion.
+
+Organisation: extracted optional scheduling/checkpointing to `app/jobs/enrichment.py`
+and pure observation formatting to `app/scanner/observations.py`. History no longer
+imports the HTTP collector to format text. The import-reference audit inspected 44
+application modules and found no unreached non-initialiser module. The asset traversal
+test covers every shipped stylesheet/script. No source files were deleted.
+
+A fresh wheel under `.test-artifacts/review-enrichment-package/` was installed only in
+`.venv-package`. Explicit imports of the reorganised modules, four pages, seven static
+assets, demo read/create/reopen and `pip check` passed. The final verification helper
+was also checked after adding those import assertions.
+
+Read-only configured-storage check: **25 readable reports** (15 completed, six partial,
+three failed, one cancelled), no device/report ownership mismatches, and referenced
+guidance files readable. No report was rewritten, reconciled, recovered or deleted.
+This confirms file consistency, not the truth of historical network observations.
+
+No live network scan or Pi-hole query was run. Live richer-collector/Deep interoperability,
+real Pi-hole, Ubuntu and reader-study checks remain separate work. Existing Starlette
+test-client and pytest-asyncio/Python 3.14 deprecation warnings remain visible.
+
 ## Richer device details - 25 September 2026
 
 - `python scripts/check.py --browser --ollama`: **232 Python tests passed** (230

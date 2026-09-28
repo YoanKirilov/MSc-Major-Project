@@ -17,7 +17,7 @@ export function serviceLabel(service, fallback = 'Selected service') {
     ntp: 'Clock synchronisation (NTP)',
   };
   const name = service.name === 'http' && service.tunnel === 'ssl' ? 'https' : service.name;
-  const label = names[name] || name || 'Unidentified connection';
+  const label = names[name] || name || 'Unidentified feature';
   const inferred = service.detection_method === 'table' ? ' (name inferred from port)' : '';
   return `${label}${inferred} — ${String(service.protocol || 'tcp').toUpperCase()} port ${service.port}`;
 }
@@ -56,17 +56,23 @@ export function usableAiRecord(record, data) {
 
 export function aiExplanationNote(data) {
   const records = data.explanations || [];
+  const allRecords = [...records, data.report_explanation].filter(Boolean);
+  const outdated = allRecords.some((record) => record.prompt_version && record.prompt_version !== data.guidance_status?.ai_prompt_version);
+  const rejected = [...records, data.report_explanation].filter(Boolean).reduce((total, record) => total + Object.keys(record.rejected_fields || {}).length, 0);
   const count = records.filter((record) => usableAiRecord(record, data)).length;
   if (data.phase === 'analysis') return 'Ollama is preparing your plain-language report.';
+  if (outdated) return 'Older AI wording is hidden because it predates the current validation checks. Reviewed rule-based guidance is shown where needed; prepare this saved report again to update its AI wording.';
+  if (rejected) return 'Some explanations are simplified; other parts use reviewed rule-based guidance because their AI wording could not be accepted. Retry remaining wording without scanning again.';
   if (data.analysis_status === 'failed') return 'The scan observations are saved, but the AI explanation did not finish. Retry report preparation; no new scan is needed.';
-  if (data.analysis_status === 'ready') {
-    const rejected = [...records, data.report_explanation].filter(Boolean).reduce((count, record) => count + Object.keys(record.rejected_fields || {}).length, 0);
-    return `Ollama reviewed the report overview and all ${data.findings?.length || 0} findings. Original wording is retained where appropriate.${rejected ? ` ${rejected} wording field(s) did not pass validation; their original text was kept.` : ''}`;
+  const reviewed = (record) => record?.content && record.prompt_version === data.guidance_status?.ai_prompt_version
+    && !Object.keys(record.rejected_fields || {}).length
+    && (record.status === 'ready' || record.fallback_reason === 'not_simpler');
+  if (data.analysis_status === 'ready' && reviewed(data.report_explanation)
+      && (data.findings || []).every((finding) => records.some((record) => record.finding_id === finding.finding_id && reviewed(record)))) {
+    const total = data.findings?.length || 0;
+    return `Ollama reviewed the report overview and ${total} review item${total === 1 ? '' : 's'}. This view prefers reviewed plain-language guidance; original wording remains available in details.`;
   }
   if (count) return `Local AI selected reviewed wording for ${count} finding${count === 1 ? '' : 's'}; remaining wording is rule-based.`;
-  if (records.some((record) => record.source === 'ai' && record.prompt_version !== data.guidance_status?.ai_prompt_version)) {
-    return 'Older AI wording is hidden because it predates the current validation checks. Rule-based guidance is shown.';
-  }
   if (records.some((record) => record.fallback_reason === 'provider_timeout')) return 'The local AI timed out. Rule-based guidance is shown.';
   if (records.some((record) => ['provider_unavailable', 'provider_not_configured'].includes(record.fallback_reason))) {
     return 'Local AI was unavailable. Rule-based guidance is shown.';
@@ -77,6 +83,15 @@ export function aiExplanationNote(data) {
   return records.length
     ? 'No reviewed alternative wording was accepted. Rule-based guidance is shown.'
     : 'AI has not been used for this report. Rule-based guidance is shown.';
+}
+
+export function analysisProgressText(data) {
+  const p = data.analysis_progress;
+  if (!p || !Number.isInteger(p.total) || p.total < 1) return 'Ollama is reading the saved results and choosing clear wording.';
+  if (p.state === 'waiting') return 'Waiting for local AI to become free. Your scan observations are saved.';
+  const complete = Math.max(0, Math.min(p.completed || 0, p.total));
+  return `Prepared ${complete} of ${p.total} explanations.`
+    + (p.active > 0 ? ` Working on ${p.active} remaining explanation${p.active === 1 ? '' : 's'} (attempt ${p.attempt} of 2).` : ' Saving the results of this step.');
 }
 
 export function checkSummary(check) {

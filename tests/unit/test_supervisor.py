@@ -184,9 +184,10 @@ async def test_mdns_advertisement_adds_in_scope_host_without_creating_a_finding(
     )
     await store.create_scan(scan)
 
-    async def fake_browser(scope, interface_ip, cancel_event):
+    async def fake_browser(scope, interface_ip, cancel_event, *, target_ips):
         assert scope == "192.168.56.8/30"
         assert interface_ip == "192.168.56.9"
+        assert target_ips == {"192.168.56.9", "192.168.56.10"}
         return [
             DiscoveryObservation(
                 ip="192.168.56.9", advertised_name="Home printer", service_type="_ipp._tcp.local."

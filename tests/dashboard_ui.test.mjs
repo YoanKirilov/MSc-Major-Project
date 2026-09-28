@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { analysisProgressText } from '../app/static/js/report.mjs';
 
 const scanId = '11111111-1111-4111-8111-111111111111';
 const key = 'network-assessor-pending-scan';
@@ -18,7 +19,7 @@ function setup(request, saved = null) {
     getItem(k) { return storage.get(k); }, setItem(k, v) { storage.set(k, v); }, removeItem(k) { storage.delete(k); },
   } };
   const document = { querySelector(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, querySelectorAll() { return []; } };
-  const context = vm.createContext({ document, window, request });
+  const context = vm.createContext({ document, window, request, analysisProgressText });
   const source = readFileSync(new URL('../app/static/js/dashboard.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\nloadStatus\(\);\s*$/, '');
   vm.runInContext(source, context);
@@ -52,10 +53,35 @@ test('refresh recovers saved AI progress without starting another scan', async (
   assert.equal(app.elements.get('#scanLaunchButton').disabled, true);
   assert.deepEqual(calls, ['/api/status', `/api/live-scans/${scanId}/progress`]);
 });
+
+test('AI progress shows saved completed counts and distinguishes waiting', async () => {
+  const app = setup(async (path) => path === '/api/status' ? ready : {
+    state: 'running', phase: 'analysis',
+    analysis_progress: { state: 'preparing', total: 9, completed: 6, active: 3, attempt: 1 },
+  }, scanId);
+  await app.load();
+  assert.match(app.elements.get('#progressDetail').textContent, /Prepared 6 of 9 explanations/);
+  assert.match(app.elements.get('#progressDetail').textContent, /Working on 3/);
+  assert.equal(app.elements.get('#progressPercent').textContent, '96%');
+  assert.match(analysisProgressText({ analysis_progress: { state: 'waiting', total: 9 } }), /Waiting for local AI/);
+});
 test('backend active scan is recovered even without browser storage', async () => {
   const app = setup(async (path) => path === '/api/status' ? { ...ready, active_scan_ids: [scanId] } : { state: 'running', phase: 'service_scan' });
   await app.load();
   assert.equal(app.storage.get(key), scanId);
+});
+
+test('refresh recovers device-details progress without starting another scan', async () => {
+  const calls = [];
+  const app = setup(async (path) => {
+    calls.push(path);
+    return path === '/api/status' ? ready : { state: 'running', phase: 'enrichment' };
+  }, scanId);
+  await app.load();
+  assert.equal(app.elements.get('#progressPhase').textContent, 'Gathering device details');
+  assert.equal(app.elements.get('#scanLaunchButton').disabled, true);
+  assert.deepEqual(calls, ['/api/status', `/api/live-scans/${scanId}/progress`]);
+  assert.equal(app.window.location.href, undefined);
 });
 test('scan completed while tab was closed opens its saved report', async () => {
   const app = setup(async (path) => path === '/api/status' ? ready : { state: 'completed', phase: 'finished' }, scanId);

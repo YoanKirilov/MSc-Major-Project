@@ -7,9 +7,13 @@ people understand the report or that every device on a live network will answer.
 
 Use Python 3.12 on the intended Ubuntu lab host. In a new virtual environment, install
 `python -m pip install -r requirements-dev.lock -e ".[dev]"`, then run `python -m pip check`.
-The earlier pins were resolved and tested on Windows/Python 3.14. The latest
-platformdirs/Uvicorn/Ruff pin changes are prepared but untested; validate them first.
+The runtime pins, including platformdirs/Uvicorn, were installed in a fresh Windows/
+Python 3.14 wheel environment on 26 September 2026 and passed package verification.
+This does not establish Linux compatibility or validate every development pin.
 Verify Linux wheels and compatibility before claiming the reference platform is supported.
+
+The prepared GitHub Actions matrix covers Windows/Ubuntu and Python 3.12/3.14, using
+synthetic browser scans and `scripts/check_package.py`. Its remote runs remain pending.
 
 Run the offline Python suite and the JavaScript tests described in `testing.md`.
 Build a wheel with `python -m build --wheel`. Install the wheel and `requirements.lock`
@@ -49,6 +53,9 @@ DHCP/client export; there is no single format supported by all routers. Routing 
 alone do not provide a reliable list of device names.
 
 ## Nontechnical-reader study
+
+Use [the session kit](evaluation-session.md) and the header-only
+[results template](evaluation-results-template.csv). Neither contains invented participant results.
 
 Recruit participants who do not work in computing, using the university's required
 consent/ethics process. Use synthetic examples: an observed service needing review,

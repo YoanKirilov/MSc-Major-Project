@@ -89,6 +89,7 @@ def refresh_guidance(document: ScanDocument) -> ScanDocument:
             "report_explanation": None,
             "analysis_status": "not_started",
             "analysis_error": None,
+            "analysis_progress": None,
             "versions": versions,
             "guidance_history": [*document.guidance_history, snapshot],
             "guidance_updated_at": now,

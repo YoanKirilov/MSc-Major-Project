@@ -1,7 +1,9 @@
 """Conservative comparisons against a bounded set of previous local reports."""
 
-from app.scanner.details import detail
-from app.scanner.names import normalise_mac
+from datetime import datetime, timedelta
+
+from app.scanner.names import add_name, normalise_mac
+from app.scanner.observations import detail
 
 
 def complete(doc, ip):
@@ -21,6 +23,57 @@ def format_ports(values):
     return (
         ", ".join(labels[:12]) + (f" (+{len(labels) - 12} more)" if len(labels) > 12 else "")
     ) or "none"
+
+
+def restore_previous_name(device, matches, created_at):
+    """Display a recent direct observation as historical, never a current reply."""
+    if device.hostname:
+        return
+    try:
+        now = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return
+    for report, old in matches:
+        if not old.hostname or old.hostname_source not in {
+            "nmap",
+            "nmap_discovery",
+            "reverse_dns",
+            "mdns",
+            "upnp",
+            "netbios",
+            "pihole_dhcp",
+            "pihole_network",
+        }:
+            continue  # Do not repeatedly extend the lifetime of a historical name.
+        observed = old.hostname_observed_at or old.observed_at or report.created_at
+        try:
+            age = now - datetime.fromisoformat(observed.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            continue
+        if not timedelta(0) <= age <= timedelta(days=7):
+            continue
+        add_name(
+            device,
+            old.hostname,
+            "saved_report",
+            observed,
+            report_id=report.scan_id,
+            original_source=old.hostname_source,
+        )
+        device.hostname_conflict = old.hostname_conflict
+        if old.hostname_conflict:
+            for candidate in old.name_candidates:
+                add_name(
+                    device,
+                    candidate.get("name"),
+                    "saved_report",
+                    observed,
+                    report_id=report.scan_id,
+                    original_source=candidate.get("source", "unknown"),
+                )
+            device.hostname_conflict = True
+        device.hostname_confidence = "low"
+        return
 
 
 def compare_history(current, previous):
@@ -72,6 +125,7 @@ def compare_history(current, previous):
             )
             continue
         last, old = matches[0]
+        restore_previous_name(device, matches, current.created_at)
         detail(
             device,
             "history",
@@ -84,6 +138,11 @@ def compare_history(current, previous):
         comparable = (
             current.policy.get("profile_id") is not None
             and all(
+                isinstance(doc.policy.get(key), list)
+                for doc in (current, last)
+                for key in ("tcp_ports", "udp_ports")
+            )
+            and all(
                 current.policy.get(k) == last.policy.get(k)
                 for k in ("profile_id", "tcp_ports", "udp_ports")
             )
@@ -95,7 +154,8 @@ def compare_history(current, previous):
                 device,
                 "history",
                 "Service comparison",
-                "Not compared: profiles differ or a device check was incomplete.",
+                "Not compared: profiles differ, port selections are missing, "
+                "or a device check was incomplete.",
                 "Saved reports",
                 "not_checked",
             )

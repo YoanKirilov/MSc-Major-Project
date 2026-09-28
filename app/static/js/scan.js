@@ -1,5 +1,6 @@
 import { request } from './api.js';
-import { prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote } from './report.mjs';
+import { deviceLabel, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs';
+import { prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText } from './report.mjs';
 
 const severityConfig = {
   high: { label: 'High', color: '#ff626d' },
@@ -14,12 +15,13 @@ const status = document.querySelector('#result-status');
 const technicalStatus = document.querySelector('#result-technical');
 const state = document.querySelector('#result-state');
 const count = document.querySelector('#result-count');
-const ring = document.querySelector('#result-ring');
+const priorityBreakdown = document.querySelector('#priority-breakdown');
 const coverage = document.querySelector('#result-coverage');
 const summary = document.querySelector('#resultsSummary');
 const findingsList = document.querySelector('#findingsList');
 const detailPanel = document.querySelector('#detailPanel');
 const deviceTableBody = document.querySelector('#device-table-body');
+const deviceSummaries = document.querySelector('#device-summaries');
 const mdnsSection = document.querySelector('#mdns-section');
 const mdnsList = document.querySelector('#mdns-list');
 const runAgainButton = document.querySelector('#runAgainButton');
@@ -154,12 +156,14 @@ function explanationFor(finding) {
     item.finding_id === finding.finding_id
     && usableAiRecord(item, currentData)
   ));
+  const plain = currentData?.plain_guidance?.[finding.finding_id];
   return {
-    content: record?.content || finding.fixed_explanation,
+    content: plain?.content || record?.content || finding.fixed_explanation,
+    editorial: Boolean(plain),
     aiAssisted: Boolean(record),
     aiFields: record?.ai_fields?.length ? record.ai_fields : (record ? ['meaning', 'why_it_matters'] : []),
-    title: record?.display_title || finding.title,
-    limitations: record?.display_limitations || finding.limitations,
+    title: plain?.title || record?.display_title || finding.title,
+    limitations: plain?.limitations || record?.display_limitations || finding.limitations,
     rejectedFields: record?.rejected_fields || {},
   };
 }
@@ -206,15 +210,15 @@ function showDetail(finding) {
   detailPanel.style.setProperty('--severity-color', config.color);
   const device = currentData.devices.find((item) => item.device_id === finding.device_id);
   const service = currentData.services.find((item) => item.service_id === finding.service_id);
-  const deviceLabel = device ? `${device.hostname || 'Unknown device'} · ${device.ip}` : 'Observed device';
+  const deviceDescription = device ? `${deviceLabel(device)} · ${device.ip}` : 'Observed device';
   const serviceLabel = formatServiceLabel(service);
   const explanation = explanationFor(finding);
-  detailPanel.append(top, text('h3', explanation.title), text('p', `${deviceLabel} · ${serviceLabel}`, 'detail-location'));
+  detailPanel.append(top, text('h3', explanation.title), text('p', `${deviceDescription} · ${serviceLabel}`, 'detail-location'));
   detailPanel.append(text(
     'p',
     explanation.aiAssisted
-      ? 'Local AI selected reviewed plain-language wording. Original guidance is available below.'
-      : 'Rule-based guidance from the recorded observations. This is not proof of a security weakness.',
+      ? 'Local AI reviewed this item. The display prefers reviewed plain-language guidance; original wording is available below.'
+      : 'Reviewed plain-language guidance from the recorded observations, not a new AI conclusion. Original guidance is available below.',
     `explanation-source${explanation.aiAssisted ? ' is-ai' : ''}`,
   ));
   const block = (heading, value, className = 'detail-block') => {
@@ -223,9 +227,16 @@ function showDetail(finding) {
     return section;
   };
   detailPanel.append(block('What we found', explanation.content.meaning), block('What this means for you', explanation.content.why_it_matters));
+  const savedCheck = savedCheckNote(device, service);
+  if (savedCheck) detailPanel.append(block('What this scan already checked', savedCheck));
+  const pageHelp = webPageInstructions(device, service);
+  if (pageHelp) detailPanel.append(block('How to open this page', pageHelp));
   detailPanel.append(block('What we could not confirm', explanation.limitations.join(' ')));
   if (Object.keys(explanation.rejectedFields).length) {
-    detailPanel.append(block('Why some original wording remains', 'Some AI suggestions did not pass the factual checks. The original wording was kept for: ' + Object.keys(explanation.rejectedFields).join(', ')));
+    detailPanel.append(block('Why some wording remains rule-based', 'Some AI suggestions could not be accepted. Reviewed rule-based guidance is shown for: ' + wordingLabels(explanation.rejectedFields) + '. You can retry the remaining wording without scanning again.'));
+    const diagnostics = document.createElement('details');
+    diagnostics.append(text('summary', 'Technical wording checks'), text('p', JSON.stringify(explanation.rejectedFields)));
+    detailPanel.append(diagnostics);
   }
   const previous = currentData.guidance_history?.[0]?.findings?.find((item) => item.finding_id === finding.finding_id);
   if (previous) {
@@ -237,7 +248,7 @@ function showDetail(finding) {
     previous.actions.forEach((action) => saved.append(text('p', `${action.text} ${action.verification}`)));
     detailPanel.append(saved);
   }
-  if (explanation.aiAssisted) {
+  if (explanation.aiAssisted || explanation.editorial) {
     const original = document.createElement('details');
     original.className = 'detail-block';
     original.append(text('summary', 'Original rule-based explanation'));
@@ -264,10 +275,10 @@ function showDetail(finding) {
   const list = document.createElement('ol');
   list.className = 'remediation-list';
   finding.actions.forEach((action, index) => {
-    const step = explanation.aiFields.includes('recommended_steps')
+    const step = explanation.editorial || explanation.aiFields.includes('recommended_steps')
       ? explanation.content.recommended_steps[index] || action.text
       : action.text;
-    const check = explanation.aiFields.includes('how_to_check')
+    const check = explanation.editorial || explanation.aiFields.includes('how_to_check')
       ? explanation.content.how_to_check[index] || action.verification
       : action.verification;
     const item = document.createElement('li');
@@ -338,10 +349,10 @@ function renderFindings(data) {
     const meta = text('span', '', 'finding-meta');
     const device = data.devices.find((item) => item.device_id === finding.device_id);
     const service = data.services.find((item) => item.service_id === finding.service_id);
-    const deviceLabel = device ? `${device.hostname || 'Unknown device'} · ${device.ip}` : 'Observed device';
+    const deviceDescription = device ? `${deviceLabel(device)} · ${device.ip}` : 'Observed device';
     const serviceLabel = formatServiceLabel(service);
     const explanation = explanationFor(finding);
-    meta.append(text('span', config.label, 'severity-badge'), text('span', deviceLabel, 'device-name'));
+    meta.append(text('span', config.label, 'severity-badge'), text('span', deviceDescription, 'device-name'));
     main.append(meta, text('h3', explanation.title), text('p', `${serviceLabel} · ${explanation.content.meaning}`));
     button.append(bar, main, text('span', '›', 'chevron'));
     button.addEventListener('click', () => { selectedFinding = finding.finding_id; renderFindings(data); showDetail(finding); });
@@ -352,49 +363,129 @@ function renderFindings(data) {
 
 function renderNextSteps(data) {
   nextStepsList.replaceChildren();
-  const steps = prioritise(data.findings).flatMap((finding) => (finding.actions || []).slice(0, 1).map((action) => ({ finding, action }))).slice(0, 3);
+  const groups = new Map();
+  prioritise(data.findings).forEach((finding) => {
+    const action = finding.actions?.[0];
+    if (!action) return;
+    const key = `${finding.rule_id || finding.title}:${action.text}`;
+    if (!groups.has(key)) groups.set(key, { finding, action, devices: [] });
+    const device = data.devices.find((item) => item.device_id === finding.device_id);
+    const label = device ? `${deviceLabel(device)} · ${device.ip}` : 'Observed device';
+    if (!groups.get(key).devices.includes(label)) groups.get(key).devices.push(label);
+  });
+  const steps = [...groups.values()].slice(0, 3);
   if (!steps.length) {
     nextStepsList.append(text('li', emptyFindingMessage(data), 'empty-state'));
-    const overview = currentOverview(data);
+    const overview = data.plain_overview || currentOverview(data);
     (overview?.content.recommended_steps || []).forEach((step) => nextStepsList.append(text('li', step)));
     return;
   }
-  steps.forEach(({ finding, action }, index) => {
+  steps.forEach(({ finding, action, devices }, index) => {
     const item = document.createElement('li');
     const copy = document.createElement('div');
     const explanation = explanationFor(finding);
     const actionIndex = finding.actions.findIndex((candidate) => candidate.action_id === action.action_id);
-    const step = explanation.aiFields.includes('recommended_steps')
+    const step = explanation.editorial || explanation.aiFields.includes('recommended_steps')
       ? explanation.content.recommended_steps[actionIndex] || action.text
       : action.text;
-    const check = explanation.aiFields.includes('how_to_check')
+    const check = explanation.editorial || explanation.aiFields.includes('how_to_check')
       ? explanation.content.how_to_check[actionIndex] || action.verification
       : action.verification;
     const guidance = [step, check].filter(Boolean).join(' ');
     item.append(text('span', String(index + 1)), copy);
-    const device = data.devices.find((item) => item.device_id === finding.device_id);
-    copy.append(text('strong', explanation.title), text('p', device ? `${device.hostname || 'Device'} · ${device.ip}` : 'Observed device'), text('p', guidance));
+    copy.append(text('strong', explanation.title), text('p', `Applies to: ${devices.join('; ')}`), text('p', guidance));
     nextStepsList.append(item);
   });
 }
 
 function currentOverview(data) {
   const record = data.report_explanation;
-  return data.analysis_status === 'ready' && record?.content
+  return ['ready', 'failed'].includes(data.analysis_status) && record?.content
     && record.prompt_version === data.guidance_status?.ai_prompt_version ? record : null;
 }
 
 function renderBeginnerGuide(data) {
-  const overview = currentOverview(data);
+  const overview = data.plain_overview || currentOverview(data);
   const unfinished = (data.coverage?.service_failed_count || 0) > 0 || ['partial', 'failed', 'cancelled'].includes(data.state);
   reportFirstStep.textContent = overview?.content.recommended_steps?.join(' ') || (unfinished
     ? 'Review any listed items, then retry the unfinished device checks. Missing results cannot tell you whether those devices are safe.'
     : data.findings.length ? 'Start with the first item below. Identify the device and follow the suggested checks before changing its settings.'
       : 'Read what the scan managed to check. No listed items does not mean everything is safe.');
-  reportChecks.textContent = [coverageSummary(data), ...(overview?.content.how_to_check || [])].join(' ');
+  const first = prioritise(data.findings)[0];
+  if (first) {
+    const device = data.devices.find((item) => item.device_id === first.device_id);
+    const action = explanationFor(first).content.recommended_steps?.[0] || first.actions?.[0]?.text;
+    reportFirstStep.textContent = `First identify ${deviceLabel(device)}${device ? ` (${device.ip})` : ''} using your router's connected-device list or ask the person who set up your network. Then: ${action || 'open its review item below.'} Do not change settings until you recognise the device.`;
+  }
+  reportChecks.textContent = overview?.content.how_to_check?.join(' ') || coverageSummary(data);
+}
+
+function renderDeviceSummaries(data) {
+  deviceSummaries.replaceChildren();
+  const targets = data.coverage?.targets || [];
+  const entries = [...data.devices];
+  // A failed host may have no parsed Device, but must not disappear from this view.
+  for (const target of targets) {
+    if (['failed', 'timed_out', 'cancelled'].includes(target.service_status)
+        && !entries.some((device) => device.ip === target.ip)) entries.push({ ip: target.ip });
+  }
+  for (const device of entries) {
+    const target = targets.find((item) => item.ip === device.ip);
+    const findings = device.device_id ? data.findings.filter((item) => item.device_id === device.device_id) : [];
+    const services = device.device_id ? data.services.filter((item) => item.device_id === device.device_id && item.state === 'open') : [];
+    const card = document.createElement('article');
+    card.className = 'device-summary';
+    const historical = device.hostname_source === 'saved_report';
+    card.append(text('h3', deviceLabel(device)));
+    card.append(text('p', `Network address: ${device.ip}`));
+    if (historical) card.append(text('p', 'This name came from a previous scan; it was not confirmed this time.'));
+    if (device.hostname_conflict) card.append(text('p', 'Different sources gave different names. Check the name details below before identifying this device.'));
+    const finished = target?.service_status === 'completed';
+    card.append(text('p', finished
+      ? 'Selected checks finished; not a full security assessment.'
+      : 'We could not confirm that all selected checks finished for this device. Missing results do not mean it is safe.'));
+    card.append(text('p', services.length
+      ? `${services.length} feature${services.length === 1 ? ' was' : 's were'} accepting requests. This does not show that anyone was using them.`
+      : 'No features accepting requests recorded in the selected checks.'));
+    if (services.length) {
+      const features = document.createElement('ul');
+      services.slice(0, 5).forEach((service) => features.append(text('li', formatServiceLabel(service))));
+      card.append(features);
+      if (services.length > 5) card.append(text('p', `${services.length - 5} more features are listed in the device table below.`));
+    }
+    const first = prioritise(findings)[0];
+    card.append(text('p', first
+      ? `${findings.length} item${findings.length === 1 ? '' : 's'} to review. Start with: ${explanationFor(first).title}. See the suggested checks above.`
+      : 'No review items recorded; this is not proof of safety.'));
+    if (!finished) card.append(text('p', 'Next: if this is your device, check it is switched on and connected, then retry its unfinished checks.'));
+    else if (!device.hostname) card.append(text('p', "Next: compare this address with your router's device list before changing any settings."));
+    if (device.device_id) {
+      const edit = text('button', device.user_nickname ? 'Edit or remove your nickname' : 'Add your own nickname', 'text-button');
+      edit.type = 'button';
+      edit.disabled = !Number.isInteger(data.nickname_revision);
+      edit.addEventListener('click', async () => {
+        const nickname = window.prompt('Your nickname for this device (not a detected name). Leave empty to remove it. Reuse across scans requires a recent, unambiguous adapter match.', device.user_nickname || '');
+        if (nickname === null) return;
+        if (nickname.length > 80 || /[\r\n\t]/.test(nickname)) {
+          status.textContent = 'Use a nickname of up to 80 characters on one line.';
+          return;
+        }
+        edit.disabled = true;
+        try {
+          await request(`/api/live-scans/${scanId}/devices/${device.device_id}/nickname`, {
+            method: 'PUT', body: JSON.stringify({ nickname, expected_revision: data.nickname_revision }),
+          });
+          render(await request(`/api/live-scans/${scanId}`));
+        } catch (error) { status.textContent = error.message; edit.disabled = false; }
+      });
+      card.append(edit);
+    }
+    deviceSummaries.append(card);
+  }
 }
 
 function renderDevices(data) {
+  renderDeviceSummaries(data);
   deviceTableBody.replaceChildren();
   if (!data.devices.length) {
     const emptyRow = document.createElement('tr');
@@ -429,7 +520,7 @@ function renderDevices(data) {
     }
     const row = document.createElement('tr');
     [
-      device.hostname || 'Unknown device',
+      deviceLabel(device),
       device.ip,
       deviceCategory(device),
       device.reachability_evidence?.some((item) => ['open_port_response', 'closed_port_response'].includes(item))
@@ -440,13 +531,16 @@ function renderDevices(data) {
       services.map((item) => formatServiceLabel(item)).join(', ') || 'None found in selected checks',
     ].forEach((value) => row.append(text('td', value)));
     row.append(checkCell, text('td', String(deviceFindings.length)));
+    if (device.user_nickname) row.children[0].append(text('p', `Reported name: ${device.hostname || 'none'}. Your nickname does not verify identity.`));
     if (device.hostname_source || device.vendor) {
       const sources = { nmap: 'scan response', reverse_dns: 'local name lookup', mdns: 'device announcement',
         pihole_dhcp: 'Pi-hole address lease', pihole_network: 'Pi-hole history', nmap_discovery: 'Nmap discovery',
-        upnp: 'device description (UPnP)', netbios: 'computer-name response (NetBIOS)' };
+          upnp: 'device description (UPnP)', netbios: 'computer-name response (NetBIOS)',
+          saved_report: 'previous scan — not confirmed this time' };
       const nameDetails = document.createElement('details');
       nameDetails.append(text('summary', 'About this name'));
       nameDetails.append(text('p', `Source: ${sources[device.hostname_source] || 'scan'}. ${device.hostname_observed_at ? `Recorded: ${device.hostname_observed_at}.` : ''}`));
+      if (device.hostname_source === 'saved_report') nameDetails.append(text('p', 'A recent scan recorded this name for the same network-adapter address. It was not confirmed in this scan; adapter addresses can change or be copied.'));
       nameDetails.append(text('p', device.hostname_conflict ? 'Sources reported different names; the alternatives are listed below.' : `Name confidence: ${device.hostname_confidence || 'low'}. Reported names do not verify a device identity.`));
       if (device.vendor) nameDetails.append(text('p', `Network adapter manufacturer: ${device.vendor}. This does not identify the device model.`));
       (device.name_candidates || []).forEach((item) => nameDetails.append(text('p', `${item.name} — ${sources[item.source] || item.source}, ${item.observed_at}`)));
@@ -458,7 +552,8 @@ function renderDevices(data) {
       extra.append(text('p', 'These details help you recognise the device. Advertised names and features are claims, not verified identity or security checks.'));
       const labels = { friendlyName: 'Reported device name', manufacturer: 'Reported manufacturer',
         modelName: 'Reported model', deviceType: 'Reported device type',
-        'Reported md': 'Reported model', 'Reported ty': 'Reported model or product' };
+          'Reported md': 'Reported model', 'Reported ty': 'Reported model or product',
+          'Reported fn': 'Advertised friendly name' };
       const statuses = { advertised: 'Device announcement', inferred: 'Comparison or inference',
         unavailable: 'Could not check', not_checked: 'Not fully checked', observed: 'Observed' };
       device.details.forEach((item) => {
@@ -493,6 +588,7 @@ function renderAdvertisements(data) {
 }
 
 function render(data) {
+  if (data.user_nicknames) data.devices = data.devices.map((device) => ({ ...device, user_nickname: data.user_nicknames[device.device_id] }));
   const openServices = (data.services || []).filter((service) => service.state === 'open').length;
   const stateLabels = {
     queued: 'Waiting to start', running: 'Scanning', completed: 'Completed',
@@ -506,8 +602,9 @@ function render(data) {
   retryHostsButton.disabled = preparing;
   if (preparing) {
     currentData = data;
-    title.textContent = data.phase === 'analysis' ? 'Making your results easier to understand.' : 'Checking your devices.';
-    lead.textContent = data.phase === 'analysis' ? 'Ollama is reading the saved results. Your report will appear when preparation finishes.' : 'Your report will appear after the scan and AI explanation finish.';
+    title.textContent = data.phase === 'analysis' ? 'Making your results easier to understand.'
+      : data.phase === 'enrichment' ? 'Gathering device details.' : 'Checking your devices.';
+    lead.textContent = data.phase === 'analysis' ? analysisProgressText(data) : 'Your report will appear after the scan and AI explanation finish.';
     status.textContent = coverageSummary(data);
     state.textContent = 'In progress';
     simplifyButton.hidden = true;
@@ -538,23 +635,29 @@ function render(data) {
     : 'Checked only the device addresses you supplied; other devices were not discovered.';
   state.textContent = stateLabels[data.state] || data.state;
   count.textContent = data.findings.length;
-  ring.style.setProperty('--score', Math.min(100, data.findings.length * 12));
+  priorityBreakdown.textContent = ['high', 'medium', 'low', 'informational'].map((level) => `${data.findings.filter((item) => item.severity === level).length} ${level === 'informational' ? 'informational' : level + ' priority'}`).join(' · ');
   coverage.textContent = coverageSummary(data);
   const overview = data.report_explanation;
-  if (data.analysis_status === 'ready' && overview?.content && overview.prompt_version === data.guidance_status?.ai_prompt_version) {
-    lead.textContent = overview.content.meaning;
-    status.textContent = [overview.content.why_it_matters, ...(overview.display_limitations || [])].join(' ');
+  if (data.plain_overview || currentOverview(data)) {
+    const displayed = data.plain_overview || overview;
+    lead.textContent = displayed.content.meaning;
+    status.textContent = [displayed.content.why_it_matters, ...(displayed.limitations || displayed.display_limitations || [])].join(' ');
   }
   if (analysisFailed) {
-    status.textContent = 'Simplification unavailable—retry. Your factual results and original guidance are shown below.';
+    status.textContent += pendingWording(data)
+      ? ' Some wording uses reviewed rule-based guidance. Retry the remaining AI wording without scanning again.'
+      : ' AI simplification unavailable—retry. Your factual results and reviewed rule-based guidance are shown below.';
   }
+  if (data.nickname_error) status.textContent += ` ${data.nickname_error}`;
   scanProblems.replaceChildren();
   const problems = [...(data.errors || []).filter((item) => !item.target_ip), ...(data.warnings || []).filter((item) => !(item.code === 'AI_PREFLIGHT_UNAVAILABLE' && data.analysis_status === 'ready'))];
   (data.coverage?.targets || []).filter((target) => ['failed', 'timed_out', 'cancelled'].includes(target.service_status)).forEach((target) => {
     const reasons = { host_scan_timeout: 'timed out', host_result_invalid: 'returned an incomplete or invalid result',
+      host_unreachable: 'could not reach the device for checking (it may be asleep, disconnected or not responding; the cause is unknown)',
       host_output_limit: 'returned more output than the scanner can retain', host_scan_failed: 'ended with a scanner error',
       result_size_limit: 'could not be saved within the report size limit', scan_failed: 'stopped because the scan encountered an error',
       scan_time_limit: 'did not finish within the scan time budget',
+      storage_busy: 'stopped because report storage was busy',
       host_scan_cancelled: 'was cancelled', process_restarted: 'was interrupted when the app stopped' };
     const reason = reasons[target.reason_code] || 'did not finish';
     problems.push({ message: `The device check for ${target.ip} ${reason} after ${target.attempts || 1} attempt(s). Its remaining checks were not assessed.` });
@@ -592,9 +695,10 @@ function render(data) {
   renderAdvertisements(data);
   renderNextSteps(data);
   renderBeginnerGuide(data);
-  simplifyButton.hidden = !['completed', 'partial', 'failed', 'cancelled'].includes(data.state);
+  simplifyButton.hidden = !['completed', 'partial', 'failed', 'cancelled'].includes(data.state)
+    || (data.analysis_status === 'ready' && !pendingWording(data) && !outdatedAi && currentOverview(data));
   simplifyButton.disabled = preparing;
-  simplifyButton.textContent = analysisFailed ? 'Retry report preparation' : 'Prepare this saved report with Ollama';
+  simplifyButton.textContent = pendingWording(data) ? 'Retry remaining wording' : analysisFailed ? 'Retry report preparation' : 'Prepare this saved report with Ollama';
 }
 
 async function poll() {

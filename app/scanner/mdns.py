@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
-import threading
-from time import monotonic
 
 from app.schemas.scan import DiscoveryObservation
 
 try:
-    from zeroconf import IPVersion, ServiceBrowser, ServiceListener, Zeroconf
-except ImportError:  # The app remains usable before optional dependencies are installed.
-    IPVersion = ServiceBrowser = ServiceListener = Zeroconf = None
+    from zeroconf import IPVersion, ServiceListener
+    from zeroconf.asyncio import AsyncServiceBrowser, AsyncZeroconf
+except ImportError:
+    IPVersion = ServiceListener = AsyncServiceBrowser = AsyncZeroconf = None
 
 
 SERVICE_TYPES = (
@@ -31,10 +30,14 @@ SERVICE_TYPES = (
 )
 MAX_ADVERTISEMENTS = 64
 MAX_UNIQUE_HOSTS = 8
+MAX_SERVICE_LOOKUPS = 64
+LOOKUP_WORKERS = 4
+LOOKUP_TIMEOUT_MS = 750
+BROWSE_SECONDS = 4.0
 
 
 def mdns_available() -> bool:
-    return Zeroconf is not None
+    return AsyncZeroconf is not None
 
 
 def _safe_name(value: str) -> str:
@@ -44,7 +47,7 @@ def _safe_name(value: str) -> str:
 def safe_properties(properties) -> dict[str, str]:
     """Retain only identification hints, never arbitrary TXT secrets or user IDs."""
     result = {}
-    for key in ("model", "md", "ty", "product", "manufacturer"):
+    for key in ("fn", "model", "md", "ty", "product", "manufacturer"):
         value = properties.get(key.encode(), properties.get(key))
         if isinstance(value, bytes):
             value = value[:480].decode("utf-8", errors="replace")
@@ -53,89 +56,106 @@ def safe_properties(properties) -> dict[str, str]:
     return result
 
 
-def _browse(
+async def browse_mdns(
     scope: str,
     interface_ip: str,
-    duration_s: float,
     cancel_event: asyncio.Event,
+    duration_s: float = BROWSE_SECONDS,
     target_ips: set[str] | None = None,
-):
+) -> list[DiscoveryObservation]:
     if not mdns_available():
         raise RuntimeError("mDNS library is not installed")
     allowed = ipaddress.ip_network(scope, strict=True)
     interface = ipaddress.ip_address(interface_ip)
     if not isinstance(allowed, ipaddress.IPv4Network) or interface not in allowed:
         raise ValueError("mDNS interface is outside the authorised network")
+    if cancel_event.is_set():
+        return []
     observations: dict[tuple[str, str, str], DiscoveryObservation] = {}
     observed_ips: set[str] = set()
-    guard = threading.Lock()
+    tasks: dict[tuple[str, str], asyncio.Task] = {}
+    capacity = asyncio.Semaphore(LOOKUP_WORKERS)
+    zc = AsyncZeroconf(interfaces=[interface_ip], ip_version=IPVersion.V4Only)
+    browser = None
+    stopping = False
+
+    async def resolve(type_, name):
+        async with capacity:
+            # A timeout does not remove the advertisement from the browser. Retry
+            # once here rather than hoping another update event happens to arrive.
+            for _ in range(2):
+                if stopping or cancel_event.is_set() or len(observations) >= MAX_ADVERTISEMENTS:
+                    return
+                try:
+                    info = await zc.async_get_service_info(type_, name, timeout=LOOKUP_TIMEOUT_MS)
+                    if info is None:
+                        continue
+                    advertised_name = _safe_name(info.get_name())
+                    for address_text in info.parsed_addresses(IPVersion.V4Only):
+                        try:
+                            address = ipaddress.IPv4Address(address_text)
+                        except ValueError:
+                            continue
+                        if address not in allowed:
+                            continue
+                        address_value = str(address)
+                        if target_ips is not None and address_value not in target_ips:
+                            continue
+                        if len(observations) >= MAX_ADVERTISEMENTS:
+                            return
+                        if (
+                            address_value not in observed_ips
+                            and len(observed_ips) >= MAX_UNIQUE_HOSTS
+                        ):
+                            continue
+                        observations[(address_value, type_, advertised_name)] = (
+                            DiscoveryObservation(
+                                ip=address_value,
+                                advertised_name=advertised_name,
+                                service_type=type_,
+                                hostname=_safe_name(info.server or "") or None,
+                                port=info.port
+                                if isinstance(info.port, int) and 1 <= info.port <= 65535
+                                else None,
+                                properties=safe_properties(info.properties or {}),
+                            )
+                        )
+                        observed_ips.add(address_value)
+                    return
+                except (OSError, ValueError, TypeError, AttributeError):
+                    # One malformed service must not abort other name lookups.
+                    continue
 
     class Listener(ServiceListener):
-        def add_service(self, zc, type_, name):
-            with guard:
-                if len(observations) >= MAX_ADVERTISEMENTS:
-                    return
-            info = zc.get_service_info(type_, name, timeout=300)
-            if info is None:
-                return
-            advertised_name = _safe_name(info.get_name())
-            for address_text in info.parsed_addresses(IPVersion.V4Only):
-                try:
-                    address = ipaddress.IPv4Address(address_text)
-                except ValueError:
-                    continue
-                if address not in allowed:
-                    continue
-                address_value = str(address)
-                if target_ips is not None and address_value not in target_ips:
-                    continue
-                key = (address_value, type_, advertised_name)
-                with guard:
-                    if len(observations) >= MAX_ADVERTISEMENTS:
-                        return
-                    if address_value not in observed_ips and len(observed_ips) >= MAX_UNIQUE_HOSTS:
-                        continue
-                    observations[key] = DiscoveryObservation(
-                        ip=address_value,
-                        advertised_name=advertised_name,
-                        service_type=type_,
-                        hostname=_safe_name(info.server or "") or None,
-                        port=info.port
-                        if isinstance(info.port, int) and 1 <= info.port <= 65535
-                        else None,
-                        properties=safe_properties(info.properties or {}),
-                    )
-                    observed_ips.add(address_value)
+        def add_service(self, _zc, type_, name):
+            key = (type_, name)
+            if not stopping and key not in tasks and len(tasks) < MAX_SERVICE_LOOKUPS:
+                # Never block a browser callback waiting for a slow device.
+                tasks[key] = asyncio.create_task(resolve(type_, name))
 
-        def update_service(self, zc, type_, name):
-            self.add_service(zc, type_, name)
+        def update_service(self, _zc, type_, name):
+            self.add_service(_zc, type_, name)
 
-        def remove_service(self, zc, type_, name):
+        def remove_service(self, _zc, type_, name):
             pass
 
-    zc = Zeroconf(interfaces=[interface_ip], ip_version=IPVersion.V4Only)
-    browser = None
     try:
-        browser = ServiceBrowser(zc, list(SERVICE_TYPES), listener=Listener())
-        deadline = monotonic() + duration_s
-        while monotonic() < deadline and not cancel_event.is_set():
-            threading.Event().wait(min(0.1, deadline - monotonic()))
+        browser = AsyncServiceBrowser(zc.zeroconf, list(SERVICE_TYPES), listener=Listener())
+        try:
+            await asyncio.wait_for(cancel_event.wait(), timeout=max(0, duration_s))
+        except TimeoutError:
+            pass
     finally:
-        if browser is not None:
-            browser.cancel()
-        zc.close()
+        stopping = True
+        try:
+            if browser is not None:
+                await browser.async_cancel()
+        finally:
+            for task in tasks.values():
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks.values(), return_exceptions=True)
+            await zc.async_close()
     return sorted(
         observations.values(), key=lambda item: (item.ip, item.service_type, item.advertised_name)
-    )
-
-
-async def browse_mdns(
-    scope: str,
-    interface_ip: str,
-    cancel_event: asyncio.Event,
-    duration_s: float = 2.5,
-    target_ips: set[str] | None = None,
-) -> list[DiscoveryObservation]:
-    return await asyncio.to_thread(
-        _browse, scope, interface_ip, duration_s, cancel_event, target_ips
     )

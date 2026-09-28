@@ -15,14 +15,14 @@ def classify_device(device: Device, services: list[Service] | None = None):
     if device.hostname_conflict:
         return {"category": "unknown", "confidence": "low", "hints": [], "conflict": True}
     hints = []
-    text = (device.hostname or "").lower()
+    text = (device.hostname or "").lower() if device.hostname_source != "saved_report" else ""
     name_source = (
         device.hostname_source if device.hostname_source in {"mdns", "upnp"} else "hostname"
     )
     service_names = {
         service.name.lower()
         for service in (services or [])
-        if service.name and service.state == "open"
+        if service.name and service.state == "open" and service.detection_method == "probed"
     }
     for category, config in HINTS.items():
         for token in config["hostname"]:

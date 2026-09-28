@@ -1,4 +1,4 @@
-RULESET_VERSION = "1.2.0"
+RULESET_VERSION = "1.2.1"
 
 RULE_CATALOGUE = {
     "R01": {
@@ -84,12 +84,16 @@ RULE_CATALOGUE = {
         "title": "HTTP service identified",
         "meaning": "This device offers a web page over HTTP on your local network.",
         "why_it_matters": (
-            "HTTP itself does not encrypt traffic. The scan did not check "
-            "whether the page redirects to a protected HTTPS connection."
+            "HTTP itself does not encrypt traffic. Device details show any optional "
+            "redirect check recorded for this port. A redirect alone does not "
+            "establish that every page uses HTTPS."
         ),
         "severity": "low",
         "confidence": "medium",
-        "limitations": ["The scan did not test HTTPS redirection or page purpose."],
+        "limitations": [
+            "Any recorded redirect check covers only the root page at scan time. "
+            "The scan did not establish the page's purpose or protection of other pages."
+        ],
         "actions": [
             {
                 "action_id": "check_https",
@@ -117,7 +121,7 @@ RULE_CATALOGUE = {
                 "url": "https://developer.mozilla.org/en-US/docs/Glossary/HTTP",
             }
         ],
-        "version": "1.1.0",
+        "version": "1.1.1",
         "rule_id": "R03",
     },
     "R04": {

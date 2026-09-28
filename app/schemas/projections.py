@@ -5,7 +5,15 @@ from typing import Literal
 from pydantic import NonNegativeInt, PositiveInt
 
 from .common import StrictModel
-from .scan import AnalysisStatus, FindingSeverity, HostCheckState, ScanPhase, ScanSource, ScanState
+from .scan import (
+    AnalysisProgress,
+    AnalysisStatus,
+    FindingSeverity,
+    HostCheckState,
+    ScanPhase,
+    ScanSource,
+    ScanState,
+)
 
 
 class ProgressTarget(StrictModel):
@@ -36,6 +44,7 @@ class ProgressSnapshot(StrictModel):
     state: ScanState
     phase: ScanPhase
     analysis_status: AnalysisStatus
+    analysis_progress: AnalysisProgress | None = None
     target: ProgressScope
     coverage: ProgressCoverage
     device_count: NonNegativeInt

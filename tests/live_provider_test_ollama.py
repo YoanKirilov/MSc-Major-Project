@@ -43,8 +43,11 @@ async def test_local_ollama_explanation_is_validated_and_persisted(tmp_path):
 
     saved = await store.load_scan(document.scan_id)
     assert saved.report_explanation is not None
-    assert saved.ai_requests_used == 1
+    # Real model output may need the documented bounded retry, unlike the fake provider.
+    assert 1 <= saved.ai_requests_used <= 2
     assert saved.analysis_status == "ready"
+    assert not saved.report_explanation.rejected_fields
+    assert all(not record.rejected_fields for record in saved.explanations)
     assert saved.explanations[0].status == "ready"
     assert saved.explanations[0].source == "ai"
     assert saved.explanations[0].prompt_version == PROMPT_VERSION

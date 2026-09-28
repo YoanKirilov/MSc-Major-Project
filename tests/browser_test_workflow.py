@@ -36,6 +36,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
     monkeypatch.setattr("app.api.session.nmap_preflight", lambda config: (True, "test"))
     monkeypatch.setattr("app.api.session.nmap_interface_choices", lambda config: [])
     released = threading.Event()
+    details_released = threading.Event()
     entered = threading.Event()
     fail_ai = threading.Event()
     scanned = []
@@ -58,6 +59,8 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
         return None
 
     async def synthetic_details(device, *args, **kwargs):
+        while not details_released.is_set():
+            await asyncio.sleep(0.01)
         device.details.append(
             DeviceDetail(
                 kind="mdns",
@@ -100,6 +103,14 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             )
             page.locator("#scanLaunchButton").click()
             expect(page.locator("#progressPhase")).to_have_text(
+                "Gathering device details", timeout=15000
+            )
+            before_details_refresh = len(scanned)
+            page.reload()
+            expect(page.locator("#progressPhase")).to_have_text("Gathering device details")
+            assert len(scanned) == before_details_refresh
+            details_released.set()
+            expect(page.locator("#progressPhase")).to_have_text(
                 "Making your results easier to understand.", timeout=15000
             )
             assert page.url.rstrip("/") == base
@@ -110,13 +121,35 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
                 "Making your results easier to understand.", timeout=15000
             )
             expect(page.locator("#scanLaunchButton")).to_be_disabled()
+            expect(page.locator("#progressDetail")).to_contain_text("Prepared 0 of 3 explanations")
             assert len(scanned) == before_refresh
             released.set()
             page.wait_for_url("**/scans/*", timeout=15000)
             expect(page.locator("#result-title")).to_have_text("Your local scan is ready.")
             expect(page.locator("#resultsSummary")).to_contain_text("Ollama reviewed")
             expect(page.locator("#report-content")).to_be_visible()
+            expect(page.locator("#device-summaries article")).to_have_count(1)
+            expect(page.locator("#device-summaries")).to_contain_text(
+                "not a full security assessment"
+            )
+            expect(page.locator("#device-summaries")).to_contain_text(
+                "Older remote control (Telnet)"
+            )
             expect(page.locator("#report-first-step")).not_to_be_empty()
+            expect(page.locator("#result-ring")).to_have_count(0)
+            expect(page.locator("#priority-breakdown")).to_contain_text("priority")
+            page.once("dialog", lambda dialog: dialog.accept("My room device <script>"))
+            page.get_by_role("button", name="Add your own nickname").click()
+            expect(page.locator("#device-summaries")).to_contain_text(
+                "My room device <script> (your nickname)"
+            )
+            page.reload()
+            expect(page.locator("#device-summaries")).to_contain_text(
+                "My room device <script> (your nickname)"
+            )
+            page.once("dialog", lambda dialog: dialog.accept(""))
+            page.get_by_role("button", name="Edit or remove your nickname").click()
+            expect(page.get_by_role("button", name="Add your own nickname")).to_be_visible()
             expect(page.locator("#report-checks")).to_contain_text("device")
             extra = (
                 page.locator("details")
@@ -153,7 +186,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             assert response.value.status == 202
             assert response.value.request.post_data_json["hosts"] == ["192.168.56.10"]
             expect(page.locator("#result-status")).to_contain_text(
-                "Simplification unavailable", timeout=15000
+                "AI simplification unavailable", timeout=15000
             )
             expect(page.locator("#report-content")).to_be_visible()
             count = len(scanned)
@@ -188,6 +221,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             assert not errors
             browser.close()
     finally:
+        details_released.set()
         released.set()
         server.should_exit = True
         thread.join(timeout=15)

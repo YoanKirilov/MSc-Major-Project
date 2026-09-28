@@ -47,6 +47,7 @@ def main():
             f"cache_dir={run / 'pytest-cache'}",
             "--tb=short",
         ],
+        ["node", "tests/api_ui.test.mjs"],
         ["node", "tests/dashboard_ui.test.mjs"],
         ["node", "tests/report_ui.test.mjs"],
         ["node", "tests/live_server_bridge.test.mjs"],

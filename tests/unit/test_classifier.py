@@ -1,3 +1,4 @@
+import pytest
 from app.profiling.classifier import classify_device
 from app.schemas.scan import Device, Service
 
@@ -15,6 +16,7 @@ def test_classifier_uses_distinct_hostname_and_service_evidence():
         port=554,
         state="open",
         name="rtsp",
+        detection_method="probed",
     )
 
     result = classify_device(device, [service])
@@ -22,3 +24,19 @@ def test_classifier_uses_distinct_hostname_and_service_evidence():
     assert result["category"] == "camera"
     assert result["confidence"] == "medium"
     assert result["conflict"] is False
+
+
+@pytest.mark.parametrize("method", ["table", "unknown"])
+def test_guessed_service_name_is_not_independent_type_evidence(method):
+    device = Device(device_id="d", scan_id="s", ip="192.168.0.2", hostname="front-camera")
+    service = Service(
+        service_id="s",
+        device_id="d",
+        port=554,
+        state="open",
+        name="rtsp",
+        detection_method=method,
+    )
+    result = classify_device(device, [service])
+    assert result["category"] == "unknown"
+    assert not any(hint["source"] == "service" for hint in result["hints"])

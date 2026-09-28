@@ -66,7 +66,7 @@ class SessionManager:
         allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
         if request.headers.get("host") not in allowed_hosts:
             raise HTTPException(status_code=403, detail="Invalid host")
-        if request.method in {"POST", "PATCH", "DELETE"}:
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             origin = request.headers.get("origin")
             allowed_origins = {
                 f"http://127.0.0.1:{port}",

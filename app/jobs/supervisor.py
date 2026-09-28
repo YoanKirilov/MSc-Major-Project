@@ -7,6 +7,8 @@ from collections.abc import Callable
 from ipaddress import IPv4Address
 from typing import Any
 
+from filelock import Timeout as StorageLockTimeout
+
 from app.profiling.classifier import classify_device
 from app.risk.engine import evaluate_device
 from app.scanner.commands import (
@@ -18,10 +20,15 @@ from app.scanner.commands import (
     host_command,
 )
 from app.scanner.mdns import browse_mdns
-from app.scanner.parser import parse_discovery_details, parse_host
+from app.scanner.parser import (
+    HostUnreachable,
+    host_failure_detail,
+    parse_discovery_details,
+    parse_host,
+)
 from app.scanner.runner import ProcessResult, run_process
 from app.schemas.common import iso_z, utc_now
-from app.schemas.scan import ExplanationRecord, ScanDocument
+from app.schemas.scan import AnalysisProgress, ExplanationRecord, ScanDocument
 from app.storage.json_store import JsonStore
 
 logger = logging.getLogger(__name__)
@@ -116,6 +123,7 @@ class ScanSupervisor:
                         "state": "running",
                         "analysis_status": "running",
                         "analysis_error": None,
+                        "analysis_progress": AnalysisProgress(total=len(current.findings) + 1),
                         "scan_outcome": current.scan_outcome or current.state,
                     }
                 ),
@@ -203,7 +211,7 @@ class ScanSupervisor:
         return hostname[:255] if hostname else None
 
     async def _enrich_names(self, scan_id: str, cancel_event: asyncio.Event) -> None:
-        from app.scanner.names import add_name
+        from app.scanner.names import add_mdns_names, add_name
         from app.scanner.pihole import apply_pihole_names
 
         document = await self.store.load_scan(scan_id)
@@ -241,9 +249,7 @@ class ScanSupervisor:
                     )
                 for observation in current.observations:
                     if observation.ip == device.ip:
-                        add_name(
-                            device, observation.advertised_name, "mdns", observation.observed_at
-                        )
+                        add_mdns_names(device, observation)
             apply_pihole_names(devices, records)
             for device in devices:
                 services = [item for item in current.services if item.device_id == device.device_id]
@@ -277,7 +283,7 @@ class ScanSupervisor:
                     cancel_event,
                     target_ips=set(document.target["hosts"]),
                 ),
-                timeout=5,
+                timeout=7,
             )
             observations = [o for o in observations if o.ip in document.target["hosts"]]
             await self._checkpoint(
@@ -300,125 +306,17 @@ class ScanSupervisor:
             )
 
     async def _enrich_details(self, scan_id, cancel_event):
-        from app.profiling.history import compare_history
-        from app.scanner.details import detail, existing_details, netbios_name, network_details
-        from app.scanner.mdns import MAX_ADVERTISEMENTS, MAX_UNIQUE_HOSTS
+        from app.jobs.enrichment import enrich_details
 
-        document = await self.store.load_scan(scan_id)
-        if not document.policy.get("extra_details_enabled") or cancel_event.is_set():
-            return
-        devices = [d.model_copy(deep=True) for d in document.devices]
-        mdns_limit_reached = (
-            len(document.observations) >= MAX_ADVERTISEMENTS
-            or len({item.ip for item in document.observations}) >= MAX_UNIQUE_HOSTS
-        )
-        finished = set()
-
-        async def enrich(device):
-            services = [s for s in document.services if s.device_id == device.device_id]
-            existing_details(device, services, document.observations)
-            async with self._detail_capacity:
-                if cancel_event.is_set():
-                    return
-                try:
-                    await network_details(device, services, document.policy["allowed_network"])
-                    async with self._host_capacity:
-                        await netbios_name(
-                            device,
-                            services,
-                            self.nmap_path,
-                            self.process_runner,
-                            cancel_event,
-                            document.policy.get("interface"),
-                        )
-                    finished.add(device.device_id)
-                except Exception:
-                    detail(
-                        device,
-                        "web",
-                        "Extra information",
-                        "Some optional information could not be collected.",
-                        "Bounded extra checks",
-                        "unavailable",
-                    )
-
-        tasks = [asyncio.create_task(enrich(d)) for d in devices]
-        cancellation = asyncio.create_task(cancel_event.wait())
-        group = asyncio.gather(*tasks)
-        try:
-            await asyncio.wait(
-                {group, cancellation},
-                timeout=self.details_timeout_s,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-        finally:
-            for task in [*tasks, cancellation]:
-                if not task.done():
-                    task.cancel()
-            await asyncio.gather(*tasks, cancellation, return_exceptions=True)
-            await asyncio.gather(group, return_exceptions=True)
-        for device in devices:
-            if device.device_id not in finished:
-                detail(
-                    device,
-                    "web",
-                    "Extra information",
-                    "Some optional checks ran out of time or were cancelled.",
-                    "Bounded extra checks",
-                    "not_checked",
-                )
-            services = [s for s in document.services if s.device_id == device.device_id]
-            device.profile = device.profile.model_validate(classify_device(device, services))
-        comparison = document.model_copy(update={"devices": devices})
-        history_warning = None
-        try:
-            async with asyncio.timeout(5):
-                page = await self.store.list_scans(source="live", offset=0, limit=11)
-                previous = []
-                for entry in page["items"]:
-                    if entry["scan_id"] != scan_id and entry.get("storage_status") == "ok":
-                        try:
-                            previous.append(await self.store.load_scan(entry["scan_id"]))
-                        except (OSError, ValueError):
-                            continue
-                compare_history(comparison, previous[:10])
-        except Exception:
-            history_warning = {
-                "code": "HISTORY_COMPARISON_UNAVAILABLE",
-                "message": "History comparison could not finish; scan facts remain available.",
-            }
-        await self._checkpoint(
+        await enrich_details(
+            self.store,
             scan_id,
-            lambda current: current.model_copy(
-                update={
-                    "devices": devices,
-                    "warnings": [
-                        *current.warnings,
-                        *([history_warning] if history_warning else []),
-                        *(
-                            [
-                                {
-                                    "code": "MDNS_LIMIT_REACHED",
-                                    "message": "The announcement limit was reached; additional "
-                                    "device names or features may not have been collected.",
-                                }
-                            ]
-                            if mdns_limit_reached
-                            else []
-                        ),
-                        *(
-                            [
-                                {
-                                    "code": "EXTRA_DETAILS_INCOMPLETE",
-                                    "message": "Extra checks unfinished; see device details.",
-                                }
-                            ]
-                            if len(finished) != len(devices)
-                            else []
-                        ),
-                    ],
-                }
-            ),
+            cancel_event,
+            nmap_path=self.nmap_path,
+            process_runner=self.process_runner,
+            host_capacity=self._host_capacity,
+            detail_capacity=self._detail_capacity,
+            timeout_s=self.details_timeout_s,
         )
 
     @staticmethod
@@ -430,6 +328,11 @@ class ScanSupervisor:
                     "phase": "finished",
                     "analysis_status": "failed",
                     "analysis_error": "process_restarted",
+                    "analysis_progress": current.analysis_progress.model_copy(
+                        update={"state": "finished", "active": 0}
+                    )
+                    if current.analysis_progress
+                    else None,
                     "finished_at": iso_z(utc_now()),
                 }
             )
@@ -538,7 +441,9 @@ class ScanSupervisor:
                                 document.policy["allowed_network"],
                                 document.policy["mdns_interface_ip"],
                                 cancel_event,
+                                target_ips=set(candidates),
                             )
+                            observations = [item for item in observations if item.ip in candidates]
                             mdns_observed = {
                                 item.ip for item in observations if item.ip in candidates
                             }
@@ -635,6 +540,7 @@ class ScanSupervisor:
                 deep = profile == DEEP_PROFILE
                 parsed = None
                 parse_error_code = "HOST_RESULT_INVALID"
+                parse_error_detail = None
                 for attempt in range(1, 3):
 
                     def mark_attempt(current, attempt=attempt):
@@ -670,8 +576,11 @@ class ScanSupervisor:
                             )
                             break
                         except ValueError as exc:
+                            parse_error_detail = host_failure_detail(exc)
                             parse_error_code = (
-                                "HOST_SCAN_TIMEOUT"
+                                "HOST_UNREACHABLE"
+                                if isinstance(exc, HostUnreachable)
+                                else "HOST_SCAN_TIMEOUT"
                                 if "timed out" in str(exc)
                                 else "HOST_RESULT_INVALID"
                             )
@@ -712,6 +621,7 @@ class ScanSupervisor:
                             ip,
                             "timed_out" if parse_error_code == "HOST_SCAN_TIMEOUT" else "failed",
                             parse_error_code,
+                            detail=parse_error_detail,
                         ),
                     )
                     return
@@ -790,6 +700,11 @@ class ScanSupervisor:
                     if not task.done():
                         task.cancel()
                 await asyncio.gather(*workers, return_exceptions=True)
+            if not cancel_event.is_set():
+                await self._checkpoint(
+                    scan_id,
+                    lambda current: current.model_copy(update={"phase": "enrichment"}),
+                )
             await self._known_host_announcements(scan_id, cancel_event)
             await self._enrich_names(scan_id, cancel_event)
             await self._enrich_details(scan_id, cancel_event)
@@ -814,6 +729,9 @@ class ScanSupervisor:
                         "state": "running" if should_explain else final_state,
                         "scan_outcome": final_state,
                         "analysis_status": "running" if should_explain else "not_started",
+                        "analysis_progress": AnalysisProgress(total=len(current.findings) + 1)
+                        if should_explain
+                        else None,
                         "phase": "analysis" if should_explain else "finished",
                         "finished_at": None if should_explain else iso_z(utc_now()),
                         "coverage": current.coverage.model_copy(
@@ -838,6 +756,8 @@ class ScanSupervisor:
             code = (
                 "RESULT_SIZE_LIMIT"
                 if isinstance(exc, DocumentTooLarge)
+                else "STORAGE_BUSY"
+                if isinstance(exc, StorageLockTimeout)
                 else "SCAN_TIME_LIMIT"
                 if isinstance(exc, TimeoutError)
                 else "SCAN_FAILED"
@@ -864,6 +784,11 @@ class ScanSupervisor:
                                     "saved results remain available."
                                 )
                                 if code == "SCAN_TIME_LIMIT"
+                                else (
+                                    "Saving was interrupted because report storage was busy; "
+                                    "earlier saved observations remain available."
+                                )
+                                if code == "STORAGE_BUSY"
                                 else "The scan did not complete.",
                                 "device_id": None,
                             },
@@ -907,6 +832,11 @@ class ScanSupervisor:
                     "finished_at": iso_z(utc_now()),
                     "state": "cancelled" if cancelled else (current.scan_outcome or "completed"),
                     "analysis_status": "ready" if ready else "failed",
+                    "analysis_progress": current.analysis_progress.model_copy(
+                        update={"state": "finished", "active": 0}
+                    )
+                    if current.analysis_progress
+                    else None,
                     "analysis_error": None
                     if ready
                     else warning_code or current.analysis_error or "invalid_provider_response",
@@ -928,6 +858,7 @@ class ScanSupervisor:
                     "phase": "analysis",
                     "analysis_status": "running",
                     "finished_at": None,
+                    "analysis_progress": AnalysisProgress(total=len(current.findings) + 1),
                 }
             ),
         )
@@ -935,7 +866,7 @@ class ScanSupervisor:
         await self._analysis_tasks[scan_id]
 
     @staticmethod
-    def _mark_host_failure(current, ip, status, code, *, cancelled=False):
+    def _mark_host_failure(current, ip, status, code, *, cancelled=False, detail=None):
         coverage = current.coverage.model_copy(deep=True)
         if not cancelled:
             coverage.service_failed_count += 1
@@ -952,7 +883,8 @@ class ScanSupervisor:
                     *current.errors,
                     {
                         "code": code,
-                        "message": f"The device check for {ip} did not complete ({status}).",
+                        "message": f"The device check for {ip} did not complete ({status})."
+                        + (f" {detail}" if detail else ""),
                         "device_id": None,
                         "target_ip": ip,
                     },

@@ -26,6 +26,7 @@ TERMINAL_FIELDS = frozenset(
         "finished_at",
         "analysis_status",
         "analysis_error",
+        "analysis_progress",
         "scan_outcome",
         "coverage",
         "errors",
@@ -40,11 +41,14 @@ class DocumentTooLarge(ValueError):
 
 class JsonStore:
     max_document_bytes = 20 * 1024 * 1024
+    lock_timeout_s = 5
 
     def __init__(self, data_root: str | os.PathLike[str]):
         self.data_root = Path(data_root)
         self.data_root.mkdir(parents=True, exist_ok=True)
-        self._settings_lock = FileLock(str(self.data_root / "settings.lock"))
+        self._settings_lock = FileLock(
+            str(self.data_root / "settings.lock"), timeout=self.lock_timeout_s
+        )
 
     def storage_writable(self) -> bool:
         """Exercise the same lock/write path used by scans, without touching user data."""
@@ -71,7 +75,7 @@ class JsonStore:
         canonical_id = str(UUID(str(scan_id)))
         lock_dir = self.data_root / "locks"
         lock_dir.mkdir(parents=True, exist_ok=True)
-        return FileLock(str(lock_dir / f"{canonical_id}.lock"))
+        return FileLock(str(lock_dir / f"{canonical_id}.lock"), timeout=self.lock_timeout_s)
 
     def _scan_dir(self, scan_id: UUID | str) -> Path:
         canonical_id = str(UUID(str(scan_id)))
@@ -288,6 +292,9 @@ class JsonStore:
             "state": document.state,
             "phase": document.phase,
             "analysis_status": document.analysis_status,
+            "analysis_progress": document.analysis_progress.model_dump()
+            if document.analysis_progress
+            else None,
             "target": {"mode": document.target.get("mode")},
             "coverage": coverage,
             "device_count": len(document.devices),

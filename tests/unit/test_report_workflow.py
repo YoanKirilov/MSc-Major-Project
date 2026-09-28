@@ -41,6 +41,24 @@ def scan_document(**values):
 
 
 @pytest.mark.asyncio
+async def test_enrichment_phase_is_persisted_before_collectors(tmp_path, monkeypatch):
+    store = JsonStore(tmp_path)
+    observed = []
+
+    async def details(self, scan_id, cancel):
+        current = await store.load_scan(scan_id)
+        observed.append((current.phase, current.state, current.coverage.service_completed_count))
+
+    async def runner(*args):
+        return ProcessResult(XML, b"", 0, 0.01)
+
+    monkeypatch.setattr(ScanSupervisor, "_enrich_details", details)
+    result = await run_job(store, scan_document(), runner)
+    assert observed == [("enrichment", "running", 1)]
+    assert result.state == "completed" and result.phase == "finished"
+
+
+@pytest.mark.asyncio
 async def test_timeout_retry_preserves_single_device_and_correct_coverage(tmp_path):
     attempts = []
 
@@ -86,6 +104,8 @@ async def test_failed_checks_keep_causes_and_receive_an_ai_overview(tmp_path, ki
     saved = await run_job(JsonStore(tmp_path), scan_document(), runner)
     assert saved.state == "failed"
     assert saved.coverage.targets[0].reason_code == code.lower()
+    if kind == "invalid":
+        assert "unreadable scan data" in saved.errors[0]["message"]
     assert not saved.coverage.service_stage_complete
     assert saved.analysis_status == "ready"
     assert (
@@ -177,7 +197,7 @@ async def test_mdns_only_device_is_advertised_not_a_confirmed_service_response(t
         )
         return ProcessResult(xml, b"", 0, 0.01)
 
-    async def advertisements(*args):
+    async def advertisements(*args, target_ips):
         return [
             DiscoveryObservation(
                 ip="192.168.56.10",

@@ -1,0 +1,51 @@
+# Nontechnical-reader session kit
+
+Status: prepared protocol, not a completed study. Follow the university's ethics and
+consent requirements before recruitment. Use anonymous IDs and synthetic reports only;
+do not collect participants' home addresses, device identifiers or passwords.
+
+## Facilitator preparation
+
+Use the same saved synthetic facts for both conditions: original rule-based wording
+and validated Ollama-selected wording. Record model, prompt version and report version.
+Keep layout and questions identical. If AI falls back to original text, record that
+condition rather than claiming an AI rewrite. Do not run scans during the session.
+
+Alternate which condition participants see first. Rotate scenario order to reduce
+learning effects. Do not explain technical terms until the participant has answered;
+record requested help. Stop if the participant wishes to withdraw.
+
+## Participant instructions (read aloud)
+
+We are testing the report, not your computing ability. Read it as if it described your
+home devices. Please say what you think it means. Do not change any real device settings.
+You may skip a question or stop at any time.
+
+For each report ask:
+
+1. What did the scan find?
+2. What does it leave unknown?
+3. What would you do first, and why?
+4. Does it prove a device is safe or has been hacked?
+5. What wording was confusing? Rate clarity from 1 (unclear) to 5 (clear).
+
+## Synthetic scenarios and scoring guide (facilitator only)
+
+| Scenario | Observation | Essential limitation | Sensible first action |
+| --- | --- | --- | --- |
+| Device web page | An HTTP service answered | No proof of compromise or that every page lacks protection | Identify the device and review its web/security settings |
+| Zero findings | Selected checks finished without review items | Other services/settings were not fully assessed | Review scope; do not conclude everything is safe |
+| No responders | No devices answered discovery | No device security assessment was possible | Check connection and authorised scope |
+| Incomplete scan | One device checked; another timed out | The unfinished device remains unassessed | Review saved findings and retry the unfinished device |
+| AI outage | Scan evidence saved; simplification unavailable | AI failure is not a failed network check | Read rule-based guidance or retry explanation without rescanning |
+
+Score questions 1–3 as 1 only if the relevant observation, limitation, or sensible
+first step is recognised, otherwise 0. Question 4 scores 1 only if neither safety nor
+compromise is claimed as proven. Keep verbatim anonymous answers to support scoring.
+Ask a second reviewer to independently score a sample and record disagreements.
+
+Record one row per participant/condition/scenario in `evaluation-results-template.csv`.
+Time includes reading and questions 1–4. Summarise comprehension (0–4), unsafe
+interpretations, time and clarity separately. Small samples are exploratory; higher
+clarity ratings alone do not demonstrate better understanding. Report withdrawals,
+missing answers and unchanged/fallback AI wording explicitly.

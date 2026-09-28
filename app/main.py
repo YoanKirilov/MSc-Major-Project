@@ -117,6 +117,19 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     app.state.templates = templates
     app.mount("/static", StaticFiles(directory=str(app_root / "static")), name="static")
 
+    @app.exception_handler(Timeout)
+    async def local_storage_busy(_request: Request, _exc: Timeout):
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": "1"},
+            content={
+                "detail": (
+                    "Saved results or settings are busy. Try again shortly; "
+                    "existing data is unchanged."
+                )
+            },
+        )
+
     @app.exception_handler(PermissionError)
     async def local_storage_permission_error(_request: Request, _exc: PermissionError):
         return JSONResponse(

@@ -14,7 +14,7 @@ FindingSeverity = Literal["high", "medium", "low", "informational"]
 FindingConfidence = Literal["high", "medium", "low"]
 ScanSource = Literal["live", "demo"]
 ScanState = Literal["queued", "running", "completed", "partial", "failed", "cancelled"]
-ScanPhase = Literal["queued", "discovery", "service_scan", "analysis", "finished"]
+ScanPhase = Literal["queued", "discovery", "service_scan", "enrichment", "analysis", "finished"]
 AnalysisStatus = Literal["not_started", "running", "ready", "failed"]
 HostCheckState = Literal[
     "not_scheduled",
@@ -203,6 +203,20 @@ class GuidanceSnapshot(StrictModel):
     explanations: list[ExplanationRecord]
 
 
+class AnalysisProgress(StrictModel):
+    state: Literal["waiting", "preparing", "finished"] = "waiting"
+    total: int = Field(default=0, ge=0)
+    completed: int = Field(default=0, ge=0)
+    active: int = Field(default=0, ge=0)
+    attempt: int = Field(default=0, ge=0, le=2)
+
+    @model_validator(mode="after")
+    def valid_counts(self):
+        if self.completed + self.active > self.total:
+            raise ValueError("Explanation progress exceeds its total")
+        return self
+
+
 class ScanDocument(StrictModel):
     schema_version: Literal[1] = 1
     revision: int = 1
@@ -238,6 +252,7 @@ class ScanDocument(StrictModel):
     scan_outcome: Literal["completed", "partial", "failed", "cancelled"] | None = None
     analysis_status: AnalysisStatus = "not_started"
     analysis_error: str | None = None
+    analysis_progress: AnalysisProgress | None = None
     guidance_updated_at: str | None = None
     ai_requests_used: int = 0
     warnings: list[dict[str, str]] = Field(default_factory=list)

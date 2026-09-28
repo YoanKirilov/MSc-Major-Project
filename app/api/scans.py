@@ -14,6 +14,7 @@ from app.config import (
     resolve_allowed_network,
     resolve_nmap_path,
 )
+from app.explanations.presentation import plain_finding, plain_report
 from app.explanations.service import PROMPT_VERSION
 from app.risk.catalogue import RULESET_VERSION
 from app.risk.guidance import guidance_status
@@ -22,8 +23,30 @@ from app.scanner.mdns import mdns_available
 from app.schemas.api import RefreshGuidanceRequest, ScanCreateRequest
 from app.schemas.scan import ScanDocument
 from app.security.scope import validate_target
+from app.storage.nicknames import NicknameStore, NicknameUpdate
 
 router = APIRouter(prefix="/api")
+
+
+@router.put("/live-scans/{scan_id}/devices/{device_id}/nickname")
+async def set_nickname(request: Request, scan_id: str, device_id: str, body: NicknameUpdate):
+    require_session(request, csrf=True)
+    try:
+        document = await request.app.state.store.load_scan(scan_id)
+        if document.source != "live" or document.phase != "finished":
+            raise ValueError("Wait for the scan to finish before assigning a nickname")
+        revision = await NicknameStore(request.app.state.store).update(document, device_id, body)
+        return {"nickname_revision": revision}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Report or device not found") from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="Reload the report and check the nickname"
+        ) from exc
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=503, detail="Nicknames are busy; try again shortly"
+        ) from exc
 
 
 @router.get("/scans")
@@ -156,14 +179,14 @@ async def _create_validated_live_scan(
             "pihole_enabled": settings.pihole_enabled,
             "extra_details_enabled": True,
             "extra_details_budget_seconds": 30,
-            "extra_details_version": "1.0.0",
+            "extra_details_version": "1.0.1",
             "retry_of": retry_of,
         },
         coverage={"candidate_count": len(validated.candidates), "targets": targets},
         versions={
             "app": "0.1.0",
             "rules": RULESET_VERSION,
-            "profiling": "1.1.0",
+            "profiling": "1.1.1",
             "prompt": PROMPT_VERSION,
             "nmap": scanner_version,
         },
@@ -204,7 +227,16 @@ async def get_live_scan(request: Request, scan_id: str):
     if document.source != "live":
         raise HTTPException(status_code=404, detail="Live scan result not found")
     payload = document.model_dump(mode="json")
+    # Presentation is editorial and never saved over scan facts.
+    payload["plain_guidance"] = {item.finding_id: plain_finding(item) for item in document.findings}
+    payload["plain_overview"] = plain_report(document)
     payload["guidance_status"] = {**guidance_status(document), "ai_prompt_version": PROMPT_VERSION}
+    try:
+        revision, names = await NicknameStore(request.app.state.store).view(document)
+        payload["nickname_revision"] = revision
+        payload["user_nicknames"] = names
+    except (OSError, ValueError):
+        payload["nickname_error"] = "Saved nicknames could not be read; scan evidence is unchanged."
     return payload
 
 

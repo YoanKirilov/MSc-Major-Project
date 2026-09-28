@@ -72,6 +72,15 @@ REVIEWED_WORDING = {
         "connection."
     ),
     (
+        "HTTP itself does not encrypt traffic. Device details show any optional "
+        "redirect check recorded for this port. A redirect alone does not "
+        "establish that every page uses HTTPS."
+    ): (
+        "HTTP does not protect traffic with encryption. Look in device details for any "
+        "check of whether this port switches to HTTPS. One switch does not prove "
+        "that all pages use HTTPS."
+    ),
+    (
         "Someone with permission may be able to control the device from "
         "another computer. This scan did not test sign-in or access rules."
     ): (
@@ -112,6 +121,13 @@ REVIEWED_WORDING = {
     ),
     "The scan did not test HTTPS redirection or page purpose.": (
         "The scan did not check whether the page switches to HTTPS or what it is for."
+    ),
+    (
+        "Any recorded redirect check covers only the root page at scan time. "
+        "The scan did not establish the page's purpose or protection of other pages."
+    ): (
+        "Any saved check for a switch to HTTPS covers only the starting page when scanned. "
+        "The scan did not confirm what the page is for or whether other pages are protected."
     ),
     ("This scan did not test credentials, exposure, or user permissions."): (
         "This scan did not test sign-in details, wider access to the "

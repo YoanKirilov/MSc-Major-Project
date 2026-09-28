@@ -3,6 +3,110 @@
 This is the handover for the eleven agreed items. Verification details are in
 `testing.md`; external evaluation steps are in `evaluation.md`.
 
+## Latest fixes and improvements completed - 27 September 2026
+
+1. Browser validation errors show readable field messages, not object strings.
+2. Blocked session storage no longer stops startup: an in-memory token and visible
+   notice preserve the authenticated request flow. Session expiry remains explicit.
+3. Old AI records cannot claim current successful review while their wording is hidden;
+   a ready summary requires matching current overview and finding records.
+4. Successful Nmap output explicitly recording one unreachable target is distinguished
+   from malformed output. Both profiles retain bounded retries and missing coverage.
+   No historical result was silently reclassified.
+5. Read-only report presentation consistently prefers reviewed plain-language choices,
+   including zero-finding reports, while preserving original guidance and AI audit.
+   Device cards list observed features. Confirmed web services get address-bar help
+   and warnings against credentials over HTTP or bypassing certificate warnings.
+6. Saved AI progress records waiting/preparing/finished, total/completed/active counts
+   and batch attempt. Refresh restores the counts; fallback records are not counted as
+   successfully prepared. Existing reports without this optional field remain readable.
+7. Settings/report locks have a five-second acquisition limit. API contention returns
+   a readable 503 with `Retry-After`; it does not bypass locks or replace prior evidence.
+   Transient background storage contention is not misreported as a scan time limit.
+
+Verified: **306 Python tests, 24 JavaScript tests**, browser workflow, real local Ollama
+on synthetic facts, installed wheel, and desktop/mobile review of a prior home report.
+All 30 production reports were validated read-only. No new network scan was run.
+See `testing.md` for artifacts and outstanding external evaluation.
+
+Restart **NetGuard: Start backend** once to load the backend changes. New host checks
+and AI preparation save the new diagnostic/progress fields; reopening saved reports
+uses the clearer display without modifying their observations or historical errors.
+
+## Beginner-report implementation brief completed — 26 September 2026
+
+1. Partial AI records remain retryable. Accepted fields/list entries are frozen on
+   retry; failures retain original guidance and a visible retry action. A stricter
+   reviewed-choice output schema preserves list order and lengths. The existing
+   two-attempt batch and overall analysis time limits remain in force.
+2. Replaced the count-based red ring with neutral counts and a priority breakdown.
+3. Replaced normal-view field paths with ordinary labels. Validation codes are in
+   expandable technical details; completed preparation no longer shows a redundant button.
+4. Grouped repeated next steps by rule/action and affected devices, made identification
+   the first step, reduced repeated card text and duplicate coverage statements.
+5. Relevant saved web-upgrade checks appear beside finding explanations for either
+   profile, with starting-page/time limitations. They are explicitly saved checks,
+   not new AI conclusions; raw metadata and identifiers remain outside model input.
+6. Added editable/removable, explicitly user-assigned nicknames in separate local JSON.
+   Same-report assignments work without a MAC. Reuse requires a matching network scope,
+   a unique matching MAC in both reports, a finished earlier source within seven days,
+   and one unambiguous nickname anchor. Editing does not extend the source age.
+
+Verified: **288 Python tests, 18 JavaScript tests**, browser workflow, synthetic local
+Ollama, fresh installed wheel, and a disposable copy of the real report. In the latter,
+all **16 rejected fields resolved in two requests**, with accepted wording, facts and
+the original report unchanged. See `testing.md` for artifacts and limitations.
+
+Restart **NetGuard: Start backend** once to load the changes. Older partly simplified
+reports offer **Retry remaining wording** without rescanning. Nicknames are entered via
+**Add your own nickname** on device cards; clear the text to remove an assignment.
+Nickname changes affect annotations only, never scan evidence or AI input.
+
+No new network scan, Pi-hole installation, SQLite migration, commit or push was done.
+Ubuntu/remote CI, live Deep/Pi-hole and participant comprehension remain unverified.
+Next checkpoint: review the revised page with nontechnical readers, then confirm the
+current authorised home network before any further live collection.
+
+## Remaining implementation follow-through - 26 September 2026
+
+- Added persisted `enrichment` progress before name/detail collectors; dashboard refresh
+  resumes this stage without launching another scan. Both scan profiles share it.
+- Added clearly rule-based device cards, including unfinished targets with no parsed
+  device result. Historical names, conflicting names and coverage limits remain explicit.
+- Ollama retries only rejected items, preserving accepted text. An invalid batch does
+  not suppress attempts for later findings; outages and overall deadlines remain bounded.
+- Nmap validation failures now include reviewed diagnostic text. The previous live host
+  failure cannot be reconstructed without its missing raw output; no cause is invented.
+- Added pinned-action Windows/Ubuntu CI and a fresh installed-wheel verifier. No commit,
+  push or remote CI run was performed; Ubuntu validation remains pending.
+- Added a participant-session guide and empty results template. No participant study
+  has been conducted. Pi-hole still requires an actual installation for live validation.
+
+Restart the backend once to load the changes. No running user app was restarted and no
+saved user reports were modified. This work used synthetic scans and local Ollama, not
+a new home-network scan. See the newest testing entry for exact verification results.
+
+## Naming reliability follow-up - 25 September 2026
+
+Compared the two latest user reports: both had 11 devices, but names fell from three
+to two because the TV's mDNS advertisements were absent in the newer report, despite
+the same recorded MAC. No collected advertisement was dropped at name assignment and
+the eight-host cap was not reached; timing is a plausible contributor, not a proven
+sole cause. mDNS collection now uses nonblocking concurrent lookups, a four-second
+window and a bounded retry. Friendly-name TXT data and advertised hostnames supplement
+instance labels. Recent direct names can be reused only as visibly historical labels
+under same-scope/MAC, age and ambiguity guards. See the latest testing entry for results.
+
+## Follow-up review and organisation - 25 September 2026
+
+Fixed four confirmed edge cases: empty UPnP metadata, history comparisons with missing
+port selections, optional failures mislabelled as timeouts (and blocking another lookup),
+and guessed service identities increasing device-type confidence. Each had a failing
+regression test before its fix. Enrichment coordination now lives in `jobs/enrichment.py`;
+pure fact formatting lives in `scanner/observations.py`, separate from network requests.
+All application modules remain referenced; no source files or saved reports were deleted.
+See the newest `testing.md` entry for the final rerun and remaining external validation.
+
 ## Richer Light and Deep device information - 25 September 2026
 
 Implemented the six agreed additions in the shared pipeline: richer optional mDNS,

@@ -1,4 +1,5 @@
 import { request } from './api.js';
+import { analysisProgressText } from './report.mjs';
 
 const launchButton = document.querySelector('#scanLaunchButton');
 const configText = document.querySelector('#scan-config');
@@ -135,9 +136,14 @@ function updateProgress(scan) {
   const attempted = coverage.service_attempted_count || 0;
   let percent = 0;
   if (scan.phase === 'analysis') {
-    percent = 95;
+    const p = scan.analysis_progress;
+    percent = p?.total > 0 ? Math.min(99, 92 + Math.floor((p.completed / p.total) * 7)) : 92;
     phaseText.textContent = 'Making your results easier to understand.';
-    detailText.textContent = 'Ollama is reading the saved results and choosing clear wording.';
+    detailText.textContent = analysisProgressText(scan);
+  } else if (scan.phase === 'enrichment') {
+    percent = 92;
+    phaseText.textContent = 'Gathering device details';
+    detailText.textContent = 'Looking for names and other clues to help you recognise your devices.';
   } else if (scan.phase === 'discovery') {
     phaseText.textContent = 'Looking for devices';
     detailText.textContent = candidates ? `Checking ${candidates} private addresses` : 'Checking the private scope';

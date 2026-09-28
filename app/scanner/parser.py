@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Collection
 from uuid import NAMESPACE_URL, uuid5
 
@@ -9,6 +10,70 @@ from app.scanner.commands import PORTS, UDP_PORTS
 from app.schemas.scan import Device, Service
 
 SCRIPT_OUTPUT_LIMIT = 1024
+
+
+class HostUnreachable(ValueError):
+    """A completed Nmap run explicitly reports no reachable host, not broken XML."""
+
+
+def host_failure_detail(error: ValueError) -> str:
+    """Expose only reviewed parser diagnostics, never raw device-controlled output."""
+    return {
+        "host not reachable": (
+            "Nmap could not reach this device for checking. It may be asleep, disconnected "
+            "or not responding; the cause was not established."
+        ),
+        "malformed host XML": "Nmap returned unreadable scan data.",
+        "unexpected XML root": "Nmap returned an unexpected result format.",
+        "scan XML is incomplete": "Nmap did not return a completion record.",
+        "Nmap reported an unsuccessful scan": (
+            "Nmap reported that its scan did not finish successfully."
+        ),
+        "host XML must contain exactly one host": (
+            "Nmap did not return exactly one device record for this check."
+        ),
+        "host XML contains an unexpected target": (
+            "The returned device address did not match the requested address."
+        ),
+        "host scan timed out": "Nmap ran out of time while checking this device.",
+        "conflicting duplicate port record": "Nmap returned conflicting connection results.",
+        "conflicting summarized port record": "Nmap returned conflicting connection results.",
+    }.get(str(error), "The returned scan data could not be validated.")
+
+
+def _extra_port_states(ports, tcp_ports, udp_ports):
+    """Use explicit protocol/port lists only; aggregate counts are ambiguous."""
+    result = {}
+    for group in ports.findall("extraports"):
+        state = group.get("state", "unknown").replace("|", "_")
+        if state not in {"closed", "filtered", "open_filtered", "closed_filtered"}:
+            continue
+        for reason in group.findall("extrareasons"):
+            protocol = reason.get("proto")
+            if protocol not in {"tcp", "udp"}:
+                continue
+            selected = tcp_ports if protocol == "tcp" else udp_ports
+            values = set()
+            for part in reason.get("ports", "").split(","):
+                if not re.fullmatch(r"[0-9]{1,5}(?:-[0-9]{1,5})?", part):
+                    break
+                bounds = [int(value) for value in part.split("-")]
+                first, last = bounds[0], bounds[-1]
+                if not 1 <= first <= last <= 65535:
+                    break
+                values.update(range(first, last + 1))
+            else:
+                if reason.get("count") != str(len(values)):
+                    continue
+                for port in values:
+                    if port not in selected:
+                        continue
+                    key = (protocol, port)
+                    value = (state, _text(reason, "reason"))
+                    if key in result and result[key] != value:
+                        raise ValueError("conflicting summarized port record")
+                    result[key] = value
+    return result
 
 
 def _text(element, attribute: str, limit: int = 255) -> str | None:
@@ -91,6 +156,13 @@ def parse_host(
         raise ValueError("malformed host XML") from exc
     _require_completed(root)
     hosts = root.findall("host")
+    if not hosts:
+        counts = root.find("runstats/hosts")
+        if counts is not None and all(
+            counts.get(key) == value
+            for key, value in {"up": "0", "down": "1", "total": "1"}.items()
+        ):
+            raise HostUnreachable("host not reachable")
     if len(hosts) != 1:
         raise ValueError("host XML must contain exactly one host")
     host = hosts[0]
@@ -99,6 +171,9 @@ def parse_host(
     address = host.find("address[@addrtype='ipv4']")
     if address is None or address.attrib.get("addr") != expected_ip:
         raise ValueError("host XML contains an unexpected target")
+    status = host.find("status")
+    if status is not None and status.get("state") == "down":
+        raise HostUnreachable("host not reachable")
 
     device_id = str(uuid5(uuid5(NAMESPACE_URL, scan_id), f"device:{expected_ip}"))
     hostnames = host.find("hostnames/hostname")
@@ -193,6 +268,25 @@ def parse_host(
                 device.reachability_evidence = [
                     "open_port_response" if state_value == "open" else "closed_port_response"
                 ]
+        summarized = _extra_port_states(ports, profile_tcp_ports, profile_udp_ports)
+        for (protocol, port), (state, reason) in summarized.items():
+            explicit = parsed.get((protocol, port))
+            if explicit is not None and explicit.state != state:
+                raise ValueError("conflicting summarized port record")
+            if state == "closed":
+                device.reachability = "observed"
+                if "closed_port_response" not in device.reachability_evidence:
+                    device.reachability_evidence.append("closed_port_response")
+            # Deep scans omit bulk non-open slots to keep reports bounded.
+            if fill_unknown and explicit is None:
+                parsed[(protocol, port)] = Service(
+                    service_id=str(uuid5(uuid5(NAMESPACE_URL, device_id), f"{protocol}:{port}")),
+                    device_id=device_id,
+                    protocol=protocol,
+                    port=port,
+                    state=state,
+                    state_reason=reason,
+                )
     if fill_unknown:
         services = [
             parsed.get((protocol, port))
