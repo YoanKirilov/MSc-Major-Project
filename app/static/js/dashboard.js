@@ -1,5 +1,5 @@
-import { request } from './api.js';
-import { analysisProgressText } from './report.mjs';
+import { request } from './api.js?v=20260928-startup';
+import { analysisProgressText, readScanSetup } from './report.mjs?v=20260928-startup';
 
 const launchButton = document.querySelector('#scanLaunchButton');
 const configText = document.querySelector('#scan-config');
@@ -14,9 +14,13 @@ const cancelButton = document.querySelector('#scanCancelButton');
 const modeButtons = [...document.querySelectorAll('.mode-button')];
 const deepHostField = document.querySelector('#deepHostField');
 const deepHostInput = document.querySelector('#deepHostInput');
+const setupNote = document.querySelector('#scanSetupNote');
+const clearTargetsButton = document.querySelector('#clearSavedTargetsButton');
+const requestedSetup = readScanSetup(window.location.hash);
 
 let scannerAvailable = false;
-let selectedProfile = 'light';
+let selectedProfile = requestedSetup?.profile || 'light';
+let savedLightHosts = selectedProfile === 'light' ? (requestedSetup?.hosts || []) : [];
 let activeNetwork = null;
 let activeScanId = null;
 let statusReady = false;
@@ -44,6 +48,8 @@ function savedScanId() {
 
 async function resumeScan(id) {
   rememberScan(id);
+  setupNote.hidden = true;
+  clearTargetsButton.hidden = true;
   launchButton.disabled = true;
   launchButton.querySelector('span').textContent = 'Scan in progress';
   progress.hidden = false;
@@ -53,17 +59,30 @@ async function resumeScan(id) {
   await pollScan(id);
 }
 
-modeButtons.forEach((button) => button.addEventListener('click', () => {
-  selectedProfile = button.dataset.profile;
+function showSetup() {
   modeButtons.forEach((item) => {
-    const active = item === button;
+    const active = item.dataset.profile === selectedProfile;
     item.classList.toggle('active', active);
     item.setAttribute('aria-pressed', String(active));
   });
   const deep = selectedProfile === 'deep-tcp-v1';
   deepHostField.hidden = !deep;
   deepHostInput.hidden = !deep;
+  clearTargetsButton.hidden = deep || !savedLightHosts.length;
+  setupNote.hidden = !requestedSetup && !savedLightHosts.length;
+  setupNote.textContent = !deep && savedLightHosts.length
+    ? `Light scan of the previous device addresses: ${savedLightHosts.join(', ')}. Confirm these devices are still yours before pressing Scan.`
+    : deep ? 'Confirm or enter one authorised device address, then press Scan. No scan has started.'
+      : 'Ready to set up another Light scan. Press Scan when you are ready; your previous report stays saved.';
+}
+deepHostInput.value = selectedProfile === 'deep-tcp-v1' ? (requestedSetup?.hosts[0] || '') : '';
+showSetup();
+modeButtons.forEach((button) => button.addEventListener('click', () => {
+  selectedProfile = button.dataset.profile;
+  savedLightHosts = [];
+  showSetup();
 }));
+clearTargetsButton.addEventListener('click', () => { savedLightHosts = []; showSetup(); });
 
 function setError(message) {
   errorPanel.hidden = false;
@@ -93,12 +112,17 @@ async function loadStatus() {
     scannerAvailable = status.scanner_available;
     activeNetwork = status.allowed_network;
     storageReady = status.storage_status === 'ok';
-    const pending = savedScanId() || status.active_scan_id || status.active_scan_ids?.[0];
+    // Explicit setup must not reopen an already completed report from stale tab storage.
+    // A genuinely active backend job is still resumed, never abandoned or duplicated.
+    const pending = requestedSetup
+      ? status.active_scan_id || status.active_scan_ids?.[0]
+      : savedScanId() || status.active_scan_id || status.active_scan_ids?.[0];
     if (pending) {
       configText.textContent = 'Reconnecting to your saved scan. Refreshing does not start a new scan.';
       await resumeScan(pending);
       return;
     }
+    if (requestedSetup) rememberScan(null);
     if (status.network_warning) {
       configText.textContent = status.network_warning;
       return;
@@ -227,9 +251,9 @@ launchButton.addEventListener('click', async () => {
     const payload = await request('/api/live-scans', {
       method: 'POST',
       body: JSON.stringify({
-        mode: deep ? 'known_hosts' : 'discover',
+        mode: deep || savedLightHosts.length ? 'known_hosts' : 'discover',
         profile: selectedProfile,
-        hosts: deep ? [deepHost] : [],
+        hosts: deep ? [deepHost] : savedLightHosts,
         authorised: true,
       }),
     });

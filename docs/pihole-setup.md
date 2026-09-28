@@ -1,8 +1,21 @@
 # Pi-hole setup — prepared, not activated
 
-Implementation-only update, 25 September 2026. No container, DNS service, scan or test
-was started. No router settings, credentials or existing reports were changed.
-The new configuration and regression tests have **not been executed**.
+Status checked 28 September 2026. The app connector and configuration have synthetic
+regression coverage, but no real Pi-hole instance has been deployed or authenticated.
+Docker was not found on PATH or in its normal installation directory, and WSL reports
+that it is not installed. No router settings, credentials or Windows features were changed.
+
+Before deployment, choose either an existing supported Linux VM/Raspberry Pi on the
+home network or a new Docker/WSL setup on this Windows PC. The first option needs its
+private address and an authorised administration method; the second needs system
+installation and possibly a restart. Do not assume that the existing VMware adapters
+mean a suitable Linux guest is installed, running or accessible.
+
+NetGuard then needs the Pi-hole v6 private origin and the local path to a dedicated
+application-password file, not a password pasted into chat. A stable host address and
+useful device/name records are separate requirements from merely starting the service.
+See the [official prerequisites](https://docs.pi-hole.net/main/prerequisites/) and
+[API authentication guide](https://docs.pi-hole.net/api/auth/).
 
 ## What this adds
 
@@ -39,8 +52,8 @@ reported without preventing access to the rest of the app.
   Windows requires a Linux-container runtime (for example Docker Desktop with WSL2).
   This work did not install Docker/WSL, create a VM or enable Windows features.
 
-Do not deploy or expose DNS on the current shared network. Being connected is not
-authorisation. The commands below are for later, on your own authorised network.
+Do not deploy or expose DNS on a shared network without authorisation. The commands
+below are for your own authorised network after confirming the intended host.
 
 ## 1. Start a local Pi-hole later (optional Docker path)
 
@@ -151,10 +164,11 @@ the service using the base file alone. It does not auto-start on the next boot.
 
 ## Deferred acceptance checklist
 
-No items in this checklist were run for this implementation:
+Offline connector/configuration tests have run; real deployment/name-import checks
+remain pending:
 
-1. Install the updated pinned dependencies in an isolated environment and run offline
-   tests, including `tests/unit/test_pihole_setup.py`, then browser/package checks.
+1. Keep running offline tests, including `tests/unit/test_pihole_setup.py`, then
+   browser/package checks. Their passing results do not prove a real Pi-hole deployment.
 2. Validate Compose configuration and start Pi-hole at home; confirm authentication is
    required and only intended ports/interfaces are exposed.
 3. Check Pi-hole's actual network/lease records for one authorised device. Record whether

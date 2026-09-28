@@ -52,16 +52,28 @@ async function parseResponse(response) {
   return body;
 }
 
+async function fetchResponse(path, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+  try {
+    return await parseResponse(await fetch(path, { ...options, signal: controller.signal, cache: 'no-store' }));
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('The local app took too long to respond. Reopen the dashboard to reconnect. If you already pressed Scan, it may still be running; do not start a duplicate scan.');
+    }
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
 async function bootstrapSession() {
   const fragment = new URLSearchParams(window.location.hash.slice(1));
   const bootstrapToken = fragment.get('token');
   if (bootstrapToken) {
-    const response = await fetch('/api/session', {
+    const body = await fetchResponse('/api/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ token: bootstrapToken }),
     });
-    const body = await parseResponse(response);
     csrfToken = body.csrf_token;
     storedToken(csrfToken);
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
@@ -69,8 +81,7 @@ async function bootstrapSession() {
   }
 
   {
-    const response = await fetch('/api/session', { headers: { Accept: 'application/json' } });
-    const body = await parseResponse(response);
+    const body = await fetchResponse('/api/session', { headers: { Accept: 'application/json' } });
     csrfToken = body.csrf_token;
     storedToken(csrfToken);
   }
@@ -93,8 +104,7 @@ async function request(path, options = {}) {
     if (!csrfToken) throw new Error('The local session is unavailable. Restart the application.');
     headers.set('X-CSRF-Token', csrfToken);
   }
-  const response = await fetch(path, { ...options, headers });
-  return parseResponse(response);
+  return fetchResponse(path, { ...options, headers });
 }
 
 export { request };

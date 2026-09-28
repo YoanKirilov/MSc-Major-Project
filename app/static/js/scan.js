@@ -1,6 +1,6 @@
-import { request } from './api.js';
-import { deviceLabel, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs';
-import { prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText } from './report.mjs';
+import { request } from './api.js?v=20260928-startup';
+import { deviceLabel, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs?v=20260928-startup';
+import { prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20260928-startup';
 
 const severityConfig = {
   high: { label: 'High', color: '#ff626d' },
@@ -25,6 +25,11 @@ const deviceSummaries = document.querySelector('#device-summaries');
 const mdnsSection = document.querySelector('#mdns-section');
 const mdnsList = document.querySelector('#mdns-list');
 const runAgainButton = document.querySelector('#runAgainButton');
+const runAgainDialog = document.querySelector('#runAgainDialog');
+const sameDeviceButton = document.querySelector('#sameDeviceButton');
+const anotherDeviceButton = document.querySelector('#anotherDeviceButton');
+const cancelRunAgainButton = document.querySelector('#cancelRunAgainButton');
+const runAgainDevice = document.querySelector('#runAgainDevice');
 const simplifyButton = document.querySelector('#simplifyButton');
 const refreshGuidanceButton = document.querySelector('#refreshGuidanceButton');
 const guidanceNotice = document.querySelector('#guidance-notice');
@@ -71,35 +76,27 @@ filterButtons.forEach((button) => button.addEventListener('click', () => {
   if (currentData) renderFindings(currentData);
 }));
 
-runAgainButton.addEventListener('click', async () => {
+runAgainButton.addEventListener('click', () => {
   if (!currentData) return;
-  runAgainButton.disabled = true;
-  runAgainButton.textContent = 'Starting...';
-  const profile = currentData.policy?.profile || 'light';
-  const deep = profile === 'deep-tcp-v1';
-  const hosts = (deep || currentData.target?.mode === 'known_hosts')
-    ? (currentData.target?.hosts || currentData.devices.map((device) => device.ip)) : [];
-  const body = {
-    mode: deep ? 'known_hosts' : (currentData.target?.mode || 'discover'),
-    profile,
-    cidr: deep ? null : currentData.target?.cidr,
-    hosts,
-    authorised: true,
-  };
-  if (!window.confirm(`Run another ${deep ? 'Deep' : 'Light'} scan of ${deep ? hosts.join(', ') : body.cidr}? Only continue if you own or are authorised to assess this network.`)) {
-    runAgainButton.disabled = false;
-    runAgainButton.textContent = 'Run again';
+  if (currentData.policy?.profile !== 'deep-tcp-v1') {
+    window.location.href = scanSetupLink(currentData);
     return;
   }
-  try {
-    const payload = await request('/api/live-scans', { method: 'POST', body: JSON.stringify(body) });
-    window.location.href = `/scans/${payload.scan_id}`;
-  } catch (error) {
-    runAgainButton.disabled = false;
-    runAgainButton.textContent = 'Run again';
-    status.textContent = error.message;
-  }
+  const setup = readScanSetup(scanSetupLink(currentData).slice(1));
+  const host = setup?.hosts[0];
+  sameDeviceButton.disabled = !host;
+  runAgainDevice.textContent = host
+    ? `Previous address: ${host}. Addresses can change; confirm the device before scanning.`
+    : 'The previous device address is unavailable. Choose another device to continue.';
+  runAgainDialog.showModal();
 });
+sameDeviceButton.addEventListener('click', () => {
+  if (currentData && !sameDeviceButton.disabled) window.location.href = scanSetupLink(currentData);
+});
+anotherDeviceButton.addEventListener('click', () => {
+  if (currentData) window.location.href = scanSetupLink(currentData, false);
+});
+cancelRunAgainButton.addEventListener('click', () => runAgainDialog.close());
 
 simplifyButton.addEventListener('click', async () => {
   if (!currentData) return;

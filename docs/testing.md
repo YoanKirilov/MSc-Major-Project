@@ -1,5 +1,57 @@
 # Testing status
 
+## Dashboard startup/cache regression - 28 September 2026
+
+The running app served current assets and a clean browser reached the session-expiry
+message with Retry connection enabled. Supplying the previous `report.mjs` reproduced
+the user's exact stuck state: missing `readScanSetup` export, "Checking scanner..."
+and a disabled button. This demonstrates a cached-module failure path, not direct
+inspection of the user's browser cache.
+
+- Versioned page scripts and their imports together to bypass old cached modules.
+- Added `Cache-Control: no-store` to local responses and no-store browser API fetches.
+  Restart the backend to activate the new response middleware.
+- Added an independent dashboard startup guard that shows a Reload page action if a
+  module fails. The same stale-module reproduction now leaves the button usable.
+- Browser API/session requests time out after 20 seconds and do not retry writes
+  automatically; the message warns that an already requested scan may still be running.
+- Full `scripts/check.py --browser`: **306 Python tests and 31 JavaScript tests passed**,
+  plus syntax/lint/format. Artifacts: `.test-artifacts/checks-393e5740e6/`.
+  Browser regression deliberately supplies a broken module, checks the recovery button,
+  reloads successfully, and confirms no scan starts during this sequence.
+
+No live scan, credential change, saved-report edit or running-backend restart was done.
+Hard-refresh the page with Ctrl+F5; after restarting the backend, use its current session
+link if the old session has expired. Existing dependency deprecations remain visible.
+
+## Run again navigation - 28 September 2026
+
+- `.venv-brief/Scripts/python.exe scripts/check.py --browser` passed **305 Python
+  tests and 29 JavaScript tests**, seven syntax checks and Ruff lint/format.
+  Artifacts: `.test-artifacts/checks-f2139b678a/`. No live provider or network scan ran.
+- Light Run again opens dashboard setup; known-host lists are retained visibly, with
+  an option to use the local network instead. Deep opens an accessible native dialog:
+  same address, another address, or cancel. Nothing is submitted until Scan is pressed.
+- Browser checks cover Cancel/Escape, same-address prefill and refresh, empty-address
+  validation, existing report preservation, and no new scan on navigation. Unit tests
+  cover bounded setup data, stale tab storage and resuming a genuinely active job.
+- After the final progress-notice adjustment, dashboard tests and a focused browser
+  rerun passed. The mobile dialog screenshot was inspected without page overflow:
+  `.test-artifacts/rescan-browser-20260928/`.
+- Pi-hole is still not deployed. Docker is absent from PATH/normal install locations;
+  WSL reports not installed. Host selection and administration access are needed before
+  configuration can continue. No Windows features, DNS or router settings were changed.
+
+## Live verification - 28 September 2026
+
+One new authorised home Light scan completed its workflow in 3m35s: nine completed
+device checks, one unreachable device, eleven open services and seven review items.
+Ollama processed all eight records in two requests, with no rejected fields; two
+records retained original wording. Saved progress reached 8/8. Actual desktop/mobile
+report review, refresh and retained-evidence replay passed. All 32 normal saved reports
+validated read-only. The offline rerun passed 304 Python and 24 JavaScript tests.
+See [live results and remaining evaluation work](live-check-20260928.md).
+
 ## Fixes and usability improvements verified - 27 September 2026
 
 Final command: `.venv-brief/Scripts/python.exe scripts/check.py --browser --ollama`.

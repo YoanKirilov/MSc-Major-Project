@@ -117,6 +117,14 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     app.state.templates = templates
     app.mount("/static", StaticFiles(directory=str(app_root / "static")), name="static")
 
+    @app.middleware("http")
+    async def prevent_stale_local_ui(request: Request, call_next):
+        response = await call_next(request)
+        # This local app changes in-place. Mixing an old module with a new page can
+        # fail before startup error handling is installed. Reports are private too.
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @app.exception_handler(Timeout)
     async def local_storage_busy(_request: Request, _exc: Timeout):
         return JSONResponse(

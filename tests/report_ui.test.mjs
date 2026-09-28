@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as presentation from '../app/static/js/presentation.mjs';
-import { prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText } from '../app/static/js/report.mjs';
+import { prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from '../app/static/js/report.mjs';
 
 test('high priority appears in top three even when recorded last; input is unchanged', () => {
   const findings = ['low', 'informational', 'low', 'high'].map((severity) => ({ severity }));
@@ -71,6 +71,17 @@ test('web-page help is bounded to observed web features and warns before sign-in
   assert.equal(presentation.webPageInstructions(device, { ...service, state: 'filtered' }), '');
 });
 
+test('rescan links only prefill bounded setup data and never include authorisation', () => {
+  const data = { policy: { profile: 'deep-tcp-v1' }, target: { mode: 'known_hosts', hosts: ['192.168.0.53'] } };
+  assert.deepEqual(readScanSetup(scanSetupLink(data).slice(1)), { profile: 'deep-tcp-v1', hosts: ['192.168.0.53'] });
+  assert.deepEqual(readScanSetup(scanSetupLink(data, false).slice(1)), { profile: 'deep-tcp-v1', hosts: [] });
+  assert.doesNotMatch(scanSetupLink(data), /authorised/);
+  assert.equal(readScanSetup('#setup=1&profile=unknown'), null);
+  assert.equal(readScanSetup('#setup=1&hosts=javascript:alert(1)'), null);
+  assert.equal(readScanSetup('#setup=1&hosts=999.1.1.1'), null);
+  assert.equal(readScanSetup('#setup=1&profile=deep-tcp-v1&hosts=192.168.0.53,192.168.0.54'), null);
+});
+
 test('report renderer exposes failures, sorts recommendations and hides older AI wording', () => {
   // Exercise the actual page code with a minimal DOM; no browser dependency.
   class Element {
@@ -82,6 +93,8 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     setAttribute() {}
     append(...items) { this.children.push(...items); }
     replaceChildren(...items) { this.children = items; this.textContent = ''; }
+    showModal() { this.open = true; }
+    close() { this.open = false; }
     get childElementCount() { return this.children.length; }
   }
   const template = readFileSync(new URL('../app/templates/scan.html', import.meta.url), 'utf8');
@@ -96,7 +109,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     createElement() { return new Element(); },
   };
   const context = vm.createContext({ document, window: { location: { pathname: '/scans/test' } }, URL,
-    ...presentation, prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText });
+    ...presentation, prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
   const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\npoll\(\);\s*$/, '');
   vm.runInContext(source, context);
@@ -184,4 +197,19 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   context.data.report_explanation.prompt_version = 'old';
   vm.runInContext('render(data)', context);
   assert.doesNotMatch(text(elements.get('#report-first-step')), /Reviewed report-level/);
+  elements.get('#runAgainButton').events.click();
+  assert.match(context.window.location.href, /^\/#setup=1&profile=light/);
+  context.data.policy.profile = 'deep-tcp-v1';
+  context.data.target = { mode: 'known_hosts', hosts: ['192.168.0.53'] };
+  context.window.location.href = '/scans/test';
+  elements.get('#runAgainButton').events.click();
+  assert.equal(elements.get('#runAgainDialog').open, true);
+  assert.equal(context.window.location.href, '/scans/test');
+  elements.get('#cancelRunAgainButton').events.click();
+  assert.equal(elements.get('#runAgainDialog').open, false);
+  elements.get('#runAgainButton').events.click();
+  elements.get('#sameDeviceButton').events.click();
+  assert.match(context.window.location.href, /hosts=192.168.0.53/);
+  elements.get('#anotherDeviceButton').events.click();
+  assert.doesNotMatch(context.window.location.href, /hosts=/);
 });

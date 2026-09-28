@@ -3,6 +3,33 @@
 This is the handover for the eleven agreed items. Verification details are in
 `testing.md`; external evaluation steps are in `evaluation.md`.
 
+## Dashboard startup recovery completed - 28 September 2026
+
+Reproduced a permanently disabled Checking scanner button when a cached pre-change
+module lacks the new setup export. Page scripts and dependencies now use a coordinated
+cache-busting version, local responses disable caching, and an independent startup
+guard offers Reload page on module failure. API/session requests have a bounded wait
+without automatic write retries. Full browser/offline checks passed (306 Python,
+31 JavaScript). No scan or backend restart was performed. Hard-refresh the browser;
+restart the backend once to enable the new cache headers. See `testing.md`.
+
+## Run again navigation completed; Pi-hole host choice pending - 28 September 2026
+
+Run again now returns Light scans to the starting page. Deep scans first ask whether
+to reuse the previous device address or choose another, with Cancel/Escape available.
+No scan starts on navigation; users confirm the setup and press Scan. Current scope is
+still validated by the backend. Light known-host lists remain visible and reusable.
+An active backend scan is resumed rather than duplicated; stale completed-tab storage
+does not bounce setup back to the old report.
+
+Verified with 305 Python tests (including synthetic browser workflow), 29 JavaScript
+tests and a final mobile-dialog browser rerun. Existing reports are not modified.
+
+Pi-hole app integration is present, but there is no configured service. This Windows
+machine lacks Docker/WSL. Await the user's choice of an authorised Linux VM/Raspberry
+Pi or Windows container setup before installing system components or creating secrets.
+No router DNS/DHCP changes are authorised by this handover. See `pihole-setup.md`.
+
 ## Latest fixes and improvements completed - 27 September 2026
 
 1. Browser validation errors show readable field messages, not object strings.

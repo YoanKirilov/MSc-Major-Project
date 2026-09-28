@@ -1,7 +1,7 @@
 import re
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from app.main import create_app
 from fastapi.testclient import TestClient
@@ -86,7 +86,8 @@ def test_active_pages_load_all_static_assets_and_module_dependencies(tmp_path, m
             visited.add(url)
             response = client.get(url)
             assert response.status_code == 200, url
-            if url.endswith((".js", ".mjs")):
+            assert response.headers["cache-control"] == "no-store"
+            if urlsplit(url).path.endswith((".js", ".mjs")):
                 assert "javascript" in response.headers["content-type"], url
                 for module in re.findall(r"\bfrom\s+['\"]([^'\"]+)['\"]", response.text):
                     pending.append(urljoin(url, module))
@@ -97,4 +98,21 @@ def test_active_pages_load_all_static_assets_and_module_dependencies(tmp_path, m
         for path in static_root.rglob("*")
         if path.is_file()
     }
-    assert visited == actual_assets
+    assert {urlsplit(url).path for url in visited} == actual_assets
+
+
+def test_pages_and_modules_disable_stale_browser_caching():
+    with TestClient(create_app()) as client:
+        for path in (
+            "/",
+            "/settings",
+            "/history",
+            "/static/js/dashboard.js",
+            "/static/js/report.mjs",
+        ):
+            response = client.get(path)
+            assert response.headers["cache-control"] == "no-store"
+        page = client.get("/")
+        assert "dashboard.js?v=20260928-startup" in page.text
+        module = client.get("/static/js/dashboard.js?v=20260928-startup")
+        assert "report.mjs?v=20260928-startup" in module.text

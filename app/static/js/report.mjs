@@ -54,6 +54,32 @@ export function usableAiRecord(record, data) {
     && record.prompt_version === data.guidance_status?.ai_prompt_version;
 }
 
+// A setup link only pre-fills the dashboard. It never grants scan authorisation.
+export function readScanSetup(hash = '') {
+  if (hash.length > 5000) return null;
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  if (params.get('setup') !== '1') return null;
+  const profile = params.get('profile') || 'light';
+  if (!['light', 'deep-tcp-v1'].includes(profile)) return null;
+  const hosts = params.get('hosts') ? params.get('hosts').split(',') : [];
+  const valid = (ip) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(ip)
+    && ip.split('.').every((part) => Number(part) <= 255 && String(Number(part)) === part);
+  if (hosts.length > 254 || hosts.some((ip) => !valid(ip))
+      || (profile === 'deep-tcp-v1' && hosts.length > 1)) return null;
+  return { profile, hosts: [...new Set(hosts)] };
+}
+
+export function scanSetupLink(data, sameDevice = true) {
+  const profile = data.policy?.profile === 'deep-tcp-v1' ? 'deep-tcp-v1' : 'light';
+  const params = new URLSearchParams({ setup: '1', profile });
+  if (sameDevice && (profile === 'deep-tcp-v1' || data.target?.mode === 'known_hosts')) {
+    const hosts = data.target?.hosts || [];
+    params.set('hosts', hosts.join(','));
+  }
+  const hash = `#${params}`;
+  return readScanSetup(hash) ? `/${hash}` : `/#setup=1&profile=${profile}`;
+}
+
 export function aiExplanationNote(data) {
   const records = data.explanations || [];
   const allRecords = [...records, data.report_explanation].filter(Boolean);

@@ -1,4 +1,4 @@
-import { request } from './api.js';
+import { request } from './api.js?v=20260928-startup';
 
 const list = document.querySelector('#history-list');
 const status = document.querySelector('#history-status');

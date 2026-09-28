@@ -36,6 +36,8 @@
           </div>
           <label class="deep-host-field" id="deepHostField" hidden for="deepHostInput">Deep scan host</label>
           <input class="deep-host-field" id="deepHostInput" type="text" inputmode="decimal" placeholder="Example: 192.168.0.53" hidden />
+          <p class="scan-config" id="scanSetupNote" hidden></p>
+          <button class="text-button" id="clearSavedTargetsButton" type="button" hidden>Use the local network instead</button>
           <button class="scan-launch" id="scanLaunchButton" type="button" aria-describedby="scan-notice" disabled>
             <span>Checking scanner...</span>
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -57,6 +59,18 @@
       </main>
       <footer><p>NetGuard AI · MSc research prototype</p><p>Observations are not a security certification.</p></footer>
     </div>
-    <script type="module" src="/static/js/dashboard.js"></script>
+    <script>
+      // This guard must not depend on the module which might fail to load.
+      function dashboardStartupFailed() {
+        const button = document.querySelector('#scanLaunchButton');
+        if (button.querySelector('span').textContent !== 'Checking scanner...') return;
+        document.querySelector('#scan-config').textContent = 'The dashboard could not finish loading. Reload the page (Ctrl+F5) to get the latest app files. If this continues, restart the NetGuard backend and reopen its session link. No scan was started by this page.';
+        button.disabled = false;
+        button.querySelector('span').textContent = 'Reload page';
+        button.onclick = () => window.location.reload();
+      }
+      window.addEventListener('error', dashboardStartupFailed, true);
+    </script>
+    <script type="module" src="/static/js/dashboard.js?v=20260928-startup" onerror="dashboardStartupFailed()"></script>
   </body>
 </html>

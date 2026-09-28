@@ -23,6 +23,16 @@
         <span class="local-pill"><i></i> Live scan results</span>
       </header>
       <main id="top">
+        <dialog id="runAgainDialog" class="rescan-dialog" aria-labelledby="runAgainTitle" aria-describedby="runAgainDevice runAgainHelp">
+          <h2 id="runAgainTitle">Set up another Deep scan</h2>
+          <p id="runAgainDevice"></p>
+          <p id="runAgainHelp">Choose a device, then review it on the starting page. Nothing will run until you press Scan. This report stays saved.</p>
+          <div class="hero-actions">
+            <button class="primary-button" id="sameDeviceButton" type="button">Same device</button>
+            <button class="primary-button" id="anotherDeviceButton" type="button">Choose another device</button>
+            <button class="text-button" id="cancelRunAgainButton" type="button" autofocus>Cancel</button>
+          </div>
+        </dialog>
         <section class="hero result-hero" id="scan-summary" aria-labelledby="result-title">
           <div class="hero-copy">
             <p class="eyebrow">Observed network report</p>
@@ -115,6 +125,6 @@
       </main>
       <footer><p>NetGuard AI · Local JSON result</p><p>Observations are not a security certification.</p></footer>
     </div>
-    <script type="module" src="/static/js/scan.js"></script>
+    <script type="module" src="/static/js/scan.js?v=20260928-startup"></script>
   </body>
 </html>

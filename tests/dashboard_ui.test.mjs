@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { analysisProgressText } from '../app/static/js/report.mjs';
+import { analysisProgressText, readScanSetup } from '../app/static/js/report.mjs';
 
 const scanId = '11111111-1111-4111-8111-111111111111';
 const key = 'network-assessor-pending-scan';
-function setup(request, saved = null) {
+function setup(request, saved = null, hash = '') {
   const elements = new Map();
   class Element {
     constructor() { this.events = {}; this.textContent = ''; this.style = {}; this.dataset = {}; }
@@ -15,11 +15,11 @@ function setup(request, saved = null) {
   }
   const storage = new Map(saved ? [[key, saved]] : []);
   const timers = [];
-  const window = { location: {}, setTimeout(fn) { timers.push(fn); }, sessionStorage: {
+  const window = { location: { hash }, setTimeout(fn) { timers.push(fn); }, sessionStorage: {
     getItem(k) { return storage.get(k); }, setItem(k, v) { storage.set(k, v); }, removeItem(k) { storage.delete(k); },
   } };
   const document = { querySelector(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, querySelectorAll() { return []; } };
-  const context = vm.createContext({ document, window, request, analysisProgressText });
+  const context = vm.createContext({ document, window, request, analysisProgressText, readScanSetup });
   const source = readFileSync(new URL('../app/static/js/dashboard.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\nloadStatus\(\);\s*$/, '');
   vm.runInContext(source, context);
@@ -103,4 +103,48 @@ test('temporary polling failure preserves scan and retries only the same report'
   fail = false;
   await app.timers.shift()();
   assert.equal(app.elements.get('#scanError').hidden, true);
+});
+
+test('explicit setup clears stale completed-scan storage without automatically scanning', async () => {
+  const calls = [];
+  const app = setup(async (path) => { calls.push(path); return ready; }, scanId, '#setup=1&profile=deep-tcp-v1&hosts=192.168.0.53');
+  await app.load();
+  assert.deepEqual(calls, ['/api/status']);
+  assert.equal(app.storage.has(key), false);
+  assert.equal(app.elements.get('#deepHostInput').value, '192.168.0.53');
+  assert.equal(app.elements.get('#deepHostInput').hidden, false);
+  assert.equal(app.window.location.href, undefined);
+});
+
+test('explicit setup still resumes a real active backend job', async () => {
+  const app = setup(async (path) => path === '/api/status' ? { ...ready, active_scan_id: scanId } : { state: 'running', phase: 'analysis' }, null, '#setup=1');
+  await app.load();
+  assert.equal(app.storage.get(key), scanId);
+  assert.equal(app.elements.get('#scanLaunchButton').disabled, true);
+});
+
+test('Light known-host setup preserves hosts until an explicit Scan click', async () => {
+  const calls = [];
+  const app = setup(async (path, options) => {
+    calls.push({ path, options });
+    if (path === '/api/status') return ready;
+    if (options?.method === 'POST') return { scan_id: scanId };
+    return { state: 'running', phase: 'service_scan' };
+  }, null, '#setup=1&profile=light&hosts=192.168.0.53,192.168.0.54');
+  await app.load();
+  assert.equal(calls.length, 1);
+  assert.match(app.elements.get('#scanSetupNote').textContent, /192.168.0.54/);
+  await app.elements.get('#scanLaunchButton').events.click();
+  const body = JSON.parse(calls.find((call) => call.options?.method === 'POST').options.body);
+  assert.equal(body.mode, 'known_hosts');
+  assert.deepEqual(body.hosts, ['192.168.0.53', '192.168.0.54']);
+});
+
+test('choosing a different Deep device requires an address, not an automatic scan', async () => {
+  const calls = [];
+  const app = setup(async (path) => { calls.push(path); return ready; }, null, '#setup=1&profile=deep-tcp-v1');
+  await app.load();
+  await app.elements.get('#scanLaunchButton').events.click();
+  assert.match(app.elements.get('#scanError').textContent, /Enter one authorised device/);
+  assert.deepEqual(calls, ['/api/status']);
 });

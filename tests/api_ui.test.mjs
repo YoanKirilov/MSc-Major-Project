@@ -6,7 +6,7 @@ import vm from 'node:vm';
 function setup({ blocked = false, status = 200, detail = null } = {}) {
   const calls = [];
   const notes = [];
-  const context = vm.createContext({ Headers, URLSearchParams,
+  const context = vm.createContext({ Headers, URLSearchParams, AbortController, setTimeout, clearTimeout,
     document: { body: { prepend(note) { notes.push(note); } },
       getElementById() { return notes[0]; }, createElement() { return { setAttribute() {} }; } },
     window: { location: { hash: '', pathname: '/', search: '' }, sessionStorage: {
@@ -52,4 +52,23 @@ test('expired session with blocked storage gives its original error and can reco
   await assert.rejects(app.request("request('/api/status')"), /session has expired/);
   await assert.rejects(app.request("request('/api/status')"), /session has expired/);
   assert.equal(app.calls.filter((call) => call.path === '/api/session').length, 2);
+});
+
+test('a stalled session request times out without retrying or starting a scan', async () => {
+  const app = setup();
+  let requests = 0;
+  app.context.setTimeout = (fn) => { queueMicrotask(fn); return 1; };
+  app.context.clearTimeout = () => {};
+  app.context.fetch = async (_path, options) => {
+    requests += 1;
+    return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted'))));
+  };
+  await assert.rejects(app.request("request('/api/status')"), /took too long/);
+  assert.equal(requests, 1);
+});
+
+test('API calls explicitly bypass browser response caches', async () => {
+  const app = setup();
+  await app.request("request('/api/status')");
+  assert.ok(app.calls.every((call) => call.options.cache === 'no-store'));
 });

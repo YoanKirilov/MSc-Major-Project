@@ -177,12 +177,18 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             )
             fail_ai.set()
             page.on("dialog", lambda dialog: dialog.accept())
+            before_setup = len(scanned)
+            page.locator("#runAgainButton").click()
+            page.wait_for_url(base + "/#setup=1**")
+            expect(page.locator("#scanSetupNote")).to_contain_text("192.168.56.10")
+            expect(page.locator("#scanLaunchButton")).to_be_enabled()
+            assert len(scanned) == before_setup
             with page.expect_response(
                 lambda response: (
                     response.url.endswith("/api/live-scans") and response.request.method == "POST"
                 )
             ) as response:
-                page.locator("#runAgainButton").click()
+                page.locator("#scanLaunchButton").click()
             assert response.value.status == 202
             assert response.value.request.post_data_json["hosts"] == ["192.168.56.10"]
             expect(page.locator("#result-status")).to_contain_text(
@@ -212,6 +218,59 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
                 1
             )
             page.screenshot(path=str(tmp_path / "report.png"), full_page=True)
+            deep_report = page.url
+            before_setup = len(scanned)
+            page.locator("#runAgainButton").click()
+            expect(page.get_by_role("dialog")).to_be_visible()
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.screenshot(path=str(tmp_path / "deep-rescan-dialog-mobile.png"))
+            assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+            page.set_viewport_size({"width": 1280, "height": 720})
+            page.get_by_role("button", name="Cancel", exact=True).click()
+            expect(page.get_by_role("dialog")).not_to_be_visible()
+            assert page.url == deep_report
+            page.locator("#runAgainButton").click()
+            page.keyboard.press("Escape")
+            expect(page.get_by_role("dialog")).not_to_be_visible()
+            page.locator("#runAgainButton").click()
+            page.get_by_role("button", name="Same device", exact=True).click()
+            page.wait_for_url(base + "/#setup=1**")
+            expect(page.locator("#deepHostInput")).to_have_value("192.168.56.10")
+            expect(page.locator('[data-profile="deep-tcp-v1"]')).to_have_attribute(
+                "aria-pressed", "true"
+            )
+            page.reload()
+            expect(page.locator("#deepHostInput")).to_have_value("192.168.56.10")
+            assert len(scanned) == before_setup
+            page.goto(deep_report)
+            expect(page.locator("#runAgainButton")).to_be_enabled()
+            page.locator("#runAgainButton").click()
+            page.get_by_role("button", name="Choose another device").click()
+            page.wait_for_url(base + "/#setup=1**")
+            expect(page.locator("#deepHostInput")).to_have_value("")
+            expect(page.locator("#scanLaunchButton")).to_be_enabled()
+            page.locator("#scanLaunchButton").click()
+            expect(page.locator("#scanError")).to_contain_text("Enter one authorised device")
+            assert len(scanned) == before_setup
+            # An outdated/failed module must offer recovery, not an inert Scan button.
+            blocked_module = "**/static/js/report.mjs*"
+            page.route(
+                blocked_module,
+                lambda route: route.fulfill(
+                    status=200, content_type="text/javascript", body="export const outdated = true;"
+                ),
+            )
+            expected_errors = len(errors)
+            page.goto(base)
+            expect(page.locator("#scanLaunchButton")).to_have_text("Reload page")
+            expect(page.locator("#scanLaunchButton")).to_be_enabled()
+            expect(page.locator("#scan-config")).to_contain_text("latest app files")
+            assert len(scanned) == before_setup
+            assert len(errors) > expected_errors
+            del errors[expected_errors:]
+            page.unroute(blocked_module)
+            page.locator("#scanLaunchButton").click()
+            expect(page.locator("#scan-config")).to_contain_text("Ready to scan")
             page.context.clear_cookies()
             page.goto(base)
             expect(page.locator("#scan-config")).to_contain_text("session has expired")

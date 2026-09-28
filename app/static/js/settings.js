@@ -1,4 +1,4 @@
-import { request } from './api.js';
+import { request } from './api.js?v=20260928-startup';
 
 const form = document.querySelector('#settings-form');
 const allowedNetwork = document.querySelector('#allowed-network');
