@@ -1,9 +1,17 @@
 # Architecture and workspace review
 
-Reviewed 27 September 2026. This is the current map; dated build snapshots under
+Reviewed 28 September 2026. This is the current map; dated build snapshots under
 `archive/` and older testing entries are historical, not the current implementation.
 
 ## Overall assessment
+
+The standards-informed [quality plan](quality-plan.md),
+[traceability matrix](quality-traceability.md) and
+[new baseline record](quality-evidence-20260928.md) now define measurable checks and
+remaining release work. The latest organisation review found no unused shipped
+modules/assets through import and asset traversal. It recommends bounded future
+extractions in the scan supervisor, report rendering and AI orchestration, not a
+framework migration or broad rewrite. See the record for exact limits of this review.
 
 The design fits a local, single-user research prototype. Collection, deterministic
 findings, AI wording, persistence and browser presentation are separate layers.

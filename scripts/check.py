@@ -13,9 +13,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--browser", action="store_true", help="Use a browser with synthetic scans")
     parser.add_argument(
+        "--browser-engines",
+        default="chromium",
+        help="Responsive engines: chromium,firefox,webkit (install first)",
+    )
+    parser.add_argument(
         "--ollama", action="store_true", help="Test local Ollama on synthetic facts"
     )
     args = parser.parse_args()
+    if any(
+        engine not in {"chromium", "firefox", "webkit"}
+        for engine in args.browser_engines.split(",")
+    ):
+        parser.error("Unknown browser engine")
     root = Path(__file__).resolve().parents[1]
     if shutil.which("node") is None:
         parser.error("Node.js is required for the JavaScript checks")
@@ -24,6 +34,7 @@ def main():
     env = os.environ.copy()
     # Explicit opt-ins override any flags left in the parent shell.
     env["RUN_BROWSER_TESTS"] = "1" if args.browser else "0"
+    env["RESPONSIVE_BROWSERS"] = args.browser_engines
     env["RUN_LIVE_OLLAMA"] = "1" if args.ollama else "0"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["RUFF_CACHE_DIR"] = str(run / "ruff-cache")

@@ -1,5 +1,5 @@
-import { request } from './api.js?v=20260928-startup';
-import { analysisProgressText, readScanSetup } from './report.mjs?v=20260928-startup';
+import { request } from './api.js?v=20260928-responsive';
+import { analysisProgressText, readScanSetup } from './report.mjs?v=20260928-responsive';
 
 const launchButton = document.querySelector('#scanLaunchButton');
 const configText = document.querySelector('#scan-config');

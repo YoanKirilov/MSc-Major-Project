@@ -3,6 +3,29 @@
 This is the handover for the eleven agreed items. Verification details are in
 `testing.md`; external evaluation steps are in `evaluation.md`.
 
+## Usability and release-check improvements - 29 September 2026
+
+Implemented first-action placement, checked/discovered counts, precise completion wording,
+stable finding ordering and simpler labels. Original evidence and AI provenance remain
+available. Responsive coverage now includes phone/tablet/desktop sizes in Chromium,
+Firefox and WebKit, with keyboard, text-size and selected touch-emulation checks.
+Added pinned local security gates and a copied-backup recovery drill; updated vulnerable
+development test dependencies without changing runtime pins. See the dated results in
+[testing](testing.md) and [repeatable release checks](release-checks.md).
+No new network scan or change to normal saved reports was required. Physical devices,
+real reader-study results, remote Ubuntu CI and actual Pi-hole evaluation remain pending.
+
+## Quality management baseline established - 28 September 2026, evening
+
+The [quality plan](quality-plan.md) now defines project-specific standards-informed
+criteria, owners, risk/release controls and executable verification steps; the
+[matrix](quality-traceability.md) links requirements to code/tests. The
+[new execution record](quality-evidence-20260928.md) contains the subsequent real Light
+scan, local Ollama, browser, evidence replay, regression, package and data-preservation
+results. It explicitly does not claim ISO certification or completed user evaluation.
+No source refactor was needed for this baseline; focused count/mobile and maintainability
+improvements are recorded for the next change, separately from pending external checks.
+
 ## Dashboard startup recovery completed - 28 September 2026
 
 Reproduced a permanently disabled Checking scanner button when a cached pre-change

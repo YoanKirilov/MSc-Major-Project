@@ -26,9 +26,9 @@ body {
     radial-gradient(circle at 94% 10%, rgba(99, 169, 255, 0.08), transparent 25rem),
     var(--bg);
 }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { cursor: pointer; }
-button:focus-visible, input:focus-visible, .finding-card:focus-visible {
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
   outline: 3px solid rgba(80, 213, 208, 0.45);
   outline-offset: 3px;
 }
@@ -253,7 +253,7 @@ input.deep-host-field { padding: 10px 12px; color: var(--text); background: var(
 .scan-error { width: min(100%, 620px); padding: 18px 20px; color: #ffc0c5; background: rgba(255,98,109,.09); border: 1px solid rgba(255,98,109,.25); border-radius: 10px; text-align: center; line-height: 1.5; }
 .device-section { padding: 68px 0 74px; border-bottom: 1px solid var(--line); }
 .device-section > div:first-child { margin-bottom: 24px; }
-.device-table-wrap { width: 100%; min-width: 0; }
+.device-table-wrap { width: 100%; min-width: 0; overflow-x: auto; }
 .device-summaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 16px; margin-bottom: 28px; }
 .review-count { color: var(--text); text-align: center; }
 .review-count strong { display: block; font-size: 3rem; }
@@ -282,6 +282,40 @@ input.deep-host-field { padding: 10px 12px; color: var(--text); background: var(
 .beginner-guide dt { margin-top: 16px; font-weight: 700; }
 .beginner-guide dd { margin-left: 0; }
 
+/* Reflow long names, settings and evidence without hiding overflowing controls. */
+main, section, article, .hero-copy, .score-card > div, .steps-list li > div { min-width: 0; }
+main, .topbar, footer, dialog { overflow-wrap: anywhere; }
+.topbar { gap: 16px; }
+.topbar nav { display: flex; flex-wrap: wrap; gap: 12px; }
+input, select { max-width: 100%; min-width: 0; }
+.card { margin: 32px 0; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.card form { display: grid; gap: 12px; }
+.card p { line-height: 1.6; }
+.card input:not([type=checkbox]), .card select { width: 100%; padding: 10px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; }
+.first-action { margin-top: 18px; padding: 16px; border-left: 3px solid var(--cyan); background: var(--surface); border-radius: 8px; }
+.first-action h2 { font-size: 1.15rem; }
+.first-action p { line-height: 1.55; margin-bottom: 8px; }
+.first-action a { color: var(--cyan); }
+.detail-topline { flex-wrap: wrap; }
+.detail-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.rescan-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+@media (max-width: 620px) {
+  .topbar { height: auto; min-height: 64px; flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; }
+  .scan-mode { display: grid; width: 100%; }
+  .mode-button { min-width: 0; }
+  .result-hero { padding-top: 24px; }
+  .result-hero h1 { font-size: 2rem; }
+  .result-hero .hero-lead { font-size: .95rem; line-height: 1.5; }
+  .result-summary-card { flex-wrap: wrap; }
+  .result-summary-card > div { flex: 1 1 140px; }
+  .card { padding: 16px; }
+  .filter-row { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
 @media (max-width: 880px) {
   .hero { grid-template-columns: 1fr; padding-top: 54px; }
   .score-card { justify-content: flex-start; }
@@ -297,7 +331,7 @@ input.deep-host-field { padding: 10px 12px; color: var(--text); background: var(
 }
 @media (max-width: 620px) {
   .topbar, main, footer { padding-left: 18px; padding-right: 18px; }
-  .topbar { height: 64px; }
+  .topbar { height: auto; min-height: 64px; }
   .hero { padding: 45px 0 48px; gap: 25px; }
   h1 { font-size: 2.55rem; }
   .score-card { min-height: 0; padding: 25px 20px; gap: 18px; }

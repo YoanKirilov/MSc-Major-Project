@@ -1,7 +1,32 @@
 const priorities = { high: 0, medium: 1, low: 2, informational: 3 };
 
-export function prioritise(findings = []) {
-  return [...findings].sort((a, b) => (priorities[a.severity] ?? 4) - (priorities[b.severity] ?? 4));
+export function prioritise(findings = [], devices = [], services = []) {
+  const addresses = new Map(devices.map(d => [d.device_id, d.ip]));
+  const features = new Map(services.map(s => [s.service_id, s]));
+  const compare = (a, b) => String(a || '').localeCompare(String(b || ''), 'en', { numeric: true });
+  // IDs contain the scan ID: tie-break using observed identity, not generated UUIDs.
+  return [...findings].sort((a, b) => (priorities[a.severity] ?? 4) - (priorities[b.severity] ?? 4)
+    || compare(a.rule_id, b.rule_id) || compare(addresses.get(a.device_id), addresses.get(b.device_id))
+    || compare(features.get(a.service_id)?.protocol, features.get(b.service_id)?.protocol)
+    || compare(features.get(a.service_id)?.port, features.get(b.service_id)?.port)
+    || compare(a.title, b.title));
+}
+
+export function deviceCheckLabel(data) {
+  const c = data.coverage;
+  if (!c) return 'Coverage not recorded';
+  const discover = data.target?.mode === 'discover';
+  return `${c.service_completed_count || 0} of ${(discover ? c.discovered_count : c.candidate_count) || 0} ${discover ? 'discovered' : 'selected'}`;
+}
+
+export function completedCheckSummary(data) {
+  const c = data.coverage || {};
+  const total = data.target?.mode === 'discover' ? c.discovered_count : c.candidate_count;
+  if (['queued', 'running'].includes(data.state)) return `In progress. ${coverageSummary(data)}`;
+  if (data.state === 'completed' && total > 0 && c.service_completed_count === total && !c.service_failed_count) {
+    return `All selected device checks finished (${total} device${total === 1 ? '' : 's'}). This is not a full security assessment.`;
+  }
+  return coverageSummary(data);
 }
 
 export function serviceLabel(service, fallback = 'Selected service') {

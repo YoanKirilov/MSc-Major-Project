@@ -1,5 +1,63 @@
 # Testing status
 
+## Usability, responsive and release-check follow-up - 29 September 2026
+
+Implemented a first-action panel above report statistics, checked versus discovered/
+selected counts, precise complete/partial/empty coverage wording, stable equal-priority
+ordering, simpler feature/evidence labels and narrowly deduplicated guidance. Technical
+details, original wording and AI provenance remain available; stored evidence is unchanged.
+
+- Final isolated suite: **315 Python and 34 JavaScript tests passed**, Ruff lint/format
+  and seven JavaScript syntax checks passed. One live-provider test was deselected;
+  one Starlette/httpx deprecation warning remains. Artifacts:
+  `.test-artifacts/checks-c0a9814a50/`.
+- Responsive matrix: Chromium, Firefox and WebKit; eight sizes from 320x568 to 2560x1440;
+  four pages, giving **96 engine/page/viewport combinations**. Checked overflow, long
+  names, counts, first-action placement and dialogs. Additional checks cover keyboard
+  focus, 200% root text size, and Chromium/WebKit touch navigation without starting scans.
+  These are emulations, not physical-device or full accessibility certification.
+- Fresh-wheel installation passed for all four pages, eight static assets and saved-demo
+  create/reopen, plus dependency consistency: `.test-artifacts/package-ee645f08a2/`.
+- Final security gate passed: no known dependency advisories, zero remaining secret
+  alerts, zero medium/high static findings. Twelve low findings are reviewed in
+  [release checks](release-checks.md). Artifacts: `.test-artifacts/security-650c28bac1/`.
+  The separate security-tool lock audit also passed: `.test-artifacts/security-tools-audit.json`.
+- Copied real-report recovery drill passed: 12 devices/eight findings retained from the
+  previous checkpoint. Its incomplete state remained explicit; source and copied evidence
+  hashes were unchanged. Artifacts: `.test-artifacts/restore-ayca79h7/drill.json`.
+- Reopened a copy of the last real report with the updated interface at desktop/mobile
+  sizes. All eight finding panels and 12 device cards/rows remained accessible, nine saved
+  explanation records validated, refresh worked, and no page overflow/browser errors
+  occurred. Artifacts: `.test-artifacts/responsive-saved-20260929/`. This was not a fresh
+  scan or new Ollama invocation. All 34 normal saved reports retained their prior hashes.
+
+Failures retained in the work record: coordinated asset-version assertions first needed
+updating; the added restore regression initially omitted its synthetic target and failed
+schema validation (`checks-f54f13bdb4`). Corrected the test fixture, then reran the whole
+suite successfully. The first dependency audit found two entries for one pytest advisory;
+patched test dependencies in an isolated environment and reran the audit. Five narrowly
+reviewed synthetic/password-file-reference secret alerts have exact-line comments, not
+broad exclusions. Runtime dependency pins were not changed.
+
+No new live scan, backend restart, router change, Pi-hole installation, commit or push
+was performed. Remote Ubuntu CI/protection enforcement, physical phones/tablets, actual
+Pi-hole/ground-truth Deep evaluation and a real nontechnical-reader study remain pending.
+Commands and remaining limitations: [repeatable release checks](release-checks.md).
+
+## Standards-informed quality baseline - 28 September 2026, evening
+
+Created the [quality plan](quality-plan.md) and [requirements matrix](quality-traceability.md)
+before a new authorised home Light run. [Full measured record](quality-evidence-20260928.md):
+4m15s, 14 discovered, 13 checked, one unreachable after two attempts, 13 open services,
+eight review items and nine validated Ollama records. Three current device names came
+from mDNS/reverse DNS, not Pi-hole. All facts/findings replayed from retained evidence.
+
+306 Python and 31 JavaScript tests, browser workflow, lint/format/syntax and fresh-wheel
+checks passed. Actual live-report desktop/mobile review passed. All 34 normal reports
+validated and their pre/post hashes match. No application source was changed or deleted;
+documentation now records quality gates, organisation recommendations and usability work.
+Actual Pi-hole, Ubuntu/remote CI, ground-truth Deep and reader-study results remain pending.
+
 ## Dashboard startup/cache regression - 28 September 2026
 
 The running app served current assets and a clean browser reached the session-expiry

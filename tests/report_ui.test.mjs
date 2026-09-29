@@ -3,7 +3,38 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as presentation from '../app/static/js/presentation.mjs';
-import { prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from '../app/static/js/report.mjs';
+import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from '../app/static/js/report.mjs';
+
+test('equal priorities use rule, numeric address and service instead of completion order or scan IDs', () => {
+  const devices = [{ device_id: 'a', ip: '192.168.0.2' }, { device_id: 'b', ip: '192.168.0.10' }];
+  const findings = [{ severity: 'low', rule_id: 'HTTP', device_id: 'b' }, { severity: 'low', rule_id: 'HTTP', device_id: 'a' }];
+  assert.deepEqual(prioritise(findings, devices).map(f => f.device_id), ['a', 'b']);
+  assert.deepEqual(prioritise([...findings].reverse(), devices), prioritise(findings, devices));
+  assert.equal(findings[0].device_id, 'b');
+});
+
+test('coverage labels distinguish discovery, selection, incomplete and empty results', () => {
+  const data = { state: 'completed', target: { mode: 'discover' }, coverage: { discovered_count: 12, service_completed_count: 12 } };
+  assert.equal(deviceCheckLabel(data), '12 of 12 discovered');
+  assert.match(completedCheckSummary(data), /All selected device checks finished/);
+  assert.doesNotMatch(completedCheckSummary(data), /0 devices/);
+  assert.equal(deviceCheckLabel({ ...data, target: { mode: 'known_hosts' }, coverage: { candidate_count: 2, service_completed_count: 1 } }), '1 of 2 selected');
+  assert.doesNotMatch(completedCheckSummary({ ...data, state: 'partial', coverage: { discovered_count: 12, service_completed_count: 11 } }), /All selected/);
+  assert.doesNotMatch(completedCheckSummary({ ...data, coverage: { discovered_count: 0, service_completed_count: 0 } }), /All selected/);
+  assert.match(completedCheckSummary({ ...data, state: 'running' }), /In progress/);
+});
+
+test('beginner feature labels and concise actions preserve uncertainty and safety instructions', () => {
+  assert.equal(presentation.featureLabel({ name: 'http', port: 80 }), 'Device web page');
+  assert.match(presentation.featureLabel({ name: 'https-alt', detection_method: 'table', port: 8443 }), /unconfirmed/);
+  assert.doesNotMatch(presentation.featureLabel({ name: 'http-proxy', detection_method: 'table', port: 8080 }), /TCP|8080/);
+  assert.match(presentation.confidenceLabel('medium'), /Some supporting evidence/);
+  const step = 'Check whether the address starts with https://, which indicates a protected web connection.';
+  const check = 'Look for https:// at the start of the address. Ask the device maker if you are unsure.';
+  assert.equal((presentation.actionGuidance(step, check).match(/https:\/\//g) || []).length, 1);
+  assert.match(presentation.actionGuidance(step, check), /Ask the device maker/);
+  assert.match(presentation.actionGuidance('Read the manual.', 'Do not enter passwords over HTTP.'), /Do not enter passwords/);
+});
 
 test('high priority appears in top three even when recorded last; input is unchanged', () => {
   const findings = ['low', 'informational', 'low', 'high'].map((severity) => ({ severity }));
@@ -109,7 +140,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     createElement() { return new Element(); },
   };
   const context = vm.createContext({ document, window: { location: { pathname: '/scans/test' } }, URL,
-    ...presentation, prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
+    ...presentation, prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
   const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\npoll\(\);\s*$/, '');
   vm.runInContext(source, context);
@@ -184,7 +215,8 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   }, display_limitations: ['Other settings were not checked.'] };
   vm.runInContext('render(data)', context);
   assert.match(text(elements.get('#report-first-step')), /Reviewed report-level next step/);
-  assert.match(text(elements.get('#report-checks')), /Reviewed report-level verification/);
+  assert.match(text(elements.get('#report-checks')), /1 device check finished/);
+  assert.doesNotMatch(text(elements.get('#report-checks')), /Reviewed report-level verification/);
   assert.match(text(elements.get('#nextStepsList')), /Reviewed report-level next step/);
   context.data.plain_overview = { content: {
     meaning: 'Plain overview.', why_it_matters: 'Plain caution.',

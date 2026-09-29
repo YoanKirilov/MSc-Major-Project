@@ -9,7 +9,7 @@ services:
       - "127.0.0.1:8081:80/tcp"
     environment:
       TZ: Europe/London
-      WEBPASSWORD_FILE: pihole_webpasswd
+      WEBPASSWORD_FILE: pihole_webpasswd # pragma: allowlist secret - file reference, not a password
       FTLCONF_dns_listeningMode: "all"
       FTLCONF_dns_upstreams: "${PIHOLE_UPSTREAMS:-1.1.1.1;1.0.0.1}"
       FTLCONF_dhcp_active: "false"

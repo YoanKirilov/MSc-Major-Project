@@ -1,6 +1,6 @@
-import { request } from './api.js?v=20260928-startup';
-import { deviceLabel, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs?v=20260928-startup';
-import { prioritise, serviceLabel, coverageSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20260928-startup';
+import { request } from './api.js?v=20260928-responsive';
+import { deviceLabel, featureLabel, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs?v=20260928-responsive';
+import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20260928-responsive';
 
 const severityConfig = {
   high: { label: 'High', color: '#ff626d' },
@@ -203,7 +203,7 @@ function showDetail(finding) {
   }
   const config = severityConfig[finding.severity] || severityConfig.informational;
   const top = text('div', '', 'detail-topline');
-  top.append(text('span', finding.severity === 'informational' ? 'Review item' : `${config.label} priority`, 'severity-badge'), text('span', `${finding.confidence} confidence in assessment`, 'confidence'));
+  top.append(text('span', finding.severity === 'informational' ? 'Review item' : `${config.label} priority`, 'severity-badge'), text('span', `${confidenceLabel(finding.confidence)} — not a safety rating`, 'confidence'));
   detailPanel.style.setProperty('--severity-color', config.color);
   const device = currentData.devices.find((item) => item.device_id === finding.device_id);
   const service = currentData.services.find((item) => item.service_id === finding.service_id);
@@ -279,7 +279,7 @@ function showDetail(finding) {
       ? explanation.content.how_to_check[index] || action.verification
       : action.verification;
     const item = document.createElement('li');
-    item.append(text('span', `${step} ${check}`));
+    item.append(text('span', actionGuidance(step, check)));
     if (step !== action.text || check !== action.verification) {
       const original = document.createElement('details');
       original.append(text('summary', 'Original rule-based step'));
@@ -316,7 +316,7 @@ function showDetail(finding) {
 
 function renderFindings(data) {
   currentData = data;
-  const currentFindings = prioritise(data.findings);
+  const currentFindings = prioritise(data.findings, data.devices, data.services);
   const visible = visibleFindings(currentFindings);
   findingsList.replaceChildren();
   const explanationNote = ` ${aiExplanationNote(data)}`;
@@ -361,7 +361,7 @@ function renderFindings(data) {
 function renderNextSteps(data) {
   nextStepsList.replaceChildren();
   const groups = new Map();
-  prioritise(data.findings).forEach((finding) => {
+  prioritise(data.findings, data.devices, data.services).forEach((finding) => {
     const action = finding.actions?.[0];
     if (!action) return;
     const key = `${finding.rule_id || finding.title}:${action.text}`;
@@ -388,7 +388,7 @@ function renderNextSteps(data) {
     const check = explanation.editorial || explanation.aiFields.includes('how_to_check')
       ? explanation.content.how_to_check[actionIndex] || action.verification
       : action.verification;
-    const guidance = [step, check].filter(Boolean).join(' ');
+    const guidance = actionGuidance(step, check);
     item.append(text('span', String(index + 1)), copy);
     copy.append(text('strong', explanation.title), text('p', `Applies to: ${devices.join('; ')}`), text('p', guidance));
     nextStepsList.append(item);
@@ -408,13 +408,13 @@ function renderBeginnerGuide(data) {
     ? 'Review any listed items, then retry the unfinished device checks. Missing results cannot tell you whether those devices are safe.'
     : data.findings.length ? 'Start with the first item below. Identify the device and follow the suggested checks before changing its settings.'
       : 'Read what the scan managed to check. No listed items does not mean everything is safe.');
-  const first = prioritise(data.findings)[0];
+  const first = prioritise(data.findings, data.devices, data.services)[0];
   if (first) {
     const device = data.devices.find((item) => item.device_id === first.device_id);
     const action = explanationFor(first).content.recommended_steps?.[0] || first.actions?.[0]?.text;
-    reportFirstStep.textContent = `First identify ${deviceLabel(device)}${device ? ` (${device.ip})` : ''} using your router's connected-device list or ask the person who set up your network. Then: ${action || 'open its review item below.'} Do not change settings until you recognise the device.`;
+    reportFirstStep.textContent = `Identify ${deviceLabel(device)}${device ? ` (${device.ip})` : ''} in your router's device list, or ask its owner. Then: ${action || 'open its review item below.'} Do not change settings until you recognise it.`;
   }
-  reportChecks.textContent = overview?.content.how_to_check?.join(' ') || coverageSummary(data);
+  reportChecks.textContent = completedCheckSummary(data);
 }
 
 function renderDeviceSummaries(data) {
@@ -446,11 +446,11 @@ function renderDeviceSummaries(data) {
       : 'No features accepting requests recorded in the selected checks.'));
     if (services.length) {
       const features = document.createElement('ul');
-      services.slice(0, 5).forEach((service) => features.append(text('li', formatServiceLabel(service))));
+      services.slice(0, 5).forEach((service) => features.append(text('li', featureLabel(service))));
       card.append(features);
       if (services.length > 5) card.append(text('p', `${services.length - 5} more features are listed in the device table below.`));
     }
-    const first = prioritise(findings)[0];
+    const first = prioritise(findings, data.devices, data.services)[0];
     card.append(text('p', first
       ? `${findings.length} item${findings.length === 1 ? '' : 's'} to review. Start with: ${explanationFor(first).title}. See the suggested checks above.`
       : 'No review items recorded; this is not proof of safety.'));
@@ -594,6 +594,7 @@ function render(data) {
   const preparing = ['queued', 'running'].includes(data.state) || data.phase === 'analysis';
   const analysisFailed = data.analysis_status === 'failed';
   reportContent.hidden = preparing;
+  document.querySelector('#first-action').hidden = preparing;
   runAgainButton.disabled = preparing;
   retryHostsButton.hidden = preparing || !(data.coverage?.targets || []).some((target) => ['failed', 'timed_out', 'cancelled', 'pending', 'running'].includes(target.service_status) && (data.target?.mode === 'known_hosts' || target.discovery_status === 'observed'));
   retryHostsButton.disabled = preparing;
@@ -684,7 +685,7 @@ function render(data) {
       : data.guidance_updated_at ? 'Guidance was refreshed from saved observations. The original scan date and evidence are unchanged.' : '';
   if (outdatedAi) guidanceNotice.textContent += ' Older AI wording is hidden because it predates the current validation checks. You can request local AI wording again.';
   document.querySelector('#finding-metric').textContent = data.findings.length;
-  document.querySelector('#device-metric').textContent = data.devices.length;
+  document.querySelector('#device-metric').textContent = deviceCheckLabel(data);
   document.querySelector('#service-metric').textContent = openServices;
   renderFilterCounts(data.findings);
   renderFindings(data);

@@ -40,6 +40,20 @@ Windows/Ubuntu automation is configured in `.github/workflows/checks.yml`; it do
 run live network scans. See [verification status](docs/testing.md) and the
 [reader-study kit](docs/evaluation-session.md).
 
+The [software quality plan](docs/quality-plan.md) defines standards-informed targets,
+review responsibilities, risks and release gates. The
+[requirements matrix](docs/quality-traceability.md) links them to implementation and
+tests; [the latest quality baseline](docs/quality-evidence-20260928.md) records measured
+results and remaining verification. This is not a claim of ISO certification.
+
+The 29 September follow-up brings the first useful action above report statistics,
+distinguishes checked devices from discovered/selected devices, and uses stable finding
+ordering and simpler feature labels without changing saved evidence. Responsive checks
+cover representative phone, tablet and desktop sizes in three browser engines, not every
+physical device. [Repeatable release checks](docs/release-checks.md) document the browser,
+security and copied-backup recovery commands. Reinstall `requirements-dev.lock` in your
+development environment for the updated test dependencies; runtime pins are unchanged.
+
 - Python **3.11 or newer**.
 - Nmap for real scans. Install it separately and make it available on `PATH`, or set `APP_NMAP_PATH` to the executable. On Windows, a normal Nmap installation is detected in the usual Program Files location when possible. Run `doctor` below to verify it. Demo data and offline tests do not need Nmap.
 - Ollama and the configured local model for AI explanations. The app checks availability before scanning and attempts report preparation after collection. If Ollama remains unavailable, factual results stay accessible with a retry action.

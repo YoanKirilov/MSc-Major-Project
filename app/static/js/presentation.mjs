@@ -1,4 +1,28 @@
 // Display-only helpers. Never turn annotations or optional observations into findings.
+export function featureLabel(service) {
+  const names = { http: 'Device web page', https: 'Protected web connection',
+    'http-proxy': 'Web-related connection', 'https-alt': 'Possible protected web connection',
+    'microsoft-ds': 'File sharing', 'ms-wbt-server': 'Remote desktop', rtsp: 'Media streaming',
+    domain: 'Network name lookup', dns: 'Network name lookup', ssh: 'Protected remote control',
+    telnet: 'Older remote control (Telnet)', ftp: 'File transfer', mqtt: 'Smart-home messaging',
+    snmp: 'Device monitoring', upnp: 'Device discovery', ssdp: 'Device discovery', ntp: 'Clock synchronisation' };
+  const name = service.name === 'http' && service.tunnel === 'ssl' ? 'https' : service.name;
+  return `${names[name] || 'Unidentified feature'}${service.detection_method === 'table' ? ' (type unconfirmed; inferred from its contact number)' : ''}`;
+}
+
+export function confidenceLabel(value) {
+  return ({ high: 'Strong supporting evidence', medium: 'Some supporting evidence',
+    low: 'Limited supporting evidence' })[value] || 'Evidence strength not recorded';
+}
+
+export function actionGuidance(step, check) {
+  // Remove only this reviewed duplicate; keep all precautions and original text in details.
+  const repeated = 'Look for https:// at the start of the address. ';
+  const verification = (step || '').includes('https://') && (check || '').startsWith(repeated)
+    ? check.slice(repeated.length) : check;
+  return [step, verification].filter(Boolean).join(' ');
+}
+
 export function webPageInstructions(device, service) {
   if (!device || !service || service.state !== 'open' || service.protocol !== 'tcp'
       || service.detection_method !== 'probed' || !['http', 'https', 'http-proxy'].includes(service.name)) return '';

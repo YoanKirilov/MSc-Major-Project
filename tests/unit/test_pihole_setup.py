@@ -13,7 +13,7 @@ def test_password_file_accepts_windows_utf8_bom_and_trailing_newline(tmp_path, m
     secret.write_bytes(b"\xef\xbb\xbfsynthetic-password\r\n")
     monkeypatch.setenv("APP_PIHOLE_PASSWORD_FILE", str(secret))
     config = AppConfig.from_env()
-    assert config.pihole_password == "synthetic-password"
+    assert config.pihole_password == "synthetic-password"  # pragma: allowlist secret - fixture only
     assert config.pihole_configuration_error is None
     assert "synthetic-password" not in repr(config)
     assert str(secret) not in repr(config)

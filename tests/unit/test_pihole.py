@@ -12,7 +12,7 @@ from app.schemas.scan import Device
         "http://example.com",
         "http://8.8.8.8",
         "http://169.254.169.254",
-        "http://user:secret@192.168.0.2",
+        "http://user:secret@192.168.0.2",  # pragma: allowlist secret - rejected synthetic URL
         "http://192.168.0.2/api",
         "http://192.168.0.2/?key=secret",
     ],
@@ -29,7 +29,10 @@ async def test_pihole_reads_names_in_scope_and_logs_out_without_network_mutation
     async def handler(request):
         calls.append((request.method, request.url.path))
         if request.method == "POST":
-            assert json.loads(request.content) == {"password": "test-secret"}
+            # Synthetic credential used only by this in-memory transport.
+            assert json.loads(request.content) == {
+                "password": "test-secret",  # pragma: allowlist secret - synthetic transport
+            }
             return httpx.Response(200, json={"session": {"valid": True, "sid": "test-session"}})
         assert request.headers["X-FTL-SID"] == "test-session"
         assert "test-secret" not in str(request.url)

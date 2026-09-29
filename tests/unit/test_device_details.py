@@ -89,7 +89,7 @@ def test_advertised_type_does_not_promote_reachability_or_open_ports():
         "http://192.168.0.21/",
         "http://127.0.0.1/",
         "http://169.254.169.254/",
-        "http://user:secret@192.168.0.20/",
+        "http://user:secret@192.168.0.20/",  # pragma: allowlist secret - rejected synthetic URL
         "file:///etc/passwd",
         "http://192.168.0.20:0/",
     ],
