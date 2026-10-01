@@ -3,6 +3,20 @@
 Automated checks establish software behaviour. They do not establish that nontechnical
 people understand the report or that every device on a live network will answer.
 
+## Future improvement: optional Pi-hole naming
+
+Decision, 30 September 2026: Pi-hole deployment and live evaluation are deferred at the
+project owner's request. Describe it in the dissertation's improvements/future-work
+section, not as an evaluated feature of the current system. The prepared connector and
+synthetic tests remain for possible later use; no Pi-hole service or credentials are needed
+for the current Light/Deep evaluation.
+
+A future deployment could supplement device names with a router/DNS/DHCP service's
+recorded names. Evaluate freshness, reassigned addresses and matching against known
+device identities; a name is neither proof of ownership nor a security assessment.
+Any benefit to name coverage needs measurements against a configured instance. The
+existing [setup notes](pihole-setup.md) are retained as future-work preparation only.
+
 ## Reproducible installation
 
 Use Python 3.12 on the intended Ubuntu lab host. In a new virtual environment, install
@@ -46,7 +60,7 @@ approved lab VM and compare its known services. Keep scan JSON private and sanit
 identifiers before including evidence in the dissertation.
 
 A timeout is a result about coverage, not a passed security check. Report which checks
-completed and which could not. Pi-hole integration additionally needs a real v6 instance
+completed and which could not. If future Pi-hole evaluation is resumed, it needs a real v6 instance
 and its API credentials; compare imported names with its DHCP/network table and test an
 expired/reassigned address. A router import needs a documented vendor API or a sample
 DHCP/client export; there is no single format supported by all routers. Routing tables

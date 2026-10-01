@@ -42,7 +42,7 @@ class ScanSupervisor:
         process_runner=run_process,
         explanation_service=None,
         mdns_browser=browse_mdns,
-        max_concurrent_scans: int = 2,
+        max_concurrent_scans: int = 5,
         pihole_client=None,
     ):
         self.store = store

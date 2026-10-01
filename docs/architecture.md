@@ -1,7 +1,92 @@
 # Architecture and workspace review
 
+## Library reliability update — 1 October 2026
+
+History separates unreadable-file warnings from filtered results/counts. Recent-device
+choices carry last-check and reachability context, without treating mDNS or completed
+checks as proof of safety. Picker refresh preserves the entered target and explicitly
+explains retained addresses missing from the refreshed list.
+
+Each `JsonStore` owns a thread-protected `LibraryCache` of compact, read-only search
+projections. It retains at most 512 reports and 8 MiB of serialized projection data
+(Python object overhead is additional), never full XML/AI/evidence. Scan/terminal file
+mtime, ctime, size and inode changes invalidate entries; unstable reads and failures
+are not cached. Titles and nicknames are loaded separately on every request, retaining
+revision/identity semantics. Restart rebuilds the cache; source JSON is authoritative.
+This improves repeated searches within the cache budget, not cold-load or unlimited
+archive performance. Directory/summary enumeration and nickname-anchor reads remain.
+No SQLite or additional persistent search index was introduced.
+
+## Previous architecture review
+
 Reviewed 28 September 2026. This is the current map; dated build snapshots under
 `archive/` and older testing entries are historical, not the current implementation.
+
+## Report usability follow-up - 30 September 2026
+
+The status API exposes `ui_contract_version: 1`. Dashboard setup checks compatibility
+before admitting a new scan from the page and explains when a backend restart is needed.
+Recovery of an existing pinned/running job takes precedence so a stale backend warning
+does not strand active progress. Coordinated module version `20260930-report-fixes`
+loads the matching interface assets; the server's scope/admission checks are unchanged.
+
+Unfinished-check notes use a stacked block layout; comparison cards include the address
+alongside the saved name. Identification retries show pending, returned-name, empty and
+failure feedback on the affected card, while preserving original identity and evidence.
+Pi-hole deployment and live evaluation are now deferred future work by project decision.
+
+## Report library and discovery helpers - 30 September 2026
+
+`app/api/library.py` owns authenticated history search, recent-device choices, running-job
+summaries, report titles, nickname revision snapshots and explicit name refresh. Mutations
+retain session/CSRF checks. `app/storage/library.py` filters saved live reports before
+pagination; optional nickname/title corruption produces warnings rather than hiding the
+factual report. Search currently reads report JSON and is not indexed or benchmarked for
+large archives. The picker reads recent Light reports in the configured scope, does not
+probe devices and cannot establish that an old address still belongs to the same device.
+
+`app/storage/annotations.py` keeps titles and later name claims in per-report
+`annotations.json` with a previous-version backup, bounded atomic writes and the existing
+per-scan lock. Title edits use optimistic revisions; name refresh merges the latest saved
+annotations. These operations do not rewrite `scan.json`. Nicknames remain in the shared
+nickname store with existing identity/revision safeguards.
+
+`app/scanner/name_refresh.py` performs only bounded reverse DNS and optional mDNS for an
+explicitly selected address. The API revalidates scope/interface, requires authorisation,
+rejects concurrent refreshes using an application lock and applies a ten-second overall
+deadline. Announcements are unverified claims, never new findings. The operating-system
+DNS resolver may outlive the async timeout in its worker thread. No automatic port scan,
+packet capture, Pi-hole refresh or model request is introduced by this action.
+
+`setup-tools.mjs` owns recent-device setup and the four-second visible-page job overview.
+Finished visible reports check nickname revisions every eight seconds without resetting
+search/selection. Titles and later name annotations are not pushed between open tabs.
+The report comparison panel presents existing saved history observations rather than
+recomputing findings. One backend, five-job admission, two scanner slots, serial Ollama
+and JSON storage are unchanged. Verification and external limits are in [testing](testing.md).
+
+## Concurrent dashboard tabs - 29 September 2026
+
+Follow-up: `/light` and `/deep` render the same dashboard template with a fixed profile,
+avoiding duplicate UI implementations. Each has a profile-specific pending-session key
+and retains its own page path when pinning a scan UUID. New dedicated pages do not
+automatically resume arbitrary backend jobs. A pasted UUID is checked against saved
+profile metadata; a mismatched profile redirects to the generic progress page. Shared
+nickname/settings/report storage and backend authentication/admission limits are unchanged.
+
+The supervisor now admits five jobs by default and shares a two-process Nmap limit.
+`/api/status` exposes the actual admission availability separately from active analysis
+retry tasks. Full setup pages poll this read-only status every three seconds and quietly
+disable Scan until a slot becomes available. An admission-race HTTP 429 follows the same
+inline waiting path; no automatic POST retry or unbounded job queue is introduced.
+The UI now exposes an explicit new-tab setup (`/#setup=1&new=1`) which does not attach to
+another active job or reuse a copied pending-session key. A started/resumed tab is pinned
+to `/#scan=<uuid>`; this takes precedence over session storage on refresh. When there are
+multiple jobs and no selected job, show explicit resume links instead of selecting the
+first. Status/progress/cancel/results retain the existing authenticated per-ID API routes;
+no duplicate server, new store or relaxed instance lock is introduced. AI preparation
+remains serial. Restored the previous report guidance placement without removing responsive
+or evidence-clarity fixes. Browser regressions use synthetic scanner output only.
 
 ## Overall assessment
 

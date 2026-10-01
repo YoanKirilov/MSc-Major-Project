@@ -1,4 +1,4 @@
-import { request } from './api.js?v=20260928-responsive';
+import { request } from './api.js?v=20261001-library-fixes';
 
 const form = document.querySelector('#settings-form');
 const allowedNetwork = document.querySelector('#allowed-network');

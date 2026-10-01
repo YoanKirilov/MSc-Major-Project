@@ -1,5 +1,233 @@
 # Testing status
 
+## Library reliability — 1 October 2026
+
+Implemented the [execution plan](library-improvements-plan-20261001.md): target-preserving
+picker refresh, explicit last-check uncertainty, separate unreadable-report warnings,
+correct empty-search wording and bounded per-store search projections. Added cache
+invalidation/budget/concurrent-read/racing-write tests and browser cases for disappearing
+choices, manual targets, history filters and warnings. Original scan evidence stays intact.
+
+Full regression: **338 Python passed, 1 live-provider test deselected, 45 JavaScript passed**,
+104 Python files formatted, lint and eight module syntax checks passed. Three-engine
+responsive/browser coverage passed. Artifacts: `.test-artifacts/checks-9a3285c344/`.
+The final focused library browser rerun also passed, including populated device choices
+with last-check labels at 320/390 px (`library-20261001-picker/`).
+The first attempt (`checks-d60be5fb3b`) had 337 passes and one missing-target error in a
+new test fixture; corrected and rerun, not skipped. The initial standalone unit check
+hit sandbox temp-folder permissions; its external isolated rerun passed. One existing
+Starlette/httpx deprecation warning remains.
+
+Real Ollama: **one separate test passed** using synthetic structured facts on loopback,
+including validated wording and persistence (`library-20261001-ollama/`). No device was
+contacted by that test. Fresh installed package passed six pages, nine assets, demo
+create/reopen and `pip check` (`package-03ce97abac/`). Dependencies were not changed.
+
+Read-only archive review: **41 readable, zero unreadable normal reports**, JSON hashes
+unchanged. Repeated history query returned identical results in 256.7 ms cold / 58.5 ms
+warm, with 57 / 16 full-report reads; one observation, not a general speed guarantee.
+See `.test-artifacts/library-20261001-review/results.json`.
+
+**Live Light and Sony Deep tests were not run:** the active Wi-Fi was ANGLIA.LOCAL,
+10.240.108.0/22, previously identified as unauthorised by the owner. The execution plan
+retains the home-network gate and follow-up steps. Physical-device, Ubuntu and reader
+evaluation remain pending; no new live results or human-study data are claimed.
+
+## Report usability fixes - 30 September 2026, evening
+
+Implemented the live-review fixes: unfinished-check headings now stack above their
+notes; comparison cards show device addresses; name retries show visible pending,
+reported-name, no-name and failure feedback beside the device; search is labelled
+"Search devices and results". A UI-contract mismatch explains the required backend
+restart before new setup, but existing-job recovery remains available. Module versions
+are coordinated as `20260930-report-fixes`.
+
+The full three-engine suite passed **328 Python and 45 JavaScript tests**, lint/format
+and eight JavaScript syntax checks: `.test-artifacts/checks-c3b75f7dba/`. Responsive
+coverage includes the existing 144 combinations plus six explicit unfinished-check
+layouts (320/390 pixels in three engines). Library browser assertions cover comparison
+identifiers and visible returned/empty/failed name outcomes. New JavaScript tests cover
+an outdated backend and recovery of an existing job despite the version mismatch.
+
+After hiding the initially empty name-feedback paragraph, the focused library browser
+test passed again: `.test-artifacts/report-fixes-library-final/`. Its first invocation
+failed before test execution because the parent temporary directory was missing;
+created that directory and reran successfully. A reopened copy of the previous partial
+live report confirmed the fixed mobile layout, visible no-name feedback, all nine
+device cards, seven finding panels, history and Deep prefill without new scans.
+
+Final installed-wheel verification passed six pages, nine assets, demo read/create/reopen
+and dependency consistency: `.test-artifacts/package-da4b9b36d5/`. Security gates passed
+with no known advisories, no medium/high static findings (12 reviewed low findings), and
+no potential secrets: `.test-artifacts/security-fcf63d37ef/`. The existing Starlette/httpx
+deprecation warning remains. Normal reports were not migrated or rewritten.
+
+Pi-hole deployment/live testing is now deliberately deferred to the
+[future-improvements section](evaluation.md#future-improvement-optional-pi-hole-naming).
+The requested [Sony Deep scan](deep-sony-20260930.md) completed in 9m48s on its first
+attempt: 15 open services, nine review items (two low, seven informational), ten validated
+Ollama records and a fresh mDNS name. Evidence replay, real-report controls and Deep
+Run again choices passed. All 41 normal reports remained unchanged; the report is saved
+separately in `.test-artifacts/deep-sony-20260930-a/`. This is one device observation,
+not a security certification or proof that all devices will advertise their names.
+
+## Post-restart live recheck - 30 September 2026
+
+The restarted normal backend now serves the current assets and registers the new
+library routes; its authentication boundary remains intact. A fresh isolated live Light
+run finished in 3m38s: nine discovered, eight checked, one unreachable after two attempts,
+11 open services and seven review items. All eight Ollama records validated and preserved
+incomplete coverage. The failed-device card and retry remain visible; this is not a
+clean assessment of every device. All 41 normal saved reports were preserved.
+
+Evidence replay, re-opened report controls and responsive views passed. A mobile warning
+label still wraps awkwardly; prior comparison/name-feedback usability gaps also remain.
+The checker encountered a transport interruption on one attempt and an incorrect card
+count assertion on the next; both are retained, explained and distinguished from app
+behaviour in [the full follow-up record](live-check-20260930.md#follow-up-after-the-backend-restart).
+The corrected follow-up browser review did not start another port scan.
+
+Regression: **328 Python and 43 JavaScript tests passed**, three-engine responsive
+coverage, lint/format and syntax: `.test-artifacts/checks-7d49eacdee/`.
+Security gates passed: `.test-artifacts/security-d9c34a31cd/` (12 reviewed low static
+findings, none medium/high; no known dependency advisories or potential secrets).
+Private live evidence: `.test-artifacts/live-acceptance-20260930-c/`.
+No direct authenticated test of the normal instance, live Deep run or Pi-hole operation
+is claimed; the normal instance's session link was unavailable to the checker.
+
+## Live acceptance check - 30 September 2026
+
+[Full live record and recommendations](live-check-20260930.md): the current code completed
+one authorised home Light scan in 3m12s, with seven of seven discovered devices checked,
+11 open services, seven review items and eight validated Ollama records. Refresh,
+history, real name-only retries, the Deep picker, responsive live-report views and
+evidence replay passed. All 41 normal reports validated and normal JSON hashes were
+unchanged; the new report remains in the isolated test folder.
+
+The full three-engine rerun passed **328 Python and 43 JavaScript tests**, lint/format
+and eight JavaScript syntax checks: `.test-artifacts/checks-ed36d9a201/`.
+Private live artifacts: `.test-artifacts/live-acceptance-20260930-a/`.
+
+Important deployment finding: the existing server on port 8765 did not advertise the
+new `/api/reports` route. It needs a backend restart; verification used a current-code
+isolated instance, not a restart of the user's server. Only one fresh DNS name and one
+historical name were available; no fresh mDNS names or Pi-hole operation were verified.
+See the record for comparison-card/name-retry usability gaps and remaining Deep/lab work.
+
+## Experience and discovery improvements - 30 September 2026
+
+Implemented all seven steps in [the plan](experience-improvements-plan.md): unified
+device/finding search, recent-Light choices for Deep setup, a per-job running overview,
+filtered history and titles, cross-tab nickname updates, explicit bounded name-only
+refresh and visible saved comparisons. Original scan evidence remains separate from
+editable annotations. Optional title/name data failures leave results accessible with
+a persistent notice; tests also cover corrupt optional data in history search.
+
+Final `scripts/check.py --browser --browser-engines chromium,firefox,webkit` passed
+**328 Python tests and 43 JavaScript tests**, Ruff lint/format (103 files) and syntax
+checks for eight JavaScript modules. One live-provider test was deselected; one existing
+Starlette/httpx deprecation warning remains. Artifacts: `.test-artifacts/checks-673082ad07/`.
+An approval-service timeout initially prevented the final command from starting; the
+allowed retry completed successfully. It was not a test failure.
+
+Browser coverage includes the existing **144 page/size/engine combinations** across
+Chromium, Firefox and WebKit, plus text-size, keyboard and selected touch checks. The
+new synthetic library workflow verifies devices without findings, multiword search,
+nickname changes across two tabs without losing selection, titles/history filtering,
+picker prefill without an automatic scan, mocked later name claims, and readable
+results when annotation retrieval fails. Unit tests verify search before pagination,
+date/profile validation, scope/authorisation/CSRF, revision conflicts and preservation
+of the original `scan.json` bytes.
+
+Fresh installed-wheel verification passed six pages, nine static assets, demo read/
+create/reopen and dependency consistency: `.test-artifacts/package-590708c835/`.
+The earlier security gate passed with no known dependency advisories, zero medium/high
+static findings (12 reviewed low findings retained), and zero potential secret alerts:
+`.test-artifacts/security-085a0662c8/`. That gate preceded the final UI-only optional-data
+notice regression; the final full browser/package checks include it.
+
+No live Nmap scan, real name lookup, Ollama invocation, Pi-hole deployment, backend
+restart or normal report migration was performed. Real-network DNS/mDNS behaviour,
+Pi-hole extraction, Ubuntu execution, physical devices, reader-study outcomes and
+large-archive search performance are not established by these checks. History search
+currently reads saved JSON rather than using an index. Titles/name annotations are not
+pushed across tabs; only nickname revisions are polled. Restart the backend when no
+jobs are running, reopen its session link and hard-refresh to load the new routes/assets.
+
+## Five-job default and quiet capacity waiting - 29 September 2026
+
+Raised the config and supervisor default to five active scan jobs; explicit environment
+overrides remain supported. Two Nmap process slots and serial AI preparation are unchanged.
+Added admission availability to status. Full setup pages disable Scan with a neutral inline
+message, poll availability every three seconds and re-enable without automatically submitting.
+A competing HTTP 429 follows the same quiet path; other errors remain visible.
+
+Final three-engine `scripts/check.py --browser --browser-engines chromium,firefox,webkit`
+passed **319 Python and 42 JavaScript tests**, lint/format and seven JS syntax checks.
+One live-provider test deselected, one existing Starlette/httpx warning. Artifacts:
+`.test-artifacts/checks-085babaab4/`. The first attempt stopped on mixed line-ending format;
+normalized the edited supervisor file before the successful full rerun.
+
+Admission regressions verify both two- and five-job limits and rejection of the next job.
+Browser regressions retain a two-job synthetic limit to exercise quiet waiting, cancellation,
+re-enabling Scan and absence of automatic submission, through both direct pages and the old
+shortcut. JavaScript covers a last-slot race separately. No five-job live-load/performance
+claim is made. No normal reports were migrated and no running backend was restarted.
+Restart after active work finishes to apply the new default; an existing environment override
+such as APP_MAX_CONCURRENT_SCANS=2 must be changed explicitly if five slots are wanted.
+
+## Dedicated Light and Deep pages - 29 September 2026
+
+Added `/light` and `/deep` with fixed profiles using the existing dashboard template.
+Direct pages share backend/nickname/settings/report storage but use profile-specific
+pending keys and route-preserving UUID links. Opening Deep while Light runs leaves Deep
+ready for explicit setup; it does not reconnect to Light. Mismatched pasted job links
+open the general progress view rather than mislabelling the saved scan profile.
+
+Final `scripts/check.py --browser --browser-engines chromium,firefox,webkit` passed:
+**318 Python and 40 JavaScript tests**, lint/format and seven JavaScript syntax checks.
+One live-provider test was deselected; the existing Starlette/httpx warning remains.
+Artifacts: `.test-artifacts/checks-6318f373f8/`.
+
+The concurrent-job browser test now covers both the existing new-tab shortcut and direct
+Light/Deep URLs: simultaneous synthetic scanner activity, independent refresh, third-job
+capacity rejection, isolated cancellation and separate saved outcomes. Responsive tests
+cover six pages at eight sizes in three engines: **144 page/size/engine combinations**,
+plus the existing text-size, keyboard and selected touch-emulation checks.
+
+Fresh installed-wheel verification passed all six routes, eight assets, demo read/create/
+reopen and dependency consistency: `.test-artifacts/package-4ae37b818a/`.
+No live network scan, new model invocation, normal saved-data migration or backend restart
+was performed. Nickname identity/reuse rules are unchanged; this change does not add live
+push notifications for nickname edits in already-open reports. Restart the existing backend
+when no scan is running to register the new routes, then use its session link.
+
+## Restored layout and independent Light/Deep tabs - 29 September 2026
+
+Restored first-action guidance to the Understanding your results card, below the summary,
+as requested. Kept responsive/accessibility fixes and factual counts. Updated coordinated
+asset versions so a cached dashboard does not hide the new controls.
+
+Added explicit new-tab setup and per-job URL recovery to the existing shared API. The
+synthetic browser regression runs Light and Deep simultaneously, reloads both tabs,
+checks distinct job IDs, rejects a third job at the two-job limit, cancels only Deep,
+then finishes Light and verifies separate saved outcomes. No real device is contacted.
+JavaScript regressions cover copied tab storage, explicit job selection and cancellation.
+Responsive regressions now require the restored guidance placement, not the earlier panel.
+
+Final `scripts/check.py --browser --browser-engines chromium,firefox,webkit` passed:
+**316 Python tests and 37 JavaScript tests**, Ruff lint/format and all seven JavaScript
+syntax checks. One live-provider test was deselected and the existing Starlette/httpx
+deprecation warning remains. Responsive matrix: three engines, eight sizes, four pages.
+Artifacts: `.test-artifacts/checks-25ca5828d3/`.
+
+The new browser fixture initially lacked a simulated detected network, then needed an
+explicit reload after fragment-only setup navigation; corrected both fixture issues.
+The focused concurrent-tab check and final full suite then passed. No scanner scope,
+instance lock, backend admission limit, real report or model configuration was changed.
+This verifies concurrency with synthetic scanner output, not concurrent live-network load.
+Physical-device testing and live Ollama performance with queued jobs remain unverified.
+
 ## Usability, responsive and release-check follow-up - 29 September 2026
 
 Implemented a first-action panel above report statistics, checked versus discovered/

@@ -1,7 +1,79 @@
 # Implementation brief status
 
+## Library reliability — 1 October 2026
+
+Implemented target-preserving Deep picker refresh, last-check context, separate
+unreadable-report warnings, accurate no-match wording and a bounded per-instance
+compact search cache. The [execution plan](library-improvements-plan-20261001.md)
+records verification and the live-test gate. Reader/physical-device protocols were
+extended, not presented as completed evaluations. No new live Light or Sony Deep run
+is authorised on the currently connected ANGLIA.LOCAL network.
+
 This is the handover for the eleven agreed items. Verification details are in
 `testing.md`; external evaluation steps are in `evaluation.md`.
+
+## Report fixes and Pi-hole scope - 30 September 2026
+
+Implemented stacked unfinished-check notes (including narrow screens), explicit device
+addresses on comparison cards, visible name-lookup outcomes and local failure feedback,
+and the search label "Search devices and results". A version mismatch now explains how
+to restart the backend before starting a new scan; existing-job recovery remains available.
+Pi-hole deployment/evaluation is deferred to [future improvements](evaluation.md), not
+an outstanding requirement for the current assessment. The inactive connector is retained.
+Verification and the requested single-Sony Deep scan are recorded in `testing.md`.
+The [Deep run](deep-sony-20260930.md) completed with fresh mDNS naming, 15 open services
+and nine review items; original normal reports were preserved in the isolated workflow.
+
+## Experience and discovery improvements - 30 September 2026
+
+All seven steps in [the implementation plan](experience-improvements-plan.md) are implemented:
+
+1. Multiword search across findings and devices, including devices without findings,
+   with visible counts and Clear search.
+2. Recent saved Light-device choices in Deep setup, with dates, uncertainty and manual entry.
+3. Per-job running overview, progress/report links and explicit cancellation.
+4. Server-filtered history and optional report titles stored separately from scan evidence.
+5. Revision-based nickname updates in already-open, visible finished reports.
+6. Explicit, authorised and bounded reverse-DNS/optional-mDNS name refresh with provenance.
+7. A visible panel for existing cautious historical comparisons.
+
+Original scan evidence remains unchanged by titles/name refreshes. Optional annotation
+failure leaves factual results visible with an explanatory notice. Synthetic regression,
+responsive and packaging evidence is recorded in [testing](testing.md). No live scan,
+real DNS/mDNS verification, model call, Pi-hole deployment or normal report migration
+was performed. Reader evaluation, physical-device checks and large-archive performance
+remain external follow-up work. Restart the backend after active jobs finish and reload
+the browser to use the new routes/assets.
+
+## Five active jobs with quiet capacity handling - 29 September 2026
+
+Raised the default job limit from two to five. Retained two Nmap process slots and serial
+Ollama preparation; more active jobs do not imply five simultaneous scanner processes.
+Full pages show a neutral inline waiting status, not a capacity error alert, and poll for
+availability before re-enabling Scan. Nothing is submitted automatically. The API still
+enforces atomic admission and returns HTTP 429 for races; the dashboard handles it quietly.
+Existing explicit APP_MAX_CONCURRENT_SCANS overrides still take precedence over defaults.
+
+## Independent Light and Deep pages - 29 September 2026
+
+Added `/light` and `/deep`, backed by the same template, API and JSON storage. Each page
+fixes its profile, has its own pending-job key, and retains its route on refresh. Merely
+opening a page does not start a scan or attach to the other profile's job. Pasted links
+to a mismatched profile are redirected to the general progress page. Existing root setup
+and Run again navigation remain compatible. No second process, SQLite migration or
+nickname merger is introduced; existing nickname identity matching/locking remain intact.
+Restart an older running backend to register the routes; no running instance was stopped
+as part of implementation. See `testing.md` for final verification results.
+
+## Report layout restored; parallel scan tabs - 29 September 2026
+
+At the user's request, first-action guidance is back in the original Understanding your
+results card rather than a new panel above statistics. Responsive fixes and factual labels
+remain. The dashboard offers a new-tab setup while a job runs; each started tab is pinned
+to its own scan ID for refresh/progress/cancel. Light and Deep use the existing shared API,
+two-job default admission and bounded scanner resources. No extra backend instance or
+database is needed. Ollama preparation remains queued rather than running models in parallel.
+See the latest `testing.md` entry for synthetic concurrency/browser verification.
 
 ## Usability and release-check improvements - 29 September 2026
 

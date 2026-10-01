@@ -67,6 +67,36 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
         findings=evaluate_device(device, services),
     )
     store._create_scan(document)
+    partial_id = str(uuid4())
+    store._create_scan(
+        ScanDocument(
+            scan_id=partial_id,
+            state="partial",
+            phase="finished",
+            scan_outcome="partial",
+            target={"mode": "known_hosts", "hosts": ["192.168.56.12"]},
+            coverage={
+                "candidate_count": 1,
+                "service_attempted_count": 1,
+                "service_failed_count": 1,
+                "targets": [
+                    {
+                        "ip": "192.168.56.12",
+                        "service_status": "failed",
+                        "attempts": 2,
+                        "reason_code": "host_unreachable",
+                    }
+                ],
+            },
+            errors=[
+                {
+                    "code": "HOST_UNREACHABLE",
+                    "message": "Device did not respond.",
+                    "target_ip": "192.168.56.12",
+                }
+            ],
+        )
+    )
     manager = SessionManager()
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
@@ -101,6 +131,8 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                 page.set_viewport_size({"width": width, "height": height})
                 for route, selector in [
                     ("/", "#scanLaunchButton"),
+                    ("/light", "#scanLaunchButton"),
+                    ("/deep", "#scanLaunchButton"),
                     ("/settings", "#settings-form"),
                     ("/history", "#history-list"),
                     (f"/scans/{scan_id}", "#first-action"),
@@ -118,10 +150,8 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                         expect(page.locator("#report-checks")).to_contain_text("All selected")
                         action = page.locator("#first-action").bounding_box()
                         stats = page.locator(".result-summary-card").bounding_box()
-                        if width <= 880:
-                            assert action["y"] + action["height"] <= stats["y"]
-                        if (width, height) == (390, 844):
-                            assert action["y"] < height
+                        # Restored layout: guidance belongs below the result summary.
+                        assert action["y"] >= stats["y"] + stats["height"]
                         page.locator("#findingsList .finding-card").first.click()
                         expect(page.locator("#detailPanel")).to_contain_text("supporting evidence")
                         page.locator("#runAgainButton").click()
@@ -131,6 +161,16 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                         page.get_by_role("button", name="Cancel", exact=True).click()
                         expect(page.get_by_role("dialog")).not_to_be_visible()
                     page.screenshot(path=str(tmp_path / f"{engine}-{width}-{selector[1:]}.png"))
+            for width in (320, 390):
+                page.set_viewport_size({"width": width, "height": 844})
+                page.goto(base + f"/scans/{partial_id}")
+                expect(page.locator("#scan-problems")).to_be_visible()
+                label = page.locator("#scan-problems strong").bounding_box()
+                notes = page.locator("#scan-problems ul").bounding_box()
+                assert notes["y"] >= label["y"] + label["height"]
+                assert label["width"] > 180
+                assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+                page.screenshot(path=str(tmp_path / f"{engine}-{width}-unfinished-checks.png"))
             # 320 CSS pixels approximates reflow at 400% zoom on a 1280px viewport.
             page.set_viewport_size({"width": 320, "height": 568})
             page.goto(base + f"/scans/{scan_id}")

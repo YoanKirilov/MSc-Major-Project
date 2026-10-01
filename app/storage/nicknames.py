@@ -99,8 +99,8 @@ class NicknameStore:
         # Several plausible identities are ambiguous, even when their labels agree.
         return result if len(result) == 1 else []
 
-    def _view(self, document):
-        saved = self._load()
+    def _view(self, document, saved=None):
+        saved = self._load() if saved is None else saved
         names = {}
         sources = {}
         for device in document.devices:
@@ -111,6 +111,16 @@ class NicknameStore:
 
     async def view(self, document):
         return await asyncio.to_thread(self._view, document)
+
+    def _snapshot(self, document, known_revision):
+        saved = self._load()
+        if known_revision == saved.revision:
+            return {"revision": saved.revision, "changed": False}
+        revision, names = self._view(document, saved)
+        return {"revision": revision, "changed": True, "names": names}
+
+    async def snapshot(self, document, known_revision=None):
+        return await asyncio.to_thread(self._snapshot, document, known_revision)
 
     def _update(self, document, device_id, update):
         device = next((d for d in document.devices if d.device_id == device_id), None)

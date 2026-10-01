@@ -26,6 +26,8 @@ def main():
         with TestClient(create_app(session_manager=manager), base_url=base) as client:
             for route in (
                 "/",
+                "/light",
+                "/deep",
                 "/settings",
                 "/history",
                 "/scans/11111111-1111-1111-1111-111111111111",
@@ -46,7 +48,7 @@ def main():
                 url = "/static/" + asset.relative_to(installed / "static").as_posix()
                 assert client.get(url).status_code == 200, url
     print(
-        f"Installed wheel passed: four pages, {len(assets)} static assets "
+        f"Installed wheel passed: six pages, {len(assets)} static assets "
         "and demo read/create/reopen."
     )
 

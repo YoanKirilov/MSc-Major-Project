@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from filelock import FileLock, Timeout
 
 from .api import demo as demo_api
+from .api import library as library_api
 from .api import scans as scans_api
 from .api import session as session_api
 from .api import settings as settings_api
@@ -54,6 +55,7 @@ async def owned_lifespan(app: FastAPI):
     data_dir.mkdir(parents=True, exist_ok=True)
     app.state.config = config
     app.state.runtime_status_lock = asyncio.Lock()
+    app.state.name_refresh_lock = asyncio.Lock()
     app.state.runtime_status_cache = None
     app.state.store = JsonStore(data_dir)
     app.state.storage_writable_at_startup = await asyncio.to_thread(
@@ -166,6 +168,18 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     async def home(request: Request):
         return templates.TemplateResponse(request=request, name="dashboard.html", context={})
 
+    @app.get("/light")
+    async def light_page(request: Request):
+        return templates.TemplateResponse(
+            request=request, name="dashboard.html", context={"scan_page": "light"}
+        )
+
+    @app.get("/deep")
+    async def deep_page(request: Request):
+        return templates.TemplateResponse(
+            request=request, name="dashboard.html", context={"scan_page": "deep"}
+        )
+
     @app.get("/settings")
     async def settings_page(request: Request):
         return templates.TemplateResponse(request=request, name="settings.html", context={})
@@ -182,6 +196,7 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
 
     app.include_router(session_api.router)
     app.include_router(scans_api.router)
+    app.include_router(library_api.router)
     app.include_router(settings_api.router)
     app.include_router(demo_api.router)
 

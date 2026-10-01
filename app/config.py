@@ -63,7 +63,7 @@ class AppConfig:
     ai_model: str = "llama3.2:3b"
     ai_timeout_s: float = 60.0
     allowed_network: str | None = None
-    max_concurrent_scans: int = 2
+    max_concurrent_scans: int = 5
     pihole_url: str | None = None
     pihole_password: str | None = field(default=None, repr=False)
     pihole_configuration_error: str | None = None
@@ -83,7 +83,7 @@ class AppConfig:
             ai_model=os.getenv("APP_AI_MODEL", "llama3.2:3b").strip(),
             ai_timeout_s=_float_env("APP_AI_TIMEOUT_SECONDS", 60.0, 1.0, 300.0),
             allowed_network=os.getenv("APP_ALLOWED_NETWORK") or None,
-            max_concurrent_scans=_integer_env("APP_MAX_CONCURRENT_SCANS", 2, 1, 8),
+            max_concurrent_scans=_integer_env("APP_MAX_CONCURRENT_SCANS", 5, 1, 8),
             pihole_url=os.getenv("APP_PIHOLE_URL") or None,
             pihole_password=pihole_password,
             pihole_configuration_error=pihole_error,

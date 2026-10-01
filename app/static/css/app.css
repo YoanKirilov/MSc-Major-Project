@@ -136,6 +136,10 @@ h2 { margin-bottom: 8px; font-size: clamp(1.65rem, 2.8vw, 2.35rem); letter-spaci
 .metric-icon.cyan { color: var(--cyan); background: rgba(80,213,208,.1); }
 .simulation-note { grid-column: 1/-1; display: flex; gap: 8px; align-items: center; margin: 0; color: #8199a5; font-size: .76rem; }
 .simulation-note svg { width: 16px; flex: 0 0 auto; }
+#scan-problems { display: block; margin-top: 12px; line-height: 1.6; }
+#scan-problems[hidden] { display: none; }
+#scan-problems ul { margin: 8px 0 0; padding-left: 22px; }
+.identification-status { color: var(--muted); line-height: 1.6; }
 .scan-technical { margin-top: 12px; color: var(--muted); font-size: .82rem; }
 .scan-technical summary, .detail-block summary, .remediation-list summary { cursor: pointer; color: var(--cyan); }
 .scan-technical p { margin: 8px 0 0; line-height: 1.5; }
@@ -292,10 +296,13 @@ input, select { max-width: 100%; min-width: 0; }
 .card form { display: grid; gap: 12px; }
 .card p { line-height: 1.6; }
 .card input:not([type=checkbox]), .card select { width: 100%; padding: 10px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; }
-.first-action { margin-top: 18px; padding: 16px; border-left: 3px solid var(--cyan); background: var(--surface); border-radius: 8px; }
-.first-action h2 { font-size: 1.15rem; }
-.first-action p { line-height: 1.55; margin-bottom: 8px; }
-.first-action a { color: var(--cyan); }
+.parallel-scan-link { display: inline-block; margin-top: 16px; color: var(--cyan); }
+#runningScans a { color: var(--cyan); }
+.scan-config a { color: var(--cyan); }
+#recentDevicePanel { width: min(100%, 620px); margin: 18px auto; }
+#recentDevicePanel select { width: 100%; color: var(--text); background: var(--surface-2); padding: 10px; }
+#runningScans article { border-top: 1px solid var(--line); padding: 12px 0; text-align: left; }
+#runningScans button { margin-left: 12px; }
 .detail-topline { flex-wrap: wrap; }
 .detail-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .rescan-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }

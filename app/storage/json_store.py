@@ -17,6 +17,8 @@ from app.schemas.scan import ScanDocument
 from app.schemas.settings import Settings, SettingsUpdate
 from filelock import FileLock
 
+from .library_cache import LibraryCache
+
 logger = logging.getLogger(__name__)
 
 TERMINAL_FIELDS = frozenset(
@@ -46,6 +48,7 @@ class JsonStore:
     def __init__(self, data_root: str | os.PathLike[str]):
         self.data_root = Path(data_root)
         self.data_root.mkdir(parents=True, exist_ok=True)
+        self.library_cache = LibraryCache()
         self._settings_lock = FileLock(
             str(self.data_root / "settings.lock"), timeout=self.lock_timeout_s
         )

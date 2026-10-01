@@ -1,6 +1,6 @@
 # Repeatable release checks
 
-Updated 29 September 2026. These are local prototype checks, not certification.
+Updated 30 September 2026. These are local prototype checks, not certification.
 Use separate virtual environments; do not install security tooling into the running app.
 
 ## Regression, browser and package checks
@@ -13,7 +13,8 @@ python -m venv .venv-quality
 .\.venv-quality\Scripts\python.exe scripts/check_package.py
 ```
 
-The responsive matrix covers four pages at 320x568, 390x844, 844x390, 768x1024,
+The responsive matrix covers six pages (home, Light, Deep, settings, history, report)
+at 320x568, 390x844, 844x390, 768x1024,
 1024x768, 1280x720, 1920x1080 and 2560x1440 CSS pixels in three engines. It checks
 page overflow, long device names, first-action placement, report counts, finding
 selection and the Deep Run again dialog. Additional checks cover 200% text size,
@@ -21,6 +22,12 @@ keyboard focus and Chromium/WebKit mobile touch emulation. Narrow CSS viewports 
 reflow approximations, not actual browser-zoom or physical-device certification.
 Firefox uses desktop viewport emulation. Real iOS Safari/Android devices and assistive
 technology testing remain pending. No synthetic browser test runs Nmap or contacts devices.
+
+The library browser regression also checks multiword device search, devices without
+findings, a recent-Light picker that never starts a scan automatically, report titles,
+history filters, cross-tab nickname updates, mocked identification refresh and readable
+results when optional annotations fail. Unit regressions check filtering before
+pagination, scope/permission boundaries, revision conflicts and unchanged scan evidence.
 
 ## Security gates
 

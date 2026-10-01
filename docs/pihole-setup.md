@@ -1,4 +1,8 @@
-# Pi-hole setup — prepared, not activated
+# Pi-hole setup — deferred future work
+
+30 September 2026: deployment and live testing are deferred at the project owner's
+request. Use this proposal in the documentation's improvements section. The material
+below is retained for possible future work, not an outstanding task for the current scan.
 
 Status checked 28 September 2026. The app connector and configuration have synthetic
 regression coverage, but no real Pi-hole instance has been deployed or authenticated.

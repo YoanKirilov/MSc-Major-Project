@@ -22,6 +22,7 @@ def no_dns_in_offline_tests(request, monkeypatch):
     # API tests use synthetic scopes, never the developer's current Wi-Fi.
     monkeypatch.setattr("app.api.scans.detect_private_network", lambda: None)
     monkeypatch.setattr("app.api.session.detect_private_network", lambda: None)
+    monkeypatch.setattr("app.api.library.detect_private_network", lambda: None)
 
     async def no_extra_network(*args, **kwargs):
         return None

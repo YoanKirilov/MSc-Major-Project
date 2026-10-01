@@ -3,10 +3,19 @@
 <section class="card">
   <h2>Saved reports</h2>
   <p>Reopen results saved on this computer. Opening a report does not start a new scan.</p>
+  <form id="history-filters">
+    <label for="history-query">Search all reports by title, nickname, device or address</label><input id="history-query" type="search" maxlength="120" />
+    <label for="history-profile">Scan type</label><select id="history-profile"><option value="">All types</option><option value="light">Light</option><option value="deep-tcp-v1">Deep</option></select>
+    <label for="history-state">Completion</label><select id="history-state"><option value="">All states</option><option value="completed">Finished</option><option value="partial">Some checks unfinished</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option><option value="running">In progress</option><option value="queued">Waiting</option></select>
+    <label for="history-after">From date (UTC)</label><input id="history-after" type="date" />
+    <label for="history-before">To date (UTC)</label><input id="history-before" type="date" />
+    <button type="submit">Search reports</button><button type="reset">Clear filters</button>
+  </form>
   <p id="history-status" role="status"></p>
+  <p id="history-warnings" role="status" hidden></p>
   <ul id="history-list"></ul>
   <button type="button" id="history-previous" disabled>Previous</button>
   <button type="button" id="history-next" disabled>Next</button>
 </section>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/history.js?v=20260928-responsive"></script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/history.js?v=20261001-library-fixes"></script>{% endblock %}

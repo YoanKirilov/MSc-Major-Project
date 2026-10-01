@@ -13,6 +13,14 @@ test('equal priorities use rule, numeric address and service instead of completi
   assert.equal(findings[0].device_id, 'b');
 });
 
+test('multiword search includes nicknames, friendly service labels and devices without findings', () => {
+  const values = presentation.deviceSearchValues({ user_nickname: 'Kitchen TV', ip: '192.168.0.2', vendor: 'Example' }, [{ name: 'microsoft-ds', port: 445 }]);
+  assert.equal(presentation.matchesSearch('TV kitchen', values), true);
+  assert.equal(presentation.matchesSearch('file sharing', values), true);
+  assert.equal(presentation.matchesSearch('missing kitchen', values), false);
+  assert.equal(presentation.matchesSearch('', values), true);
+});
+
 test('coverage labels distinguish discovery, selection, incomplete and empty results', () => {
   const data = { state: 'completed', target: { mode: 'discover' }, coverage: { discovered_count: 12, service_completed_count: 12 } };
   assert.equal(deviceCheckLabel(data), '12 of 12 discovered');

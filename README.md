@@ -4,6 +4,10 @@ NetGuard AI is a local research prototype for assessing an authorised home netwo
 
 The report describes what the selected checks observed. A missing finding does not establish that a device or network is secure. Demo results are labelled separately and do not represent a real scan.
 
+Pi-hole deployment is deferred to the documentation's future-improvements section.
+Its prepared optional connector remains inactive and is not part of the current live
+evaluation. See [future work](docs/evaluation.md#future-improvement-optional-pi-hole-naming).
+
 ## What has been built
 
 - A browser dashboard with **Light** and **Deep** scan choices, live progress, cancellation, and scanner status. The result page shows coverage, errors, observed devices and services, safe check output, prioritised findings, recommended steps, and technical details. Findings can be searched and filtered by severity.
@@ -19,7 +23,15 @@ The report describes what the selected checks observed. A missing finding does n
 - Local JSON storage with validated documents, per-scan locks, atomic writes, previous-version backups, and compact history summaries. The backend also supports labelled fictional demo data and saved demo runs.
 - A loopback-only web server with a bootstrap session URL, an HTTP-only session cookie, and Origin and CSRF checks for changes. The configured scan scope is checked on the server.
 
-## Requirements and installation
+## Recent usability and concurrency updates
+
+The Deep device picker keeps your entered address when refreshed and explains when
+it is no longer listed. Choices show the last device-check outcome, not a guarantee
+that the device is currently present or safe. History distinguishes no matching
+reports from an empty archive and shows unreadable-file warnings separately.
+A bounded, rebuildable in-memory search cache speeds repeated history searches while
+keeping JSON as the source of truth. See the [1 October implementation plan](docs/library-improvements-plan-20261001.md)
+for verification and the pending authorised home-network retest.
 
 Recent usability improvements include a refresh-safe **Gathering device details** stage,
 plain-language device cards above the technical table, and targeted Ollama retries that
@@ -46,13 +58,68 @@ review responsibilities, risks and release gates. The
 tests; [the latest quality baseline](docs/quality-evidence-20260928.md) records measured
 results and remaining verification. This is not a claim of ISO certification.
 
-The 29 September follow-up brings the first useful action above report statistics,
-distinguishes checked devices from discovered/selected devices, and uses stable finding
+The 29 September follow-up distinguishes checked devices from discovered/selected
+devices and uses stable finding
 ordering and simpler feature labels without changing saved evidence. Responsive checks
 cover representative phone, tablet and desktop sizes in three browser engines, not every
 physical device. [Repeatable release checks](docs/release-checks.md) document the browser,
 security and copied-backup recovery commands. Reinstall `requirements-dev.lock` in your
 development environment for the updated test dependencies; runtime pins are unchanged.
+
+The original report layout has been restored: first-action guidance is back inside
+**Understanding your results**, below the summary. Responsive/accessibility fixes remain.
+To run Light and Deep together, open `http://127.0.0.1:8765/light` and
+`http://127.0.0.1:8765/deep` in separate tabs after opening the app's session link.
+Use your configured port if different. The dedicated pages select their own profile;
+enter a device address on Deep and press Scan on each page when ready. No extra scan-tab
+button is required. The original dashboard and its new-tab shortcut also remain available.
+Each tab is pinned
+to its own job ID, survives refresh and cancels only that job. Both use the same authenticated
+API and JSON store; no second server or shared-folder lock bypass is needed. The default
+limit is five active scan jobs and two Nmap processes overall. AI preparation remains serial and may
+wait its turn. Opening a tab alone never starts a scan; each scan still requires an
+authorised target. With multiple active jobs and no saved tab selection, the dashboard
+offers links to choose which job to reopen.
+When all job slots are occupied, setup shows a neutral waiting message instead of a
+capacity error alert. It checks availability every three seconds and enables Scan when
+a slot is free; it does not queue or automatically submit another scan. The API retains
+its capacity limit and returns HTTP 429 to competing requests, which the dashboard also
+handles as an inline wait. Five jobs share the scanner resources, so checks may take longer.
+Dedicated pages do not automatically attach to the other profile's running job. Nicknames,
+settings and saved reports use the same storage; device matching rules for nickname reuse
+are unchanged. Finished, visible reports now check for nickname edits every eight seconds,
+updating labels without resetting the search or selected finding.
+Restart an older running backend once to register the new page routes, then reopen its
+session link and refresh the browser.
+
+### Finding devices and saved results
+
+- Report search matches all entered words across names, nicknames, addresses and feature
+  descriptions. It filters device cards as well as findings, including devices with no
+  findings. **Clear search** restores the list without changing the severity filter.
+- Deep setup offers devices from Light reports created in the last seven days within
+  the configured network. The observation date is shown because an address may have
+  changed. Selecting a device only fills the address; review it before pressing Scan.
+- The running overview refreshes every four seconds while visible, with each job's
+  stage, progress/report links and an explicit cancellation action.
+- Saved reports support text, profile, state and UTC-date filters before pagination.
+  **Name this report** adds an optional title without editing the original evidence.
+- **Try identifying this address again** asks for authorisation and attempts a bounded
+  reverse-DNS lookup plus mDNS when enabled. Later names retain their source and time;
+  they are claims about that address, not proof of device identity or new service checks.
+- **Compared with earlier scans** displays saved comparison observations and their
+  limitations. Missing observations do not establish that an issue was resolved.
+
+Titles and later name lookups are stored separately in each report's `annotations.json`;
+nicknames retain their shared store and conservative matching rules. Optional-data errors
+do not hide the original scan results. Large-archive search performance and real-network
+name-refresh behaviour still need evaluation. See the
+[implementation plan](docs/experience-improvements-plan.md) and [test evidence](docs/testing.md).
+
+After updating, restart the backend when no jobs are running, reopen its session link,
+and hard-refresh the browser (Ctrl+F5).
+
+## Requirements and installation
 
 - Python **3.11 or newer**.
 - Nmap for real scans. Install it separately and make it available on `PATH`, or set `APP_NMAP_PATH` to the executable. On Windows, a normal Nmap installation is detected in the usual Program Files location when possible. Run `doctor` below to verify it. Demo data and offline tests do not need Nmap.
@@ -164,7 +231,7 @@ The backend first saves factual scan results, then sends selected structured fac
 
 Requests use batches of up to six items, prioritise higher-severity findings, and have at most two attempts per batch. There is no silent 24-finding cutoff. A 15-minute overall deadline includes waiting for the local model slot; individual calls have a 180-second ceiling in addition to the configured HTTP timeout. Accepted batches and progress counts are saved and reused on retry. Failed preparation shows reviewed rule-based guidance with a visible retry message. The display consistently prefers approved plain-language alternatives, including where the model retained original wording; this editorial choice is not presented as new AI output. Original guidance and model, prompt version, input hash, output and failure reasons remain available. Readability still requires evaluation with nontechnical readers.
 
-### Optional Pi-hole names
+### Optional Pi-hole names (deferred future improvement)
 
 Run Pi-hole separately. Configure `APP_PIHOLE_URL` with its private IP origin and
 `APP_PIHOLE_PASSWORD_FILE` with a private UTF-8 application-password file outside the
@@ -191,7 +258,7 @@ The Settings page stores the allowed network, selected interface, raw XML retent
 | `APP_DATA_DIR` | Location for local settings and results | OS user data directory for `network-assessor` |
 | `APP_NMAP_PATH` | Explicit Nmap executable path, if auto-detection fails | Auto-detect |
 | `APP_ALLOWED_NETWORK` | Server-side private IPv4 scan scope when no saved scope is set | Detect an active private network |
-| `APP_MAX_CONCURRENT_SCANS` | Simultaneous real scan limit (1–8) | `2` |
+| `APP_MAX_CONCURRENT_SCANS` | Simultaneous real scan job limit (1–8); Nmap processes remain bounded separately | `5` |
 | `APP_AI_PROVIDER` | Local AI provider | `ollama` |
 | `APP_AI_BASE_URL` | Ollama HTTP endpoint; must be loopback | `http://127.0.0.1:11434` |
 | `APP_AI_MODEL` | Installed Ollama model name | `llama3.2:3b` |

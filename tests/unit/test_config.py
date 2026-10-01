@@ -24,7 +24,7 @@ def test_scope_selection_reuses_observation_without_os_commands(monkeypatch):
 def test_default_config_uses_user_data_dir():
     cfg = AppConfig()
     assert cfg.port == 8765
-    assert cfg.max_concurrent_scans == 2
+    assert cfg.max_concurrent_scans == 5
     assert str(cfg.data_dir).endswith("network-assessor")
 
 
@@ -32,9 +32,9 @@ def test_max_concurrent_scans_uses_a_positive_environment_value(monkeypatch):
     monkeypatch.setenv("APP_MAX_CONCURRENT_SCANS", "3")
     assert AppConfig.from_env().max_concurrent_scans == 3
     monkeypatch.setenv("APP_MAX_CONCURRENT_SCANS", "not-a-number")
-    assert AppConfig.from_env().max_concurrent_scans == 2
+    assert AppConfig.from_env().max_concurrent_scans == 5
     monkeypatch.setenv("APP_MAX_CONCURRENT_SCANS", "100")
-    assert AppConfig.from_env().max_concurrent_scans == 2
+    assert AppConfig.from_env().max_concurrent_scans == 5
 
 
 def test_invalid_numeric_environment_values_use_safe_defaults(monkeypatch):

@@ -60,3 +60,37 @@ Time includes reading and questions 1–4. Summarise comprehension (0–4), unsa
 interpretations, time and clarity separately. Small samples are exploratory; higher
 clarity ratings alone do not demonstrate better understanding. Report withdrawals,
 missing answers and unchanged/fallback AI wording explicitly.
+
+## Library and target-selection tasks (added 1 October 2026)
+
+These are combined-interface tasks, not an AI-only experiment. Use synthetic saved
+reports and do not actually start a network scan. Ask the participant to:
+
+- Find a named device's earlier report, then explain the difference between no search
+  matches and an unreadable saved report. A storage warning is not a security finding.
+- Select a device for Deep, refresh the choices and identify the address that would
+  be checked. Repeat after editing the address manually or removing it from the list.
+- Explain what "Advertised its presence" and "Last device check timed out" tell them.
+  Neither proves the device is currently present, safe, or the same device at that IP.
+- Explain the first action in the report in their own words and identify what was
+  not checked. Record confusing terms without coaching before their first answer.
+
+For each task record success, help requested, time, mistaken target selection and the
+participant's explanation. Keep these results separate from the existing 0–4 AI
+comprehension score. No participant results have been collected by this change.
+
+## Physical-device and platform checklist
+
+Still pending: actual Android Chrome, iOS Safari, keyboard/screen-reader sessions and
+the intended Ubuntu installation. Browser emulation on Windows is not a substitute.
+
+On each physical device record OS/browser version, orientation and text-size setting.
+Check touch targets, dropdown readability, the on-screen keyboard, warning announcements,
+focus after refresh, search/reset/pagination, and Deep target preservation without any
+scan submission. Use a deliberately configured authorised lab to serve synthetic UI
+data; do not weaken the app's loopback/session protections just to access it by phone.
+
+On Ubuntu, install the pinned runtime/dev dependencies in a new virtual environment,
+run `python scripts/check.py --browser --browser-engines chromium,firefox,webkit` and
+`python scripts/check_package.py`, and record exact results. A live Nmap check needs
+separate authorisation of the connected network. No Ubuntu execution is claimed here.

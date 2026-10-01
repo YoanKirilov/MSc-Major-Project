@@ -1,5 +1,20 @@
 # Implementation decisions
 
+- 1 October 2026: use an instance-local, thread-protected compact library cache instead
+  of a persistent JSON search index. File fingerprints invalidate scan/terminal data;
+  titles/nicknames remain fresh reads. Keep warnings outside filtered result counts.
+  Preserve manually entered Deep targets across picker refreshes and display uncertainty.
+  Defer live Light/Sony Deep retests while the active network is the unauthorised
+  ANGLIA.LOCAL network; synthetic and loopback Ollama tests remain in scope.
+
+- 30 September 2026: defer Pi-hole deployment and live evaluation to the dissertation's
+  future-improvements section. Retain the inactive prepared connector and tests; do not
+  imply that names in current reports came from Pi-hole.
+- Report UI fixes preserve scan facts: stack unfinished-check notes, show addresses on
+  comparison cards, and show name-lookup outcomes directly without replacing saved
+  identity. A UI-contract check warns about stale backends before a new scan but must
+  not prevent reconnecting to an already running job.
+
 - A missing current mDNS reply must not silently erase all recognition of a previously
   observed device, but an old label must not be presented as freshly confirmed. Reuse
   recent direct name observations only with the same scope and nonduplicated MAC,

@@ -1,4 +1,17 @@
 // Display-only helpers. Never turn annotations or optional observations into findings.
+export function matchesSearch(query, values) {
+  const normalise = value => String(value || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
+  const haystack = normalise(values.filter(Boolean).join(' '));
+  return normalise(query).split(/\s+/).filter(Boolean).every(word => haystack.includes(word));
+}
+
+export function deviceSearchValues(device, services = []) {
+  return [device.user_nickname, device.hostname, device.ip, device.mac, device.vendor,
+    device.profile?.category, ...(device.name_candidates || []).map(item => item.name),
+    ...(device.details || []).map(item => item.value),
+    ...services.flatMap(service => [service.name, service.port, service.product, featureLabel(service)])];
+}
+
 export function featureLabel(service) {
   const names = { http: 'Device web page', https: 'Protected web connection',
     'http-proxy': 'Web-related connection', 'https-alt': 'Possible protected web connection',

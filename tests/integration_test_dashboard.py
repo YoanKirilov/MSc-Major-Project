@@ -68,6 +68,8 @@ def test_active_pages_load_all_static_assets_and_module_dependencies(tmp_path, m
     with TestClient(create_app()) as client:
         for route, script in [
             ("/", "dashboard.js"),
+            ("/light", "dashboard.js"),
+            ("/deep", "dashboard.js"),
             ("/scans/11111111-1111-1111-1111-111111111111", "scan.js"),
             ("/settings", "settings.js"),
             ("/history", "history.js"),
@@ -105,6 +107,8 @@ def test_pages_and_modules_disable_stale_browser_caching():
     with TestClient(create_app()) as client:
         for path in (
             "/",
+            "/light",
+            "/deep",
             "/settings",
             "/history",
             "/static/js/dashboard.js",
@@ -113,6 +117,19 @@ def test_pages_and_modules_disable_stale_browser_caching():
             response = client.get(path)
             assert response.headers["cache-control"] == "no-store"
         page = client.get("/")
-        assert "dashboard.js?v=20260928-responsive" in page.text
-        module = client.get("/static/js/dashboard.js?v=20260928-responsive")
-        assert "report.mjs?v=20260928-responsive" in module.text
+        assert "dashboard.js?v=20261001-library-fixes" in page.text
+        module = client.get("/static/js/dashboard.js?v=20261001-library-fixes")
+        assert "report.mjs?v=20261001-library-fixes" in module.text
+
+
+def test_dedicated_scan_pages_share_template_with_fixed_profiles():
+    with TestClient(create_app()) as client:
+        for path, label in [("/light", "Light"), ("/deep", "Deep")]:
+            page = client.get(path)
+            assert page.status_code == 200
+            assert f"NetGuard AI - {label} Scan" in page.text
+            assert 'data-profile="light"' not in page.text
+            assert 'data-profile="deep-tcp-v1"' not in page.text
+            assert 'href="/light"' in page.text and 'href="/deep"' in page.text
+            assert 'id="scanLaunchButton"' in page.text
+            assert "{%" not in page.text

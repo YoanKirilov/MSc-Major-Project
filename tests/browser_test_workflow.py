@@ -25,6 +25,120 @@ pytestmark = [
 ]
 
 
+@pytest.mark.parametrize("direct_pages", [False, True])
+def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages):
+    from playwright.sync_api import expect, sync_playwright
+
+    monkeypatch.setenv("APP_ALLOWED_NETWORK", "192.168.56.0/24")
+    monkeypatch.setenv("APP_MAX_CONCURRENT_SCANS", "2")
+    monkeypatch.setattr("app.api.session.detect_private_network", lambda: "192.168.56.0/24")
+    monkeypatch.setattr("app.api.scans.detect_private_network", lambda: "192.168.56.0/24")
+    monkeypatch.setattr("app.api.scans.nmap_preflight", lambda config: (True, "synthetic"))
+    monkeypatch.setattr("app.api.scans.resolve_nmap_path", lambda config: "synthetic-nmap")
+    monkeypatch.setattr("app.api.session.nmap_preflight", lambda config: (True, "synthetic"))
+    monkeypatch.setattr("app.api.session.nmap_interface_choices", lambda config: [])
+    release = threading.Event()
+    light_entered, deep_entered = threading.Event(), threading.Event()
+    xml = (Path(__file__).parent / "fixtures" / "nmap_host.xml").read_bytes()
+
+    async def runner(args, timeout_s, cancel):
+        deep = any("1-65535" in arg for arg in args)
+        (deep_entered if deep else light_entered).set()
+        while not release.is_set() and not cancel.is_set():
+            await asyncio.sleep(0.01)
+        return ProcessResult(xml, b"", 0, 0.01, cancelled=cancel.is_set())
+
+    manager = SessionManager()
+    app = create_app(session_manager=manager)
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+    monkeypatch.setenv("APP_PORT", str(port))
+    server = uvicorn.Server(uvicorn.Config(app, log_level="error"))
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10
+        while not server.started and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert server.started
+        app.state.explanations.provider = ReviewedProvider()
+        app.state.supervisor.process_runner = runner
+        base = f"http://127.0.0.1:{port}"
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            context = browser.new_context()
+            errors = []
+            context.on("page", lambda page: page.on("pageerror", lambda e: errors.append(str(e))))
+            light = context.new_page()
+            light.goto(manager.get_bootstrap_url(port))
+            expect(light.locator("#scan-config")).to_contain_text("Ready to scan")
+            light_path = "/light" if direct_pages else "/"
+            light.goto(base + light_path + "#setup=1&profile=light&hosts=192.168.56.10")
+            # Fragment-only navigation does not reload a dashboard already open here.
+            light.reload()
+            expect(light.locator("#scanSetupNote")).to_contain_text("192.168.56.10")
+            expect(light.locator("#scanLaunchButton")).to_be_enabled()
+            light.locator("#scanLaunchButton").click()
+            light.wait_for_url("**#scan=*")
+            light_id = light.url.split("#scan=")[1]
+            if direct_pages:
+                deep = context.new_page()
+                deep.goto(base + "/deep")
+            else:
+                with context.expect_page() as opened:
+                    light.locator("#anotherScanLink").click()
+                deep = opened.value
+            expect(deep.locator("#scanLaunchButton")).to_be_enabled()
+            if not direct_pages:
+                deep.locator('[data-profile="deep-tcp-v1"]').click()
+            deep.locator("#deepHostInput").fill("192.168.56.10")
+            deep.locator("#scanLaunchButton").click()
+            deep.wait_for_url("**#scan=*")
+            deep_id = deep.url.split("#scan=")[1]
+            assert light_id != deep_id
+            for page in (light, deep):
+                page.reload()
+                expect(page.locator("#scanLaunchButton")).to_be_disabled()
+                expect(page.locator("#progressPhase")).to_contain_text("Checking device")
+            assert light.url.endswith(light_id) and deep.url.endswith(deep_id)
+            if direct_pages:
+                assert "/light#scan=" in light.url and "/deep#scan=" in deep.url
+            assert light_entered.is_set() and deep_entered.is_set()
+            assert set(app.state.supervisor.active_scan_ids) == {light_id, deep_id}
+
+            third = context.new_page()
+            third.goto(base + "/#setup=1&new=1&hosts=192.168.56.10")
+            expect(third.locator("#capacityNote")).to_contain_text("All scan slots are in use")
+            expect(third.locator("#scanLaunchButton")).to_be_disabled()
+            expect(third.locator("#scanError")).to_be_hidden()
+            assert set(app.state.supervisor.active_scan_ids) == {light_id, deep_id}
+
+            deep.locator("#scanCancelButton").click()
+            deep.wait_for_url("**/scans/*", timeout=15000)
+            assert app.state.supervisor.is_active(light_id)
+            deep_data = context.request.get(base + f"/api/live-scans/{deep_id}").json()
+            assert deep_data["state"] == "cancelled"
+            assert deep_data["policy"]["profile"] == "deep-tcp-v1"
+            expect(third.locator("#scanLaunchButton")).to_be_enabled(timeout=15000)
+            expect(third.locator("#capacityNote")).to_be_hidden()
+            assert set(app.state.supervisor.active_scan_ids) == {light_id}
+            third.close()
+            release.set()
+            light.wait_for_url("**/scans/*", timeout=15000)
+            light_data = context.request.get(base + f"/api/live-scans/{light_id}").json()
+            assert light_data["state"] == "completed"
+            assert light_data["policy"]["profile"] == "light"
+            assert light.url.endswith(light_id) and deep.url.endswith(deep_id)
+            assert not errors
+            browser.close()
+    finally:
+        release.set()
+        server.should_exit = True
+        thread.join(timeout=15)
+        listener.close()
+
+
 def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monkeypatch):
     from playwright.sync_api import expect, sync_playwright
 
@@ -113,7 +227,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             expect(page.locator("#progressPhase")).to_have_text(
                 "Making your results easier to understand.", timeout=15000
             )
-            assert page.url.rstrip("/") == base
+            assert page.url.startswith(base + "/#scan=")
             assert entered.is_set()
             before_refresh = len(scanned)
             page.reload()

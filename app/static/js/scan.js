@@ -1,6 +1,6 @@
-import { request } from './api.js?v=20260928-responsive';
-import { deviceLabel, featureLabel, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs?v=20260928-responsive';
-import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20260928-responsive';
+import { request } from './api.js?v=20261001-library-fixes';
+import { matchesSearch, deviceSearchValues, deviceLabel, featureLabel, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs?v=20261001-library-fixes';
+import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261001-library-fixes';
 
 const severityConfig = {
   high: { label: 'High', color: '#ff626d' },
@@ -46,6 +46,43 @@ let selectedFinding = null;
 let currentData = null;
 let activeFilter = 'all';
 let searchTerm = '';
+let annotations = null;
+let nicknamePollScheduled = false;
+
+document.querySelector('#editReportTitle').addEventListener('click', async () => {
+  if (!annotations) return;
+  const value = window.prompt('A title for this saved report (up to 100 characters). Leave empty to remove it.', annotations.title || '');
+  if (value === null) return;
+  try {
+    annotations = await request(`/api/live-scans/${scanId}/title`, {
+      method: 'PUT', body: JSON.stringify({ title: value, expected_revision: annotations.revision }),
+    });
+    document.querySelector('#report-user-title').textContent = annotations.title;
+  } catch (error) { status.textContent = error.message; }
+});
+
+function scheduleNicknameRefresh() {
+  if (nicknamePollScheduled) return;
+  nicknamePollScheduled = true;
+  window.setTimeout(async () => {
+    nicknamePollScheduled = false;
+    if (currentData?.phase === 'finished' && !document.hidden) {
+      try {
+        const update = await request(`/api/live-scans/${scanId}/nicknames${Number.isInteger(currentData.nickname_revision) ? `?revision=${currentData.nickname_revision}` : ''}`);
+        if (update.changed) {
+          currentData.nickname_revision = update.revision;
+          currentData.user_nicknames = update.names;
+          currentData.devices = currentData.devices.map(device => ({ ...device, user_nickname: update.names[device.device_id] }));
+          renderFindings(currentData);
+          renderDevices(currentData);
+          renderNextSteps(currentData);
+          renderBeginnerGuide(currentData);
+        }
+      } catch { /* Preserve the readable report and retry on the next visible poll. */ }
+    }
+    scheduleNicknameRefresh();
+  }, 8000);
+}
 
 retryHostsButton.addEventListener('click', async () => {
   if (!currentData) return;
@@ -63,7 +100,12 @@ retryHostsButton.addEventListener('click', async () => {
 
 searchInput.addEventListener('input', () => {
   searchTerm = searchInput.value.trim().toLowerCase();
-  if (currentData) renderFindings(currentData);
+  if (currentData) { renderFindings(currentData); renderDevices(currentData); }
+});
+document.querySelector('#clearSearchButton').addEventListener('click', () => {
+  searchInput.value = '';
+  searchTerm = '';
+  if (currentData) { renderFindings(currentData); renderDevices(currentData); }
 });
 
 filterButtons.forEach((button) => button.addEventListener('click', () => {
@@ -180,8 +222,9 @@ function visibleFindings(findings) {
       device?.ip,
       service?.name,
       service?.port,
-    ].filter(Boolean).join(' ').toLowerCase();
-    return searchable.includes(searchTerm);
+      ...deviceSearchValues(device || {}, service ? [service] : []),
+    ];
+    return matchesSearch(searchTerm, searchable);
   });
 }
 
@@ -417,6 +460,28 @@ function renderBeginnerGuide(data) {
   reportChecks.textContent = completedCheckSummary(data);
 }
 
+function deviceMatchesSearch(device, data) {
+  const services = data.services.filter(item => item.device_id === device.device_id);
+  const findingWords = data.findings.filter(item => item.device_id === device.device_id)
+    .flatMap(item => [explanationFor(item).title, explanationFor(item).content.meaning]);
+  return matchesSearch(searchTerm, [...deviceSearchValues(device, services), ...findingWords]);
+}
+
+function renderComparisons(data) {
+  const list = document.querySelector('#comparison-list');
+  list.replaceChildren();
+  for (const device of data.devices.filter(item => deviceMatchesSearch(item, data))) {
+    const details = (device.details || []).filter(item => item.kind === 'history');
+    if (!details.length) continue;
+    const card = text('article', '', 'device-summary');
+    card.append(text('h3', deviceLabel(device)));
+    card.append(text('p', `Network address: ${device.ip}`));
+    details.forEach(item => card.append(text('p', `${item.label}: ${item.value}`)));
+    list.append(card);
+  }
+  if (!list.childElementCount) list.append(text('p', 'No saved comparison is available for these device results. This does not mean nothing changed.'));
+}
+
 function renderDeviceSummaries(data) {
   deviceSummaries.replaceChildren();
   const targets = data.coverage?.targets || [];
@@ -426,7 +491,9 @@ function renderDeviceSummaries(data) {
     if (['failed', 'timed_out', 'cancelled'].includes(target.service_status)
         && !entries.some((device) => device.ip === target.ip)) entries.push({ ip: target.ip });
   }
-  for (const device of entries) {
+  const matching = entries.filter(device => deviceMatchesSearch(device, data));
+  document.querySelector('#device-search-count').textContent = `Showing ${matching.length} of ${entries.length} device results. Devices without review items are included.`;
+  for (const device of matching) {
     const target = targets.find((item) => item.ip === device.ip);
     const findings = device.device_id ? data.findings.filter((item) => item.device_id === device.device_id) : [];
     const services = device.device_id ? data.services.filter((item) => item.device_id === device.device_id && item.state === 'open') : [];
@@ -476,6 +543,38 @@ function renderDeviceSummaries(data) {
         } catch (error) { status.textContent = error.message; edit.disabled = false; }
       });
       card.append(edit);
+      if (data.phase === 'finished') {
+        const refresh = text('button', 'Try identifying this address again', 'text-button');
+        refresh.type = 'button';
+        const lookupStatus = text('p', '', 'identification-status');
+        lookupStatus.setAttribute('role', 'status');
+        lookupStatus.hidden = true;
+        refresh.addEventListener('click', async () => {
+          if (!window.confirm(`Look up names for ${device.ip} on your authorised network? This address may now belong to a different device. Only DNS and enabled local announcements are checked; no port scan starts.`)) return;
+          refresh.disabled = true;
+          lookupStatus.hidden = false;
+          lookupStatus.textContent = 'Looking for a name. Your saved scan results will not change.';
+          try {
+            annotations = await request(`/api/live-scans/${scanId}/devices/${device.device_id}/refresh-name`, {
+              method: 'POST', body: JSON.stringify({ authorised: true }),
+            });
+            renderDeviceSummaries(currentData);
+          } catch (error) { lookupStatus.textContent = `Name lookup could not finish. ${error.message}`; refresh.disabled = false; }
+        });
+        card.append(refresh, lookupStatus);
+        const later = annotations?.name_refreshes?.find(item => item.device_id === device.device_id);
+        if (later) {
+          lookupStatus.hidden = false;
+          lookupStatus.textContent = later.names.length
+            ? `The last lookup returned ${later.names.length} reported name${later.names.length === 1 ? '' : 's'}: ${later.names.map(item => item.name).join(', ')}. These are unverified claims; your saved device name has not changed.`
+            : 'No new name found in the last lookup. Your saved device name has not changed; this does not mean the device is absent or safe.';
+          const extra = document.createElement('details');
+          extra.append(text('summary', `Later identification lookup — ${new Date(later.checked_at).toLocaleString()}`));
+          later.names.forEach(item => extra.append(text('p', `${item.name} — ${item.source}, ${item.observed_at}. Unverified name claim.`)));
+          later.notes.forEach(note => extra.append(text('p', note)));
+          card.append(extra);
+        }
+      }
     }
     deviceSummaries.append(card);
   }
@@ -483,6 +582,7 @@ function renderDeviceSummaries(data) {
 
 function renderDevices(data) {
   renderDeviceSummaries(data);
+  renderComparisons(data);
   deviceTableBody.replaceChildren();
   if (!data.devices.length) {
     const emptyRow = document.createElement('tr');
@@ -492,7 +592,7 @@ function renderDevices(data) {
     deviceTableBody.append(emptyRow);
     return;
   }
-  data.devices.forEach((device) => {
+  data.devices.filter(device => deviceMatchesSearch(device, data)).forEach((device) => {
     const services = data.services.filter((item) => item.device_id === device.device_id && item.state === 'open');
     const deviceFindings = data.findings.filter((finding) => finding.device_id === device.device_id);
     const checks = [
@@ -708,7 +808,20 @@ async function poll() {
       return;
     }
     const data = await request(`/api/live-scans/${scanId}`);
+    const annotationNotice = document.querySelector('#annotation-notice');
+    try {
+      annotations = await request(`/api/live-scans/${scanId}/annotations`);
+      document.querySelector('#report-user-title').textContent = annotations.title;
+      document.querySelector('#editReportTitle').disabled = false;
+      annotationNotice.hidden = true;
+    } catch {
+      annotations = null;
+      document.querySelector('#editReportTitle').disabled = true;
+      annotationNotice.textContent = 'Saved titles and later name lookups are unavailable. The original scan results are still shown. Reload to try again.';
+      annotationNotice.hidden = false;
+    }
     render(data);
+    scheduleNicknameRefresh();
     if (data.state === 'queued' || data.state === 'running' || data.phase === 'analysis') {
       window.setTimeout(poll, 1000);
     }

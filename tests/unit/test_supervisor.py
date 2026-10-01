@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from app.jobs.supervisor import ScanSupervisor
@@ -72,13 +73,10 @@ async def test_supervisor_uses_local_hostname_when_nmap_has_none(tmp_path, monke
 
 
 @pytest.mark.asyncio
-async def test_supervisor_allows_two_jobs_and_limits_the_third(tmp_path):
+@pytest.mark.parametrize("limit", [2, 5])
+async def test_supervisor_enforces_configured_job_limit(tmp_path, limit):
     store = JsonStore(tmp_path)
-    scan_ids = (
-        "77777777-7777-4777-8777-777777777777",
-        "99999999-9999-4999-8999-999999999999",
-        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    )
+    scan_ids = [str(uuid4()) for _ in range(limit + 1)]
     for scan_id in scan_ids:
         await store.create_scan(
             ScanDocument(
@@ -91,13 +89,13 @@ async def test_supervisor_allows_two_jobs_and_limits_the_third(tmp_path):
         await cancel_event.wait()
         return ProcessResult(b"", b"", 0, 0.01, cancelled=True)
 
-    supervisor = ScanSupervisor(store, process_runner=waiting_runner, max_concurrent_scans=2)
-    await supervisor.start(scan_ids[0])
-    await supervisor.start(scan_ids[1])
-    assert supervisor.active_scan_count == 2
-    assert set(supervisor.active_scan_ids) == set(scan_ids[:2])
+    supervisor = ScanSupervisor(store, process_runner=waiting_runner, max_concurrent_scans=limit)
+    for scan_id in scan_ids[:limit]:
+        await supervisor.start(scan_id)
+    assert supervisor.active_scan_count == limit
+    assert set(supervisor.active_scan_ids) == set(scan_ids[:limit])
     with pytest.raises(RuntimeError, match="SCAN_CAPACITY"):
-        await supervisor.start(scan_ids[2])
+        await supervisor.start(scan_ids[limit])
     await supervisor.shutdown()
     assert supervisor.active_scan_count == 0
 

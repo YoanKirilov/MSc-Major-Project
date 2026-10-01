@@ -87,6 +87,7 @@ async def status(request: Request):
     scope = settings.allowed_network or resolve_allowed_network(config, detected)
     return {
         "app_version": "0.1.0",
+        "ui_contract_version": 1,
         "scanner_available": runtime["scanner_available"],
         "scanner_version": runtime["scanner_version"],
         "interface_choices": runtime["interface_choices"],
@@ -110,5 +111,6 @@ async def status(request: Request):
         "active_scan_ids": list(active_scan_ids),
         "active_scan_count": len(active_scan_ids),
         "max_concurrent_scans": supervisor.max_concurrent_scans,
+        "scan_capacity_available": supervisor.has_capacity(),
         "storage_status": "ok" if storage_ok else "not_writable",
     }

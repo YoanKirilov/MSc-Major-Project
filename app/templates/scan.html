@@ -42,11 +42,8 @@
             <div class="simulation-note" id="scan-problems" role="status" hidden></div>
             <p class="simulation-note" id="guidance-notice" role="status"></p>
             <div id="guidance-archives"></div>
-            <section id="first-action" class="first-action" aria-labelledby="first-action-title" hidden>
-              <h2 id="first-action-title">What should I do first?</h2>
-              <p id="report-first-step"></p>
-              <a href="#findings-title">Read the suggested checks</a>
-            </section>
+            <p id="report-user-title"></p><button id="editReportTitle" class="text-button" type="button" disabled>Name this report</button>
+            <p id="annotation-notice" class="simulation-note" role="status" hidden></p>
             <details class="scan-technical"><summary>Technical scan details</summary><p id="result-technical"></p></details>
             <div class="hero-actions">
               <button class="primary-button" id="runAgainButton" type="button">Run again</button>
@@ -72,7 +69,7 @@
           <h2 id="guide-title">Understanding your results</h2>
           <div class="beginner-cards">
             <article><h3>Does this mean someone broke in?</h3><p>No such conclusion can be drawn from this scan. It checks how devices answer on your local network, not whether someone has used them without permission. No findings does not mean everything is safe.</p></article>
-            <article><h3>How urgent are the items?</h3><p>High means review first; Medium means review next; Low means lower priority. Review items describe features whose safety this tool has not assessed. These labels are not proof of a break-in.</p></article>
+            <article id="first-action"><h3>What should I check first?</h3><p id="report-first-step"></p><p>High means review first; Medium means review next; Low means lower priority. Review items describe features whose safety this tool has not assessed. These labels are not proof of a break-in.</p></article>
             <article><h3>What did the scan manage to check?</h3><p id="report-checks"></p><p>These results cover only the checks listed. If any checks could not finish, retrying them creates a new report and keeps this one.</p></article>
           </div>
           <details class="scan-technical"><summary>Explain the words in this report</summary>
@@ -90,9 +87,10 @@
           <div class="section-heading">
             <div><p class="eyebrow">Things to check, in priority order</p><h2 id="findings-title">What we found</h2><p id="resultsSummary">Loading actual observations...</p></div>
             <label class="search-box">
-              <span class="sr-only">Search findings</span>
+              <span class="sr-only">Search devices and results</span>
               <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m12.5 12.5 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-              <input id="searchInput" type="search" placeholder="Search device or issue" autocomplete="off" />
+              <input id="searchInput" type="search" placeholder="Search devices and results" autocomplete="off" />
+              <button id="clearSearchButton" class="text-button" type="button">Clear search</button>
             </label>
           </div>
           <div class="filter-row" aria-label="Filter findings by severity">
@@ -110,7 +108,9 @@
             <h2 id="devices-title">Which devices were checked?</h2>
             <p class="hero-lead">Use your router's connected-device list to match each address to a device. These summaries use saved facts and reviewed guidance. Unnamed does not mean an intruder; no review items does not prove safety. Other devices and features may exist.</p>
           </div>
+          <p id="device-search-count" role="status"></p>
           <div id="device-summaries" class="device-summaries"></div>
+          <details class="scan-technical"><summary>Compared with earlier scans</summary><p>Only compatible, completed checks can be compared. Not observed does not mean resolved; a matching adapter address is not proof of identity.</p><div id="comparison-list" class="device-summaries"></div></details>
           <h3>Technical device details</h3>
           <p>The response column distinguishes a device that answered a check from one that only announced itself.</p>
           <div class="device-table-wrap" tabindex="0" role="region" aria-label="Technical device details; scroll sideways on small screens">
@@ -130,6 +130,6 @@
       </main>
       <footer><p>NetGuard AI · Local JSON result</p><p>Observations are not a security certification.</p></footer>
     </div>
-    <script type="module" src="/static/js/scan.js?v=20260928-responsive"></script>
+    <script type="module" src="/static/js/scan.js?v=20261001-library-fixes"></script>
   </body>
 </html>
