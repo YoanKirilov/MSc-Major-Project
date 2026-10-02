@@ -1,5 +1,73 @@
 # Testing status
 
+## Running-backend recovery and network recheck — 2 October 2026
+
+The repeated old mDNS message came from a backend that predated the source fix:
+its live OpenAPI schema lacked `confirmed_scope`. After verifying all 41 reports
+were finished and no Nmap process was running, restarted that specific instance.
+All 41 report hashes were unchanged; the authenticated browser page reopened.
+The running API now advertises scope confirmation and the new detection logic.
+
+A subsequent home Light scan, `21da71bf-5d8f-48a6-a98f-d1c21cdfcbbf`, was accepted
+by the normal app and finished with 34 discovered devices, 33 completed device
+checks, nine findings and ready AI analysis. mDNS was bound to `192.168.1.60`.
+One device (`192.168.1.228`) remained unreachable after two attempts; its cause
+was not established. This is retained incomplete coverage, not the startup error.
+The verification script did not submit this scan.
+
+On continuing verification, the connection had changed to `10.240.108.0/22`, a
+network previously identified by the owner as unauthorised for scanning. The saved
+home scope remains `192.168.1.0/24`; no scan was submitted on the new connection.
+Fixed the dashboard's mismatch flow: it now offers **Check network again**, makes
+only a status request and restores Scan after a matching connection returns.
+
+All 27 dashboard tests passed, including mismatch/recovery with no scan POST.
+The first test invocation hit Windows sandbox `spawn EPERM`; the approved rerun
+passed. Authenticated Chromium verification against the actual running app passed
+with no page errors, confirmed the recheck sends no scan request, and reported
+Nmap 7.991 available, Ollama ready and storage OK. Earlier browser verification
+expected an idle button while another session had started a scan; it correctly
+showed Scan in progress. Verification was adjusted to use the independent Light
+setup page. Evidence: `.test-artifacts/network-recovery-running-20261001/verification.json`.
+That artifact directory retains its original creation-date name.
+
+## Network recovery fixes — 1 October 2026
+
+Implemented and verified the [network recovery plan](network-recovery-plan-20261001.md).
+The normal app's saved scope is now the authorised `192.168.1.0/24`, with a settings
+backup and unchanged scan JSON hashes. Windows IPv6-first gateway detection now
+returns that range; local mDNS binding verification returns `192.168.1.60` / `ready`.
+
+Final full regression: **353 Python passed, one live-provider test deselected,
+48 JavaScript passed**. Lint, 104-file formatting and eight module syntax checks
+passed. Chromium, Firefox and WebKit workflow/responsive checks passed, including
+Automatic/Manual settings persistence. Artifacts: `.test-artifacts/checks-7bba06e662/`.
+Fresh packaged installation passed six pages, nine assets, demo creation/reopening
+and dependency checks (`package-17e4180ae3/`). Focused tests had 63 passes.
+
+The first full run had 352 passes and one outdated exact-error-text assertion; updated
+it to check the new recovery message and both ranges, then reran the full suite.
+One existing Starlette/httpx deprecation warning remains. No additional live scan,
+real Ollama generation or authenticated normal-server end-to-end test was performed.
+The backend was not restarted; restart after active jobs finish and hard-refresh to
+use the new routes/assets. The following live entry describes the earlier pre-fix run.
+
+## Authorised Light run on changed LAN — 1 October 2026, evening
+
+After explicit authorisation, the current application ran Light on 192.168.1.0/24 in
+isolated storage, with an explicit verified Wi-Fi interface. Normal settings/reports
+were unchanged. Result: 29 discovered, 28 checked, one unreachable after two attempts,
+21 open services, nine review items and ten validated AI records. Refresh, history,
+picker persistence and 320/390/768/1440 px reflow checks passed. Retained evidence replay
+matched 420 service states and nine findings. No Deep request was made: its device
+has not been confirmed. See [results, bugs and improvements](live-check-20261001.md).
+
+This later run supersedes the earlier network-test deferral for Light only. The run
+itself did not fix the gateway parser or saved-scope mismatch; those were corrected
+subsequently in the network recovery work above. Ollama was stopped initially;
+local startup eventually succeeded and real
+analysis completed. The initial health warning was preserved as historical evidence.
+
 ## Library reliability — 1 October 2026
 
 Implemented the [execution plan](library-improvements-plan-20261001.md): target-preserving

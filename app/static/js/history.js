@@ -1,4 +1,4 @@
-import { request } from './api.js?v=20261001-library-fixes';
+import { request } from './api.js?v=20261001-network-recovery';
 
 const list = document.querySelector('#history-list');
 const status = document.querySelector('#history-status');

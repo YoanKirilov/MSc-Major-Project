@@ -225,6 +225,21 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
                 "The original scan results are still shown"
             )
             expect(page.locator("#editReportTitle")).to_be_disabled()
+            page.goto(base + "/settings")
+            expect(page.locator("#scope-mode")).to_have_value("automatic")
+            expect(page.locator("#allowed-network")).to_be_disabled()
+            expect(page.locator("#network-status")).to_contain_text("backend configuration")
+            page.locator("#scope-mode").select_option("manual")
+            page.locator("#allowed-network").fill("192.168.0.0/24")
+            page.get_by_role("button", name="Save settings", exact=True).click()
+            page.wait_for_url(base + "/")
+            page.goto(base + "/settings")
+            expect(page.locator("#scope-mode")).to_have_value("manual")
+            expect(page.locator("#allowed-network")).to_have_value("192.168.0.0/24")
+            page.locator("#scope-mode").select_option("automatic")
+            page.get_by_role("button", name="Save settings", exact=True).click()
+            page.wait_for_url(base + "/")
+            assert store._load_settings().allowed_network is None
             assert not errors and not scans
             browser.close()
         assert primary.read_bytes() == evidence

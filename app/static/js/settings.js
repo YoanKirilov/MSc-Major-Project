@@ -1,7 +1,9 @@
-import { request } from './api.js?v=20261001-library-fixes';
+import { request } from './api.js?v=20261001-network-recovery';
+import { ollamaStatusText } from './report.mjs?v=20261001-network-recovery';
 
 const form = document.querySelector('#settings-form');
 const allowedNetwork = document.querySelector('#allowed-network');
+const scopeMode = document.querySelector('#scope-mode');
 const interfaceSelect = document.querySelector('#interface-select');
 const retainRawXml = document.querySelector('#retain-raw-xml');
 const mdnsEnabled = document.querySelector('#mdns-enabled');
@@ -11,6 +13,18 @@ const piholeStatus = document.querySelector('#pihole-status');
 const aiStatus = document.querySelector('#ai-status');
 let revision = null;
 
+function showScopeMode() {
+  allowedNetwork.disabled = scopeMode.value === 'automatic';
+  allowedNetwork.required = scopeMode.value === 'manual';
+}
+scopeMode.addEventListener('change', showScopeMode);
+document.querySelector('#check-ai').addEventListener('click', async (event) => {
+  event.target.disabled = true;
+  try { aiStatus.textContent = ollamaStatusText(await request('/api/status')); }
+  catch (error) { aiStatus.textContent = `Ollama readiness could not be checked. ${error.message}`; }
+  finally { event.target.disabled = false; }
+});
+
 async function loadSettings() {
   try {
     const [settings, status] = await Promise.all([
@@ -19,8 +33,11 @@ async function loadSettings() {
     ]);
     revision = settings.revision;
     allowedNetwork.value = settings.allowed_network || '';
-    allowedNetwork.placeholder = status.allowed_network ? `Automatic: ${status.allowed_network}` : 'Enter your authorised network range';
-    document.querySelector('#network-status').textContent = [status.detected_network ? `Active connection: ${status.detected_network}.` : '', status.network_warning || 'Confirm that you are authorised to scan this range.'].join(' ');
+    scopeMode.value = settings.allowed_network ? 'manual' : 'automatic';
+    showScopeMode();
+    allowedNetwork.placeholder = status.automatic_network ? `Current automatic range: ${status.automatic_network}` : 'Enter your authorised network range';
+    const source = { manual: 'Saved manual range', server: 'Range fixed by the backend configuration', automatic: 'Automatically detected range' }[status.scope_source] || 'Effective range';
+    document.querySelector('#network-status').textContent = [status.detected_network ? `Active connection: ${status.detected_network}.` : '', `${source}: ${status.allowed_network || 'unavailable'}.`, status.network_warning || 'Confirm that you are authorised to scan this range.'].join(' ');
     interfaceSelect.replaceChildren();
     const automaticOption = document.createElement('option');
     automaticOption.value = '';
@@ -48,9 +65,7 @@ async function loadSettings() {
       : status.pihole_configured
         ? 'Pi-hole details are configured; this page does not check the connection. When enabled, names are requested during an authorised scan. Missing names are possible and do not mean a device is absent.'
         : 'Pi-hole is not configured. Set APP_PIHOLE_URL and APP_PIHOLE_PASSWORD_FILE (or APP_PIHOLE_PASSWORD) on the server, then restart the app. No Pi-hole connection is made by this page.';
-    aiStatus.textContent = status.ai_available
-      ? `Ollama is ready (${status.ai_model}). Scan facts and original guidance remain available.`
-      : `Ollama is unavailable. Start Ollama and install ${status.ai_model} before scanning.`;
+    aiStatus.textContent = ollamaStatusText(status);
   } catch (error) {
     window.alert(error.message);
   }
@@ -64,7 +79,7 @@ form.addEventListener('submit', async (event) => {
   }
   const payload = {
     expected_revision: revision,
-    allowed_network: allowedNetwork.value.trim() || null,
+    allowed_network: scopeMode.value === 'automatic' ? null : allowedNetwork.value.trim() || null,
     interface: interfaceSelect.value || null,
     retain_raw_xml: retainRawXml.checked,
     mdns_enabled: mdnsEnabled.checked,

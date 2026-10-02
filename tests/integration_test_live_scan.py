@@ -41,6 +41,24 @@ def test_live_scan_reports_missing_nmap_without_creating_fake_result(tmp_path, m
     )
 
 
+def test_range_changed_after_confirmation_creates_no_scan(tmp_path, monkeypatch):
+    monkeypatch.setenv("APP_ALLOWED_NETWORK", "192.168.1.0/24")
+    monkeypatch.setattr("app.api.scans.nmap_preflight", lambda c: (True, "synthetic"))
+    monkeypatch.setattr("app.api.scans.resolve_nmap_path", lambda c: "synthetic")
+    monkeypatch.setattr("app.api.scans.detect_private_network", lambda: "192.168.1.0/24")
+    manager = SessionManager()
+    with TestClient(create_app(session_manager=manager), base_url=BASE_URL) as client:
+        headers = authenticate_client(client, manager)
+        response = client.post(
+            "/api/live-scans",
+            headers=headers,
+            json={"mode": "discover", "authorised": True, "confirmed_scope": "192.168.0.0/24"},
+        )
+        assert response.status_code == 409
+        assert "range changed" in response.json()["detail"]
+        assert client.get("/api/scans").json()["total"] == 0
+
+
 @pytest.mark.parametrize("profile", ["light", "deep-tcp-v1"])
 def test_both_profiles_save_extra_details_and_mdns_policy(monkeypatch, profile):
     async def settings():

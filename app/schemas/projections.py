@@ -41,6 +41,7 @@ class ProgressSnapshot(StrictModel):
     scan_id: str
     source: ScanSource
     revision: PositiveInt
+    started_at: str | None = None
     state: ScanState
     phase: ScanPhase
     analysis_status: AnalysisStatus

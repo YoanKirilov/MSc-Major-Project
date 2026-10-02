@@ -18,7 +18,8 @@ export function featureLabel(service) {
     'microsoft-ds': 'File sharing', 'ms-wbt-server': 'Remote desktop', rtsp: 'Media streaming',
     domain: 'Network name lookup', dns: 'Network name lookup', ssh: 'Protected remote control',
     telnet: 'Older remote control (Telnet)', ftp: 'File transfer', mqtt: 'Smart-home messaging',
-    snmp: 'Device monitoring', upnp: 'Device discovery', ssdp: 'Device discovery', ntp: 'Clock synchronisation' };
+    snmp: 'Device monitoring', upnp: 'Device discovery', ssdp: 'Device discovery', ntp: 'Clock synchronisation',
+    tcpwrapped: 'Connection closed before its feature could be identified' };
   const name = service.name === 'http' && service.tunnel === 'ssl' ? 'https' : service.name;
   return `${names[name] || 'Unidentified feature'}${service.detection_method === 'table' ? ' (type unconfirmed; inferred from its contact number)' : ''}`;
 }

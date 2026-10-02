@@ -3,9 +3,15 @@
 <section class="card">
   <h2>Settings</h2>
   <form id="settings-form">
+    <label for="scope-mode">Network range</label>
+    <select id="scope-mode">
+      <option value="automatic">Automatic — use my current connection</option>
+      <option value="manual">Manual — use a saved range</option>
+    </select>
     <label for="allowed-network">Authorised network range</label>
     <input id="allowed-network" type="text" placeholder="Automatically detect my home network" />
     <p id="network-status" role="status"></p>
+    <p>Automatic uses your current private connection when its range is /24 or smaller. Confirm permission when scanning a new network. Manual keeps your chosen range when you move between networks.</p>
     <label for="interface-select">Interface</label>
     <select id="interface-select">
       <option value="">Loading available interfaces...</option>
@@ -17,6 +23,7 @@
     <h3>Plain-language results with Ollama</h3>
     <p>Every new scan includes local AI report preparation. The results open when that step finishes. If Ollama stops, you can retry the explanation using the saved scan.</p>
     <p id="ai-status" role="status"></p>
+    <button type="button" id="check-ai">Check Ollama again</button>
     <h3>Device names from Pi-hole (optional)</h3>
     <p>Pi-hole is a separate service on your own network. It can help recognise devices using names it already knows. Installing it alone does not identify every device.</p>
     <label><input type="checkbox" id="pihole-enabled" /> Use names from my Pi-hole</label>
@@ -27,5 +34,5 @@
 </section>
 {% endblock %}
 {% block scripts %}
-<script type="module" src="/static/js/settings.js?v=20261001-library-fixes"></script>
+<script type="module" src="/static/js/settings.js?v=20261001-network-recovery"></script>
 {% endblock %}

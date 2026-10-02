@@ -54,6 +54,7 @@ test('HTTPS tunnel and inferred service names are labelled honestly', () => {
   assert.match(serviceLabel({ name: 'http', tunnel: 'ssl', port: 443 }), /HTTPS/);
   assert.match(serviceLabel({ name: 'domain', port: 53 }), /name lookup/);
   assert.match(serviceLabel({ name: 'http', port: 80, detection_method: 'table' }), /inferred/);
+  assert.match(serviceLabel({ name: 'tcpwrapped', port: 1234 }), /closed before.*identified/);
 });
 
 test('incomplete and empty scans do not imply a successful clean assessment', () => {

@@ -1,5 +1,12 @@
 # Implementation decisions
 
+- 1 October 2026, network recovery: correct IPv6-first Windows gateway parsing and
+  keep manual scope semantics explicit. Add optional request scope pinning and ask
+  permission on each automatic scan, rather than treating a CIDR as network identity.
+  Distinguish mDNS adapter diagnostics and AI readiness states. Correct the owner's
+  current saved range through the locked settings API with a backup; leave existing
+  reports unchanged. The running backend still needs restart to load changed Python.
+
 - 1 October 2026: use an instance-local, thread-protected compact library cache instead
   of a persistent JSON search index. File fingerprints invalidate scan/terminal data;
   titles/nicknames remain fresh reads. Keep warnings outside filtered result counts.

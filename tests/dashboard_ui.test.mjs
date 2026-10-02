@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { analysisProgressText, readScanSetup } from '../app/static/js/report.mjs';
+import { analysisProgressText, readScanSetup, ollamaStatusText } from '../app/static/js/report.mjs';
 
 const scanId = '11111111-1111-4111-8111-111111111111';
 const key = 'network-assessor-pending-scan';
@@ -21,13 +21,61 @@ function setup(request, saved = null, hash = '', pathname = '/') {
     getItem(k) { return storage.get(k); }, setItem(k, v) { storage.set(k, v); }, removeItem(k) { storage.delete(k); },
   } };
   const document = { createElement() { return new Element(); }, querySelector(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, querySelectorAll() { return []; } };
-  const context = vm.createContext({ document, window, request, analysisProgressText, readScanSetup, URLSearchParams, configurePicker() {}, startSetupTools() {} });
+  const context = vm.createContext({ document, window, request, analysisProgressText, readScanSetup, ollamaStatusText, URLSearchParams, configurePicker() {}, startSetupTools() {} });
   const source = readFileSync(new URL('../app/static/js/dashboard.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\nloadStatus\(\);\s*$/, '');
   vm.runInContext(source, context);
   return { elements, storage, window, timers, context, load: () => vm.runInContext('loadStatus()', context) };
 }
 const ready = { ui_contract_version: 1, scanner_available: true, allowed_network: '192.168.0.0/24', storage_status: 'ok', ai_available: true };
+
+test('network mismatch rechecks status without submitting a scan, then recovers', async () => {
+  const calls = [];
+  let warning = 'The saved scan range differs from your current network. Open Settings.';
+  const app = setup(async (path) => { calls.push(path); return { ...ready, network_warning: warning }; });
+  await app.load();
+  assert.equal(app.elements.get('#scanLaunchButton').querySelector('span').textContent, 'Check network again');
+  await app.elements.get('#scanLaunchButton').events.click();
+  assert.equal(app.elements.get('#scan-config').textContent, warning);
+  warning = null;
+  await app.elements.get('#scanLaunchButton').events.click();
+  assert.equal(app.elements.get('#scanLaunchButton').querySelector('span').textContent, 'Scan');
+  assert.deepEqual(calls, ['/api/status', '/api/status', '/api/status']);
+});
+
+test('a newly detected network asks permission and cancellation sends no scan request', async () => {
+  const calls = [];
+  const app = setup(async (path) => { calls.push(path); return { ...ready, scope_source: 'automatic', scope_confirmation_supported: true }; });
+  app.window.confirm = message => { assert.match(message, /192\.168\.0\.0\/24/); return false; };
+  await app.load();
+  await app.elements.get('#scanLaunchButton').events.click();
+  assert.deepEqual(calls, ['/api/status']);
+});
+
+test('confirmed automatic request is pinned to the shown range', async () => {
+  let sent;
+  const app = setup(async (path, options) => {
+    if (path === '/api/status') return { ...ready, scope_source: 'automatic', scope_confirmation_supported: true };
+    if (path === '/api/live-scans') { sent = JSON.parse(options.body); return { scan_id: scanId }; }
+    return { state: 'running', phase: 'service_scan' };
+  });
+  app.window.confirm = () => true;
+  await app.load();
+  await app.elements.get('#scanLaunchButton').events.click();
+  assert.equal(sent.confirmed_scope, ready.allowed_network);
+  assert.equal(sent.authorised, true);
+});
+
+test('slow Ollama readiness uses bounded reads without submitting a scan', async () => {
+  let calls = 0;
+  const app = setup(async () => { calls++; return { ...ready, ai_available: false, ai_readiness: { state: 'unresponsive' } }; });
+  await app.load();
+  for (let i = 0; i < 3; i++) await app.timers[i]();
+  assert.equal(app.timers.length, 3);
+  assert.equal(calls, 4);
+  assert.match(app.elements.get('#scan-config').textContent, /starting or busy/);
+  assert.doesNotMatch(app.elements.get('#scan-config').textContent, /not installed/);
+});
 
 test('outdated backend explains restart and never submits a scan', async () => {
   const calls = [];

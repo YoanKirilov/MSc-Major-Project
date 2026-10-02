@@ -87,6 +87,7 @@ class OllamaExplanationProvider:
         self.base_url = _local_base_url(base_url)
         self.timeout_s = timeout_s
         self.transport = transport
+        self.last_readiness: dict[str, str] | None = None
 
     async def available(self) -> bool:
         try:
@@ -98,11 +99,20 @@ class OllamaExplanationProvider:
                 response = await client.get(f"{self.base_url}/api/tags")
                 response.raise_for_status()
             models = response.json().get("models", [])
-            return isinstance(models, list) and any(
+            if not isinstance(models, list):
+                raise ValueError("Invalid model list")
+            ready = any(
                 isinstance(item, dict) and item.get("name") == self.model for item in models
             )
+            self.last_readiness = {"state": "ready" if ready else "missing_model"}
+            return ready
+        except httpx.TimeoutException:
+            self.last_readiness = {"state": "unresponsive"}
+        except httpx.ConnectError:
+            self.last_readiness = {"state": "unreachable"}
         except (httpx.HTTPError, ValueError, TypeError, AttributeError):
-            return False
+            self.last_readiness = {"state": "error"}
+        return False
 
     async def generate(self, findings: list[dict[str, object]]) -> GeneratedExplanationBatch:
         prompt = (

@@ -78,7 +78,9 @@ def test_network_mismatch_rejected_before_job_is_created(tmp_path, monkeypatch):
             json={"mode": "discover", "authorised": True},
         )
         assert response.status_code == 409
-        assert "differs from the active network" in response.json()["detail"]
+        detail = response.json()["detail"]
+        assert "differs from your current network" in detail
+        assert "192.168.0.0/24" in detail and "10.240.108.0/22" in detail
     assert not list((tmp_path / "app-data" / "scans").glob("*/scan.json"))
 
 

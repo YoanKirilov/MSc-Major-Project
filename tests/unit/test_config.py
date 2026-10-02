@@ -1,10 +1,13 @@
 from types import SimpleNamespace
 
+import pytest
 from app.config import (
     AppConfig,
+    _windows_ipv4_gateway,
     detect_private_network,
     doctor_report,
     nmap_interface_choices,
+    nmap_interface_diagnostic,
     nmap_interface_ipv4,
     resolve_allowed_network,
     resolve_nmap_path,
@@ -120,3 +123,75 @@ eth6 (eth6)  192.168.0.216/24 ethernet up 1500 00:00:00:00:00:02
     )
     assert nmap_interface_ipv4(AppConfig(), "192.168.0.0/24") == "192.168.0.216"
     assert nmap_interface_ipv4(AppConfig(), "192.168.0.0/24", "eth4") is None
+
+
+@pytest.mark.parametrize(
+    ("gateway", "expected"),
+    [
+        ("192.168.1.254", True),
+        ("fe80::1234%11\n                                       192.168.1.254", True),
+        ("fe80::1234%11", False),
+        ("\n   DNS Servers . . . . . . . . . . : 192.168.1.254", False),
+        ("0.0.0.0", False),
+    ],
+)
+def test_windows_gateway_continuations_do_not_use_dns_as_a_route(gateway, expected):
+    section = f"   Default Gateway . . . . . . . . . : {gateway}"
+    assert _windows_ipv4_gateway(section) is expected
+
+
+def test_detects_ipv6_first_gateway_without_picking_virtual_adapter(monkeypatch):
+    output = """
+Ethernet adapter VMware:
+
+   IPv4 Address. . . . . . . . . . . : 192.168.91.1
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+   Default Gateway . . . . . . . . . :
+
+Wireless LAN adapter WiFi:
+
+   IPv4 Address. . . . . . . . . . . : 192.168.1.60
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+   Default Gateway . . . . . . . . . : fe80::1234%11
+                                       192.168.1.254
+"""
+    # Exercise the Windows branch on either CI platform.
+    monkeypatch.setattr("app.config.os", SimpleNamespace(name="nt", getenv=lambda *a: None))
+    monkeypatch.setattr(
+        "app.config.subprocess.run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout=output),
+    )
+    assert detect_private_network() == "192.168.1.0/24"
+    output += """
+Ethernet adapter VPN:
+
+   IPv4 Address. . . . . . . . . . . : 10.0.0.2
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+   Default Gateway . . . . . . . . . : 10.0.0.1
+"""
+    assert detect_private_network() is None
+
+
+@pytest.mark.parametrize(
+    ("output", "selected", "reason"),
+    [
+        ("eth1 (eth1) 192.168.1.2/24 ethernet up 1500", None, "scope_unmatched"),
+        ("eth1 (eth1) 192.168.0.2/24 ethernet up 1500", "eth2", "interface_unavailable"),
+        (
+            "eth1 (eth1) 192.168.0.2/24 ethernet up 1500\n"
+            "eth2 (eth2) 192.168.0.3/24 ethernet up 1500",
+            None,
+            "multiple_matches",
+        ),
+    ],
+)
+def test_mdns_diagnostics_preserve_ambiguity_and_scope_boundaries(
+    monkeypatch, output, selected, reason
+):
+    monkeypatch.setattr("app.config.resolve_nmap_path", lambda config: "nmap")
+    monkeypatch.setattr(
+        "app.config.subprocess.run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout=output),
+    )
+    result = nmap_interface_diagnostic(AppConfig(), "192.168.0.0/24", selected)
+    assert result == {"address": None, "reason": reason}

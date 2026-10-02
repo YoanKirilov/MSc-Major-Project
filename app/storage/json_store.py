@@ -294,6 +294,7 @@ class JsonStore:
             "revision": document.revision,
             "state": document.state,
             "phase": document.phase,
+            "started_at": document.started_at or document.created_at,
             "analysis_status": document.analysis_status,
             "analysis_progress": document.analysis_progress.model_dump()
             if document.analysis_progress

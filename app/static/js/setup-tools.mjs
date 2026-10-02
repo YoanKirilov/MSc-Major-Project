@@ -1,4 +1,4 @@
-import { request } from './api.js?v=20261001-library-fixes';
+import { request } from './api.js?v=20261001-network-recovery';
 
 let pickerLoaded = false;
 let pickerBusy = false;

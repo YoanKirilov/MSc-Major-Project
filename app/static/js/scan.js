@@ -1,6 +1,6 @@
-import { request } from './api.js?v=20261001-library-fixes';
-import { matchesSearch, deviceSearchValues, deviceLabel, featureLabel, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs?v=20261001-library-fixes';
-import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261001-library-fixes';
+import { request } from './api.js?v=20261001-network-recovery';
+import { matchesSearch, deviceSearchValues, deviceLabel, featureLabel, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs?v=20261001-network-recovery';
+import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261001-network-recovery';
 
 const severityConfig = {
   high: { label: 'High', color: '#ff626d' },

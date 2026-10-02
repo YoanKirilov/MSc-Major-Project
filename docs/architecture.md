@@ -1,5 +1,29 @@
 # Architecture and workspace review
 
+## Network recovery — 1 October 2026
+
+Scope precedence is unchanged: saved manual range, backend configuration, then a
+bounded detected private range. Settings present explicit Automatic/Manual choices
+without changing the JSON schema; selecting Automatic clears the saved override.
+Backend configuration still takes precedence over detected scope and is shown in the UI.
+Windows parsing accepts IPv4 gateways following an IPv6 continuation while rejecting
+gateway-free virtual adapters and ambiguous multiple networks.
+
+New dashboard scan requests include `confirmed_scope` when the backend advertises
+`scope_confirmation_supported`; the API rejects a changed scope before creating a job.
+Automatic mode asks permission on every scan rather than remembering authority by CIDR,
+because distinct networks can share a range. Legacy clients retain existing explicit
+authorisation and scope validation. Interface diagnosis distinguishes unmatched scope,
+unavailable selection, multiple matches and a failed Nmap interface-list command.
+
+The local Ollama provider records readiness separately from model generation: ready,
+missing model, unreachable, unresponsive, or error. A timeout is not proof of startup
+or a missing model. Status caches unsuccessful readiness for five seconds; the dashboard
+can recheck an unresponsive service at most three times at 30-second intervals. Settings
+offer a manual recheck. Original analysis deadlines/fallbacks and evidence are unchanged.
+Progress projections gain optional `started_at` for elapsed-time display; old projections
+continue to validate. No estimated finish time is promised.
+
 ## Library reliability update — 1 October 2026
 
 History separates unreadable-file warnings from filtered results/counts. Recent-device

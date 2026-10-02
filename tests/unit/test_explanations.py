@@ -17,6 +17,27 @@ from app.storage.json_store import JsonStore
 from tests.fixtures.fixtures import make_telnet_scan
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state", ["ready", "missing_model", "unresponsive", "unreachable", "error"]
+)
+async def test_ollama_readiness_does_not_mistake_slow_startup_for_missing_model(state):
+    def handler(request):
+        if state == "unresponsive":
+            raise httpx.ReadTimeout("synthetic slow startup", request=request)
+        if state == "unreachable":
+            raise httpx.ConnectError("synthetic stopped service", request=request)
+        if state == "error":
+            return httpx.Response(500)
+        return httpx.Response(
+            200, json={"models": [{"name": "test-model"}] if state == "ready" else []}
+        )
+
+    provider = OllamaExplanationProvider(model="test-model", transport=httpx.MockTransport(handler))
+    assert await provider.available() is (state == "ready")
+    assert provider.last_readiness == {"state": state}
+
+
 def test_every_catalogue_sentence_has_reviewed_plain_language():
     from app.explanations.wording import wording_choices
     from app.risk.catalogue import RULE_CATALOGUE

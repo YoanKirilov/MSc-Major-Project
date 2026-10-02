@@ -8,7 +8,9 @@ from fastapi import APIRouter, HTTPException, Request
 from app.api.dependencies import require_session
 from app.config import (
     detect_private_network,
+    mdns_interface_message,
     network_warning,
+    nmap_interface_diagnostic,
     nmap_interface_ipv4,
     nmap_preflight,
     resolve_allowed_network,
@@ -121,6 +123,14 @@ async def _create_validated_live_scan(
     settings = await request.app.state.store.load_settings()
     detected = await asyncio.to_thread(detect_private_network)
     scope = settings.allowed_network or resolve_allowed_network(request.app.state.config, detected)
+    if body.confirmed_scope is not None and body.confirmed_scope != scope:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The network range changed since this page loaded. "
+                "Reload and confirm the current network before scanning."
+            ),
+        )
     if scope and detected and network_warning(scope, detected):
         bound = (
             await asyncio.to_thread(
@@ -153,8 +163,12 @@ async def _create_validated_live_scan(
             nmap_interface_ipv4, request.app.state.config, scope, settings.interface
         )
         if mdns_interface_ip is None:
+            diagnostic = await asyncio.to_thread(
+                nmap_interface_diagnostic, request.app.state.config, scope, settings.interface
+            )
             raise HTTPException(
-                status_code=422, detail="No single local interface matches the mDNS scan scope"
+                status_code=422,
+                detail=mdns_interface_message(diagnostic["reason"], scope, detected),
             )
     scan_id = str(uuid4())
     targets = [

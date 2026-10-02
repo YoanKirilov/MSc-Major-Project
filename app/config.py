@@ -105,6 +105,29 @@ def _is_rfc1918(network: ipaddress.IPv4Network) -> bool:
     )
 
 
+def _windows_ipv4_gateway(section: str) -> bool:
+    """ipconfig can print IPv6 first, then IPv4 on a continuation line."""
+    lines = section.splitlines()
+    for index, line in enumerate(lines):
+        match = re.search(r"Default Gateway[^:]*:[ \t]*(.*)$", line)
+        if not match:
+            continue
+        addresses = [match.group(1).strip()]
+        for continuation in lines[index + 1 :]:
+            value = continuation.strip()
+            if not value or not re.fullmatch(r"[0-9A-Fa-f:.%]+", value):
+                break
+            addresses.append(value)
+        for value in addresses:
+            try:
+                gateway = ipaddress.ip_address(value.split("%", 1)[0])
+            except ValueError:
+                continue
+            if isinstance(gateway, ipaddress.IPv4Address) and not gateway.is_unspecified:
+                return True
+    return False
+
+
 def detect_private_network() -> str | None:
     """Identify the default-route network, not an arbitrary virtual adapter.
 
@@ -167,7 +190,7 @@ def detect_private_network() -> str | None:
             continue
         if not isinstance(network, ipaddress.IPv4Network) or not _is_rfc1918(network):
             continue
-        has_gateway = bool(re.search(r"Default Gateway[^:]*:\s*\d+\.\d+\.\d+\.\d+", section))
+        has_gateway = _windows_ipv4_gateway(section)
         if has_gateway:
             candidates.append((has_gateway, network))
     if not candidates:
@@ -198,9 +221,9 @@ def network_warning(scope: str | None, detected: str | None) -> str | None:
         )
     if configured and not configured.subnet_of(active):
         return (
-            "The saved scan range differs from the active network. Select the "
-            "intended interface and authorised range in Settings before "
-            "scanning."
+            f"The saved scan range ({scope}) differs from your current network ({detected}). "
+            "Open Settings and choose Automatic for this connection, or select the "
+            "intended interface and authorised range."
         )
     if not scope:
         return (
@@ -279,30 +302,80 @@ def nmap_interface_choices(config: AppConfig) -> list[str]:
     return sorted(choices)
 
 
-def nmap_interface_ipv4(config: AppConfig, scope: str, selected: str | None = None) -> str | None:
-    """Find one up interface inside the authorised subnet for interface-bound mDNS."""
+def nmap_interface_diagnostic(config: AppConfig, scope: str, selected: str | None = None) -> dict:
+    """Explain why a single interface can or cannot be bound to this scope."""
     executable = resolve_nmap_path(config)
     if not executable:
-        return None
+        return {"address": None, "reason": "scanner_unavailable"}
     try:
         allowed = ipaddress.ip_network(scope, strict=True)
+    except (TypeError, ValueError):
+        return {"address": None, "reason": "invalid_scope"}
+    if not isinstance(allowed, ipaddress.IPv4Network):
+        return {"address": None, "reason": "invalid_scope"}
+    try:
         result = subprocess.run([executable, "--iflist"], capture_output=True, text=True, timeout=5)
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0 or not isinstance(allowed, ipaddress.IPv4Network):
-        return None
+    except (OSError, subprocess.SubprocessError):
+        return {"address": None, "reason": "list_unavailable"}
+    if result.returncode != 0:
+        return {"address": None, "reason": "list_unavailable"}
     matches = set()
+    seen_selected = False
     for line in result.stdout.splitlines():
         match = re.match(r"^(\S+)\s+\([^)]*\)\s+(\d+\.\d+\.\d+\.\d+)/\d+\s+\S+\s+up\s+", line)
         if not match or (selected and match.group(1) != selected):
             continue
+        seen_selected = True
         try:
             address = ipaddress.IPv4Address(match.group(2))
         except ValueError:
             continue
         if address in allowed:
-            matches.add(str(address))
-    return next(iter(matches)) if len(matches) == 1 else None
+            matches.add((match.group(1), str(address)))
+    if len(matches) == 1:
+        return {"address": next(iter(matches))[1], "reason": "ready"}
+    reason = (
+        "multiple_matches"
+        if matches
+        else "interface_unavailable"
+        if selected and not seen_selected
+        else "scope_unmatched"
+    )
+    return {"address": None, "reason": reason}
+
+
+def nmap_interface_ipv4(config: AppConfig, scope: str, selected: str | None = None) -> str | None:
+    """Find one up interface inside the authorised subnet for interface-bound mDNS."""
+    return nmap_interface_diagnostic(config, scope, selected)["address"]
+
+
+def mdns_interface_message(reason: str, scope: str, detected: str | None) -> str:
+    context = f" Scan range: {scope}." + (f" Current network: {detected}." if detected else "")
+    messages = {
+        "multiple_matches": (
+            "More than one connection matches this range. "
+            "Choose the intended Interface in Settings."
+        ),
+        "interface_unavailable": (
+            "The saved Interface is no longer available. Open Settings "
+            "and choose Automatic or your current connection."
+        ),
+        "scope_unmatched": (
+            "No active connection matches the scan range. "
+            "Open Settings and check Network range and Interface."
+        ),
+        "invalid_scope": "The scan range is invalid. Correct the private IPv4 range in Settings.",
+        "list_unavailable": (
+            "The scanner could not read your local connections. "
+            "Retry, or check the Nmap installation in Settings."
+        ),
+        "scanner_unavailable": "Nmap is unavailable. Check the scanner installation in Settings.",
+    }
+    return (
+        "Local device announcements could not start. "
+        + messages.get(reason, messages["scope_unmatched"])
+        + context
+    )
 
 
 def doctor_report() -> dict[str, Any]:

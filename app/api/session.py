@@ -66,7 +66,9 @@ async def status(request: Request):
     storage_ok = await asyncio.to_thread(request.app.state.store.storage_writable)
     async with request.app.state.runtime_status_lock:
         runtime = request.app.state.runtime_status_cache
-        if runtime is None or monotonic() - runtime["checked_at"] > 30:
+        if runtime is None or monotonic() - runtime["checked_at"] > (
+            5 if not runtime["ai_available"] else 30
+        ):
             scanner_result, interfaces, ai_available = await asyncio.gather(
                 asyncio.to_thread(nmap_preflight, config),
                 asyncio.to_thread(nmap_interface_choices, config),
@@ -79,6 +81,10 @@ async def status(request: Request):
                 "scanner_version": scanner_version,
                 "interface_choices": interfaces,
                 "ai_available": ai_available,
+                "ai_readiness": (
+                    getattr(request.app.state.explanations.provider, "last_readiness", None)
+                    or {"state": "ready" if ai_available else "unavailable"}
+                ),
             }
             request.app.state.runtime_status_cache = runtime
     supervisor = request.app.state.supervisor
@@ -93,6 +99,9 @@ async def status(request: Request):
         "interface_choices": runtime["interface_choices"],
         "ai_configured": config.ai_provider == "ollama" and bool(config.ai_model),
         "ai_available": runtime["ai_available"],
+        "ai_readiness": runtime.get(
+            "ai_readiness", {"state": "ready" if runtime["ai_available"] else "unavailable"}
+        ),
         "ai_enabled": True,
         "ai_required": True,
         "pihole_configured": request.app.state.pihole is not None,
@@ -105,6 +114,13 @@ async def status(request: Request):
         "mdns_available": mdns_available(),
         "mdns_enabled": settings.mdns_enabled,
         "allowed_network": scope,
+        "scope_source": "manual"
+        if settings.allowed_network
+        else "server"
+        if config.allowed_network
+        else "automatic",
+        "scope_confirmation_supported": True,
+        "automatic_network": resolve_allowed_network(config, detected),
         "detected_network": detected,
         "network_warning": network_warning(scope, detected),
         "active_scan_id": active_scan_ids[0] if len(active_scan_ids) == 1 else None,

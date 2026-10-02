@@ -1,6 +1,6 @@
-import { request } from './api.js?v=20261001-library-fixes';
-import { configurePicker, startSetupTools } from './setup-tools.mjs?v=20261001-library-fixes';
-import { analysisProgressText, readScanSetup } from './report.mjs?v=20261001-library-fixes';
+import { request } from './api.js?v=20261001-network-recovery';
+import { configurePicker, startSetupTools } from './setup-tools.mjs?v=20261001-network-recovery';
+import { analysisProgressText, readScanSetup, ollamaStatusText } from './report.mjs?v=20261001-network-recovery';
 
 const launchButton = document.querySelector('#scanLaunchButton');
 const configText = document.querySelector('#scan-config');
@@ -28,6 +28,7 @@ const newScanSetup = requestedSetup && scanParams.get('new') === '1';
 const capacityNote = document.querySelector('#capacityNote');
 let capacityFull = false;
 let capacityCheckScheduled = false;
+let aiReadinessChecks = 0;
 
 function showCapacityWait() {
   capacityFull = true;
@@ -48,9 +49,12 @@ let scannerAvailable = false;
 let selectedProfile = pageProfile || requestedSetup?.profile || 'light';
 let savedLightHosts = selectedProfile === 'light' ? (requestedSetup?.hosts || []) : [];
 let activeNetwork = null;
+let scopeSource = null;
+let scopeConfirmationSupported = false;
 let activeScanId = null;
 let statusReady = false;
 let statusError = null;
+let networkWarning = null;
 let storageReady = false;
 let pollFailures = 0;
 const pendingScanKey = `network-assessor-pending-scan${pageProfile ? `:${pageProfile}` : ''}`;
@@ -151,6 +155,9 @@ async function loadStatus() {
     statusError = null;
     scannerAvailable = status.scanner_available;
     activeNetwork = status.allowed_network;
+    scopeSource = status.scope_source;
+    scopeConfirmationSupported = status.scope_confirmation_supported === true;
+    networkWarning = status.network_warning || null;
     storageReady = status.storage_status === 'ok';
     const activeIds = (status.active_scan_ids || (status.active_scan_id ? [status.active_scan_id] : []))
       .filter(validScanId);
@@ -184,7 +191,11 @@ async function loadStatus() {
     if (activeNetwork && scannerAvailable) {
       configText.textContent = status.ai_available
         ? 'Ready to scan your authorised local network. Ollama will explain the results before your report opens.'
-        : 'Start Ollama and install the configured model to prepare your scan results. See Settings for details.';
+        : ollamaStatusText(status);
+      if (!status.ai_available && status.ai_readiness?.state === 'unresponsive' && aiReadinessChecks < 3) {
+        aiReadinessChecks += 1;
+        window.setTimeout(() => { if (!activeScanId) return loadStatus(); }, 30000);
+      }
     } else if (!scannerAvailable) {
       configText.textContent = 'Nmap is not installed or configured on this computer.';
     } else {
@@ -197,7 +208,7 @@ async function loadStatus() {
   } finally {
     if (!activeScanId) {
       launchButton.disabled = capacityFull;
-      launchButton.querySelector('span').textContent = capacityFull ? 'Waiting for a free slot' : statusReady ? 'Scan' : 'Retry connection';
+      launchButton.querySelector('span').textContent = capacityFull ? 'Waiting for a free slot' : !statusReady ? 'Retry connection' : networkWarning ? 'Check network again' : 'Scan';
     }
   }
 }
@@ -235,6 +246,10 @@ function updateProgress(scan) {
   progressNote.textContent = scan.phase === 'analysis'
     ? 'Scan observations have been saved. This final step can take a few minutes.'
     : `${scan.device_count ?? scan.devices?.length ?? 0} device results saved, ${scan.finding_count ?? scan.findings?.length ?? 0} items to review so far.`;
+  if (scan.started_at) {
+    const elapsed = Math.max(0, Math.floor((Date.now() - Date.parse(scan.started_at)) / 60000));
+    if (Number.isFinite(elapsed)) progressNote.textContent += ` Elapsed: ${elapsed} minute${elapsed === 1 ? '' : 's'}. Device response times vary.`;
+  }
 }
 
 async function pollScan(scanId) {
@@ -269,7 +284,7 @@ launchButton.addEventListener('click', async () => {
   errorPanel.hidden = true;
   if (activeScanId) return;
   if (capacityFull) return;
-  if (!statusReady) {
+  if (!statusReady || networkWarning) {
     launchButton.disabled = true;
     await loadStatus();
     if (!statusReady) setError(statusError || 'The scanner status is not available yet. Try again.');
@@ -293,6 +308,7 @@ launchButton.addEventListener('click', async () => {
     setError('Enter one authorised device IP for a Deep scan.');
     return;
   }
+  if (scopeSource === 'automatic' && !window.confirm(`Scan the detected network ${activeNetwork}? Continue only if you own this network or have permission to scan it.`)) return;
   launchButton.disabled = true;
   launchButton.querySelector('span').textContent = 'Starting...';
   progress.hidden = false;
@@ -306,6 +322,7 @@ launchButton.addEventListener('click', async () => {
         profile: selectedProfile,
         hosts: deep ? [deepHost] : savedLightHosts,
         authorised: true,
+        ...(scopeConfirmationSupported ? { confirmed_scope: activeNetwork } : {}),
       }),
     });
     await resumeScan(payload.scan_id);

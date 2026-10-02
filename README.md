@@ -25,6 +25,14 @@ evaluation. See [future work](docs/evaluation.md#future-improvement-optional-pi-
 
 ## Recent usability and concurrency updates
 
+Network Settings now offer Automatic detection or a saved Manual range, with the
+effective range and its source shown. Automatic scans ask you to confirm the current
+network, and the request is checked against that range before starting. Windows
+detection handles IPv6-first gateway output. Local-announcement errors explain how to
+correct a missing or ambiguous connection. Ollama readiness distinguishes a missing
+model, an unreachable service and a slow response; progress shows saved elapsed time.
+See the [network recovery plan](docs/network-recovery-plan-20261001.md).
+
 The Deep device picker keeps your entered address when refreshed and explains when
 it is no longer listed. Choices show the last device-check outcome, not a guarantee
 that the device is currently present or safe. History distinguishes no matching

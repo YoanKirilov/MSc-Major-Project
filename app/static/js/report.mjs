@@ -1,5 +1,18 @@
 const priorities = { high: 0, medium: 1, low: 2, informational: 3 };
 
+export function ollamaStatusText(status) {
+  if (status.ai_available) return `Ollama is ready (${status.ai_model || 'configured model'}).`;
+  const model = status.ai_model || 'the configured model';
+  const states = {
+    missing_model: `Ollama is running, but ${model} is not installed. See AI settings for setup.`,
+    unreachable: 'Ollama could not be reached. Start Ollama on this computer.',
+    unresponsive: 'Ollama is taking longer to respond. It may be starting or busy; you can check again shortly.',
+    error: 'Ollama responded, but its readiness could not be confirmed. Check AI settings and retry.',
+  };
+  return (states[status.ai_readiness?.state] || 'Ollama readiness could not be confirmed. See AI settings.')
+    + ' Scan facts will be saved even if plain-language preparation is unavailable.';
+}
+
 export function prioritise(findings = [], devices = [], services = []) {
   const addresses = new Map(devices.map(d => [d.device_id, d.ip]));
   const features = new Map(services.map(s => [s.service_id, s]));
@@ -40,6 +53,7 @@ export function serviceLabel(service, fallback = 'Selected service') {
     snmp: 'Device monitoring (SNMP)', rtsp: 'Media streaming (RTSP)',
     upnp: 'Device discovery (UPnP)', ssdp: 'Device discovery (SSDP)',
     ntp: 'Clock synchronisation (NTP)',
+    tcpwrapped: 'Connection closed before its feature could be identified (tcpwrapped)',
   };
   const name = service.name === 'http' && service.tunnel === 'ssl' ? 'https' : service.name;
   const label = names[name] || name || 'Unidentified feature';

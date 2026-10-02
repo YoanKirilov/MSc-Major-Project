@@ -11,6 +11,7 @@ class ScanCreateRequest(StrictModel):
     hosts: list[str] = Field(default_factory=list)
     authorised: bool = False
     profile: str = "light"
+    confirmed_scope: str | None = Field(default=None, max_length=43)
 
 
 class RefreshGuidanceRequest(StrictModel):

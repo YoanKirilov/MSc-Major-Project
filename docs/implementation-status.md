@@ -1,5 +1,26 @@
 # Implementation brief status
 
+## Running app and network recheck — 2 October 2026
+
+Restarted the verified idle old backend and confirmed the current API is running;
+41 previous reports were preserved. The later normal home Light run completed
+analysis, with one unreachable device retained as incomplete coverage. A subsequent
+connection change to the previously unauthorised network is now shown clearly:
+Check network again refreshes status without submitting a scan. All 27 dashboard
+tests and actual authenticated Chromium checks passed. See [testing](testing.md).
+The prior backend-restart handover below is superseded; reload for the final UI change.
+
+## Network recovery — 1 October 2026
+
+All eight steps in the [network recovery plan](network-recovery-plan-20261001.md) are
+implemented: Windows gateway parsing, normal saved-scope correction with backup,
+Automatic/Manual controls, confirmed-scope admission, actionable mDNS diagnostics,
+bounded honest AI readiness checks, Light timing guidance and clearer service labels.
+The normal app now uses the authorised `192.168.1.0/24`; saved scan evidence is unchanged.
+353 Python and 48 JavaScript tests, three-engine browser checks and fresh packaged
+installation passed. Restart the backend after active jobs finish and hard-refresh
+for new routes/assets. No new live scan was run during this implementation.
+
 ## Library reliability — 1 October 2026
 
 Implemented target-preserving Deep picker refresh, last-check context, separate
