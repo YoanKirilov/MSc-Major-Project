@@ -67,6 +67,22 @@ class NetworkInterrupted(Exception):
     pass
 
 
+def host_scan_interface(ip, interface, context):
+    """Let Windows route self-scans locally; keep remote probes adapter-bound.
+
+    The caller must retain the network guard using the original bound interface.
+    Only the exact address in that verified snapshot qualifies for this exception.
+    """
+    if (
+        os.name == "nt"
+        and isinstance(context, dict)
+        and context.get("address") == ip
+        and context.get("interface") == interface
+    ):
+        return None
+    return interface
+
+
 class NetworkGuard:
     def __init__(self, expected, read_context):
         self.expected = expected

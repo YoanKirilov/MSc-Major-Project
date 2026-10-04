@@ -3,6 +3,7 @@
 import asyncio
 
 from app.profiling.classifier import classify_device
+from app.scanner.network import host_scan_interface
 
 
 async def enrich_details(
@@ -62,7 +63,11 @@ async def enrich_details(
                         nmap_path,
                         process_runner,
                         cancel_event,
-                        document.policy.get("interface"),
+                        host_scan_interface(
+                            device.ip,
+                            document.policy.get("interface"),
+                            document.policy.get("network_context"),
+                        ),
                     )
             except Exception:
                 record_error(device, "Computer name", "netbios")

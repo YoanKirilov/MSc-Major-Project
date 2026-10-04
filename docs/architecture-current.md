@@ -21,6 +21,11 @@ resubmits it. `jobs/enrichment.py` owns optional bounded device enrichment.
 new live jobs retain a network context and bind the validated adapter. A monitor
 and pre-step checks stop work when the context changes or execution is suspended.
 These are best-effort local checks, not an atomic network isolation mechanism.
+On Windows, an exact self-target from this verified snapshot uses Nmap's automatic
+local routing for host/NetBIOS checks. Discovery, remote targets and the network
+guard retain the bound interface. A report note distinguishes self-observation
+from what another device can reach. Pre-cancelled process work returns without
+spawning; cancellation-watcher cleanup is awaited.
 Linux context currently includes the selected adapter/address and default subnet;
 the authorised Ubuntu lab still needs validation.
 

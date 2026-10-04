@@ -23,7 +23,7 @@ from app.scanner.commands import (
 )
 from app.scanner.diagnostics import FAILURE_ADVICE, process_failure
 from app.scanner.mdns import browse_mdns
-from app.scanner.network import NetworkGuard, NetworkInterrupted
+from app.scanner.network import NetworkGuard, NetworkInterrupted, host_scan_interface
 from app.scanner.parser import (
     HostUnreachable,
     host_failure_detail,
@@ -511,6 +511,35 @@ class ScanSupervisor:
                 await self._checkpoint(scan_id, mark_running)
                 profile = document.policy.get("profile", "light")
                 deep = profile == DEEP_PROFILE
+                probe_interface = host_scan_interface(
+                    ip, interface, document.policy.get("network_context")
+                )
+                if interface and probe_interface is None:
+                    await self._checkpoint(
+                        scan_id,
+                        lambda current: (
+                            current.model_copy(
+                                update={
+                                    "warnings": [
+                                        *current.warnings,
+                                        {
+                                            "code": "SELF_SCAN_LOCAL_ROUTING",
+                                            "message": (
+                                                "This scan includes the computer running the app. "
+                                                "It uses local routing to check itself; "
+                                                "the services "
+                                                "another device can reach may differ."
+                                            ),
+                                        },
+                                    ]
+                                }
+                            )
+                            if not any(
+                                w.get("code") == "SELF_SCAN_LOCAL_ROUTING" for w in current.warnings
+                            )
+                            else current
+                        ),
+                    )
                 parsed = None
                 parse_error_code = "HOST_RESULT_INVALID"
                 parse_error_detail = None
@@ -529,7 +558,10 @@ class ScanSupervisor:
                     await self._checkpoint(scan_id, mark_attempt)
                     result: ProcessResult = await self.process_runner(
                         host_command(
-                            self.nmap_path, ip, DEEP_PROFILE if deep else "light", interface
+                            self.nmap_path,
+                            ip,
+                            DEEP_PROFILE if deep else "light",
+                            probe_interface,
                         ),
                         960 if deep else 210,
                         cancel_event,

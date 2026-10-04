@@ -70,6 +70,8 @@ async def run_process(
     if not args or any(not isinstance(argument, str) or not argument for argument in args):
         raise ValueError("process arguments must be non-empty strings")
     started = time.monotonic()
+    if cancel_event is not None and cancel_event.is_set():
+        return ProcessResult(b"", b"", None, time.monotonic() - started, cancelled=True)
     kwargs = {"stdout": asyncio.subprocess.PIPE, "stderr": asyncio.subprocess.PIPE}
     if os.name == "posix":
         kwargs["start_new_session"] = True
@@ -118,11 +120,12 @@ async def run_process(
             overflow=overflow,
         )
     finally:
+        tasks = [stdout_task, stderr_task, wait_task]
         if cancel_task is not None:
-            cancel_task.cancel()
+            tasks.append(cancel_task)
         if process.returncode is None:
             await _stop_process(process)
-        for task in (stdout_task, stderr_task, wait_task):
+        for task in tasks:
             if not task.done():
                 task.cancel()
-        await asyncio.gather(stdout_task, stderr_task, wait_task, return_exceptions=True)
+        await asyncio.gather(*tasks, return_exceptions=True)

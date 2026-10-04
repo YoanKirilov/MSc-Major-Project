@@ -7,6 +7,85 @@ from app.scanner.network import NetworkGuard, NetworkInterrupted
 from app.scanner.runner import ProcessResult
 
 
+@pytest.mark.parametrize(
+    "platform,ip,context,expected",
+    [
+        ("nt", "192.168.56.10", {"address": "192.168.56.10", "interface": "eth6"}, None),
+        ("nt", "192.168.56.11", {"address": "192.168.56.10", "interface": "eth6"}, "eth6"),
+        ("posix", "192.168.56.10", {"address": "192.168.56.10", "interface": "eth6"}, "eth6"),
+        ("nt", "192.168.56.10", None, "eth6"),
+        ("nt", "192.168.56.10", {"address": "192.168.56.10"}, "eth6"),
+        ("nt", "192.168.56.10", {"address": "192.168.56.10", "interface": "eth7"}, "eth6"),
+    ],
+)
+def test_self_scan_interface_exception_is_narrow(monkeypatch, platform, ip, context, expected):
+    from app.scanner.network import host_scan_interface
+
+    monkeypatch.setattr("app.scanner.network.os", SimpleNamespace(name=platform))
+    assert host_scan_interface(ip, "eth6", context) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("profile", ["light", "deep-tcp-v1"])
+@pytest.mark.parametrize("self_scan", [False, True])
+async def test_supervisor_self_scan_routing_retains_guard(
+    tmp_path, monkeypatch, profile, self_scan
+):
+    import asyncio
+    from pathlib import Path
+    from uuid import uuid4
+
+    from app.jobs.supervisor import ScanSupervisor
+    from app.schemas.scan import ScanDocument
+    from app.storage.json_store import JsonStore
+
+    context = {"address": "192.168.56.10" if self_scan else "192.168.56.20", "interface": "eth6"}
+    checks, commands = [], []
+
+    def snapshot(config, scope, interface):
+        checks.append(interface)
+        return context
+
+    monkeypatch.setattr("app.scanner.network.os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr("app.scanner.network.connection_snapshot", snapshot)
+
+    async def no_hostname(self, ip):
+        return None
+
+    monkeypatch.setattr(ScanSupervisor, "_local_hostname", no_hostname)
+    xml = (Path(__file__).parents[1] / "fixtures/nmap_host.xml").read_bytes()
+
+    async def runner(args, timeout_s, cancel_event):
+        commands.append(args)
+        return ProcessResult(xml, b"", 0, 0.01)
+
+    store = JsonStore(tmp_path)
+    doc = ScanDocument(
+        scan_id=str(uuid4()),
+        target={"mode": "known_hosts", "hosts": ["192.168.56.10"]},
+        policy={
+            "profile": profile,
+            "allowed_network": "192.168.56.0/24",
+            "network_context": context,
+            "interface": "eth6",
+        },
+        coverage={"targets": [{"ip": "192.168.56.10", "service_status": "pending"}]},
+    )
+    await store.create_scan(doc)
+    supervisor = ScanSupervisor(store, process_runner=runner)
+    await supervisor._run(doc.scan_id, asyncio.Event())
+    assert len(commands) == 1
+    assert ("-e" not in commands[0]) == self_scan
+    if not self_scan:
+        assert commands[0][commands[0].index("-e") + 1] == "eth6"
+    assert checks and set(checks) == {"eth6"}
+    saved = await store.load_scan(doc.scan_id)
+    assert saved.state == "completed"
+    assert saved.policy["interface"] == "eth6"
+    notes = [w for w in saved.warnings if w.get("code") == "SELF_SCAN_LOCAL_ROUTING"]
+    assert len(notes) == int(self_scan)
+
+
 @pytest.mark.asyncio
 async def test_supervisor_stops_before_probe_when_context_changed(tmp_path, monkeypatch):
     from uuid import uuid4

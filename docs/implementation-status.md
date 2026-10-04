@@ -1,5 +1,16 @@
 # Implementation brief status
 
+## Self-scan and cancellation remediation — 4 October 2026
+
+Windows exact self-targets now use automatic local Nmap routing while remote
+targets and the network guard keep their original interface binding. Self-scan
+reports disclose the local-observation limitation. Pre-cancelled process work no
+longer spawns, and cancellation-watcher cleanup is awaited. Final verification:
+409 Python/50 JavaScript tests, three browser engines and installed package passed.
+The live PC Deep scan completed with 14 open services, five review items and six
+validated AI records. See [the evidence](scanner-fixes-20261004.md). Normal data and
+backend were untouched; restart the normal task when idle to load the code.
+
 ## Architecture organisation — 4 October 2026
 
 Extracted report-state transformations into `jobs/transitions.py` and protected

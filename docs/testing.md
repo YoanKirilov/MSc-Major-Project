@@ -1,5 +1,27 @@
 # Testing status
 
+## Self-scan routing and pre-cancellation fixes — 4 October 2026
+
+Both findings from the scanning-tools review are fixed; see
+[scanner-fixes-20261004.md](scanner-fixes-20261004.md). Final verification passed
+**409 Python tests**, one real-provider test deselected, **no warnings**, **50
+JavaScript tests**, three browser engines and installed-package checks. A live
+Deep scan of this PC completed on its first attempt with 14 open services/five
+review items; all six AI records and retained XML replay passed. Refresh, history,
+responsive widths and Deep Run again passed. Verification used isolated data and
+its backend was stopped; the normal task needs an idle restart to load the fixes.
+
+## Scanning-tools and self-scan check — 4 October 2026
+
+The [latest tool check](scanning-tools-check-20261004.md) passed 397 Python and
+50 JavaScript tests with no warnings and verified all 11 required Nmap scripts.
+A user-authorised Deep scan of this Windows PC exposed a forced-adapter self-scan
+failure; a two-port comparison reached the PC only with automatic Nmap interface
+selection. A mocked diagnostic also confirmed pre-cancelled runner work still
+attempts process creation. These two follow-ups remain open; the green regression
+suite does not cover them yet. Failed-report persistence, AI, refresh/history and
+mobile navigation passed. No unnecessary source restructuring was performed.
+
 ## Test-client warning remediation — 4 October 2026
 
 Starlette's supported test client is now installed through the development-only
