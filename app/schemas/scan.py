@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
@@ -90,6 +90,7 @@ class Service(StrictModel):
     detection_method: Literal["probed", "table", "unknown"] = "unknown"
     nmap_confidence: int | None = None
     tunnel: str | None = None
+    cpes: list[Annotated[str, Field(max_length=512)]] = Field(default_factory=list, max_length=8)
     script_results: list[ScriptEvidence] = Field(default_factory=list)
     observed_at: str = Field(default_factory=lambda: iso_z(utc_now()))
 
@@ -160,12 +161,20 @@ class ExplanationRecord(StrictModel):
     ] = Field(default_factory=list)
 
 
+class HostAttempt(StrictModel):
+    attempt: int = Field(ge=1, le=2)
+    duration_s: float = Field(ge=0)
+    exit_code: int | None = None
+    outcome: str = Field(max_length=80)
+
+
 class TargetLedgerEntry(StrictModel):
     ip: str
     discovery_status: Literal["not_run", "observed", "not_seen", "unknown"] = "not_run"
     service_status: HostCheckState = "not_scheduled"
     reason_code: str | None = None
     attempts: int = 0
+    attempt_details: list[HostAttempt] = Field(default_factory=list, max_length=2)
     discovery_sources: list[Literal["nmap", "mdns"]] = Field(default_factory=list)
     discovery_mac: str | None = None
     discovery_hostname: str | None = None

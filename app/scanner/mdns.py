@@ -36,6 +36,24 @@ LOOKUP_TIMEOUT_MS = 750
 BROWSE_SECONDS = 4.0
 
 
+class MdnsObservations(list):
+    def __init__(self, values, limited=False):
+        super().__init__(values)
+        self.warnings = (
+            [
+                {
+                    "code": "MDNS_BUDGET_REACHED",
+                    "message": (
+                        "The short device-name lookup reached a time or size limit. "
+                        "Some names may be missing; this does not affect completed service checks."
+                    ),
+                }
+            ]
+            if limited
+            else []
+        )
+
+
 def mdns_available() -> bool:
     return AsyncZeroconf is not None
 
@@ -62,6 +80,7 @@ async def browse_mdns(
     cancel_event: asyncio.Event,
     duration_s: float = BROWSE_SECONDS,
     target_ips: set[str] | None = None,
+    known_ips: set[str] | None = None,
 ) -> list[DiscoveryObservation]:
     if not mdns_available():
         raise RuntimeError("mDNS library is not installed")
@@ -78,13 +97,19 @@ async def browse_mdns(
     zc = AsyncZeroconf(interfaces=[interface_ip], ip_version=IPVersion.V4Only)
     browser = None
     stopping = False
+    limited = False
+    known_ips = (known_ips or set()) & (
+        target_ips if target_ips is not None else known_ips or set()
+    )
 
     async def resolve(type_, name):
+        nonlocal limited
         async with capacity:
             # A timeout does not remove the advertisement from the browser. Retry
             # once here rather than hoping another update event happens to arrive.
             for _ in range(2):
                 if stopping or cancel_event.is_set() or len(observations) >= MAX_ADVERTISEMENTS:
+                    limited = limited or len(observations) >= MAX_ADVERTISEMENTS
                     return
                 try:
                     info = await zc.async_get_service_info(type_, name, timeout=LOOKUP_TIMEOUT_MS)
@@ -105,8 +130,10 @@ async def browse_mdns(
                             return
                         if (
                             address_value not in observed_ips
-                            and len(observed_ips) >= MAX_UNIQUE_HOSTS
+                            and address_value not in known_ips
+                            and len(observed_ips - known_ips) >= MAX_UNIQUE_HOSTS
                         ):
+                            limited = True
                             continue
                         observations[(address_value, type_, advertised_name)] = (
                             DiscoveryObservation(
@@ -128,7 +155,10 @@ async def browse_mdns(
 
     class Listener(ServiceListener):
         def add_service(self, _zc, type_, name):
+            nonlocal limited
             key = (type_, name)
+            if key not in tasks and len(tasks) >= MAX_SERVICE_LOOKUPS:
+                limited = True
             if not stopping and key not in tasks and len(tasks) < MAX_SERVICE_LOOKUPS:
                 # Never block a browser callback waiting for a slow device.
                 tasks[key] = asyncio.create_task(resolve(type_, name))
@@ -153,9 +183,14 @@ async def browse_mdns(
         finally:
             for task in tasks.values():
                 if not task.done():
+                    limited = True
                     task.cancel()
             await asyncio.gather(*tasks.values(), return_exceptions=True)
             await zc.async_close()
-    return sorted(
-        observations.values(), key=lambda item: (item.ip, item.service_type, item.advertised_name)
+    return MdnsObservations(
+        sorted(
+            observations.values(),
+            key=lambda item: (item.ip, item.service_type, item.advertised_name),
+        ),
+        limited=limited,
     )

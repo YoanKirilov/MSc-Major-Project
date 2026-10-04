@@ -88,6 +88,7 @@ class OllamaExplanationProvider:
         self.timeout_s = timeout_s
         self.transport = transport
         self.last_readiness: dict[str, str] | None = None
+        self._generation_lock = asyncio.Lock()
 
     async def available(self) -> bool:
         try:
@@ -115,6 +116,10 @@ class OllamaExplanationProvider:
         return False
 
     async def generate(self, findings: list[dict[str, object]]) -> GeneratedExplanationBatch:
+        async with self._generation_lock:
+            return await self._generate(findings)
+
+    async def _generate(self, findings: list[dict[str, object]]) -> GeneratedExplanationBatch:
         prompt = (
             "Your reader has no computing knowledge. Help them understand what was found, "
             "why it matters, what to check first, and what remains unknown. "

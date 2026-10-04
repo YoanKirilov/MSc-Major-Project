@@ -3,6 +3,39 @@
 Keep application code in `app/`, tests in `tests/`, operational helpers in `scripts/`,
 and explanation/decisions/evaluation records in `docs/`.
 
+## Cleanup review — 2 October 2026
+
+The follow-up live-test cleanup removed only regenerated `build` and `.ruff_cache`
+after archiving their 88 files in
+`.test-artifacts/cleanup-667f335d092e4a98b25dd46a7cf7a152.zip`.
+The new CVE module raises the active JavaScript count below from eight to nine.
+A regression now walks routed templates and local static imports to detect orphan
+assets and missing dependencies. No additional source file was found unused.
+See [the live verification](live-check-20261002.md) for results and remaining limits.
+
+All application Python modules remain reachable from the CLI/app entry point.
+All five templates and all eight JavaScript modules have active page/import users;
+there is no unused HTML or JavaScript file to delete. Framework routes, validators
+and mDNS callbacks were checked separately because registration invokes them without
+a normal direct function call. Demo APIs/fixtures and the deferred Pi-hole connector
+remain supported code, not abandoned files.
+
+Removed the unused `parse_discovery` wrapper; the supervisor already calls
+`parse_discovery_details` to retain discovery identities. Removed obsolete score-ring,
+score-inner and danger-icon CSS, including their mobile rules. Replaced the report's
+pass-through service-label wrapper with an alias to the existing shared import.
+The remaining application boundaries and visible layout are unchanged.
+
+Archived and removed three generated/empty root folders: `build`, `.ruff_cache`
+and `front end`. Their 91 files are recoverable from
+`.test-artifacts/cleanup-d550a8734dac4b36aac228a8407d5ea6.zip`; the empty directory
+needs no content recovery. This supersedes the earlier locked-folder note below.
+Preserved saved scans, `.preview-data`, test evidence, virtual environments, package
+metadata, IDE settings and historical documentation. See [testing](testing.md) for
+the post-cleanup regression results.
+
+## Source map
+
 The device-detail implementation is organised into focused parts:
 
 - `app/jobs/enrichment.py`: optional-check scheduling, cancellation and checkpoints.
@@ -33,7 +66,7 @@ python scripts/check.py --browser --ollama
 
 The default command never opts into browser/provider/lab tests, even if old opt-in
 environment variables remain in the shell. Both variants exclude live-network and human
-study tests. Lint, formatting, Python tests, all three JavaScript suites and JS syntax
+study tests. Lint, formatting, Python tests, all four JavaScript suites and JS syntax
 checks stop at the first failure. All new run artifacts live under `.test-artifacts/`.
 VS Code also provides **NetGuard: Check offline**.
 
@@ -76,3 +109,13 @@ Only named generated root folders are selected. The script refuses linked paths 
 configured application data, creates and checks a ZIP before deletion, uses native
 literal-path operations, and leaves locked folders alone. It does not prune the artifact
 archive, saved reports, virtual environments or source files.
+
+## Verification-server handoff
+
+After agent-run live verification, stop the agent-owned backend once all jobs have
+finished. Do not leave a hidden server on port 8765 and then ask the user to start
+the VS Code task: the port and JSON instance lock correctly prevent a second
+backend. Verify the process identity and idle status before stopping it. Never
+stop an unrelated listener or interrupt a scan merely to free the port.
+The Start backend task reveals its terminal so startup failures and the local
+session link are visible. Do not publish that session link in shared evidence.

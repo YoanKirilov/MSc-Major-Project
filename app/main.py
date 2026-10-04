@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from filelock import FileLock, Timeout
 
+from .api import cves as cves_api
 from .api import demo as demo_api
 from .api import library as library_api
 from .api import scans as scans_api
@@ -20,6 +21,7 @@ from .demo.adapter import DemoFindingsAdapter
 from .demo.runs import DemoRunStore
 from .explanations import ExplanationService, OllamaExplanationProvider
 from .jobs.supervisor import ScanSupervisor
+from .scanner.cve import NvdClient
 from .scanner.pihole import PiholeClient
 from .security.session import SessionManager
 from .storage.json_store import DocumentTooLarge, JsonStore
@@ -56,6 +58,8 @@ async def owned_lifespan(app: FastAPI):
     app.state.config = config
     app.state.runtime_status_lock = asyncio.Lock()
     app.state.name_refresh_lock = asyncio.Lock()
+    app.state.cve_lookup_lock = asyncio.Lock()
+    app.state.nvd = NvdClient()
     app.state.runtime_status_cache = None
     app.state.store = JsonStore(data_dir)
     app.state.storage_writable_at_startup = await asyncio.to_thread(
@@ -102,6 +106,7 @@ async def owned_lifespan(app: FastAPI):
         explanation_service=app.state.explanations,
         max_concurrent_scans=config.max_concurrent_scans,
         pihole_client=app.state.pihole,
+        app_config=config,
     )
     await app.state.supervisor.reconcile_incomplete()
     try:
@@ -197,6 +202,7 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     app.include_router(session_api.router)
     app.include_router(scans_api.router)
     app.include_router(library_api.router)
+    app.include_router(cves_api.router)
     app.include_router(settings_api.router)
     app.include_router(demo_api.router)
 

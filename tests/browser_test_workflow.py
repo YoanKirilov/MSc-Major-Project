@@ -270,6 +270,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
                 .filter(has=page.locator("summary", has_text="More about this device"))
                 .last
             )
+            page.locator("#technical-devices > summary").click()
             extra.locator("summary").first.click()
             expect(extra).to_contain_text("Example room display <script>")
             expect(extra).to_contain_text("Device announcement")

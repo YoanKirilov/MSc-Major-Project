@@ -346,7 +346,7 @@ async def test_both_profiles_enrich_only_requested_hosts(tmp_path, monkeypatch, 
     store = JsonStore(tmp_path)
     await store.create_scan(doc)
 
-    async def browser(scope, interface, cancel, *, target_ips):
+    async def browser(scope, interface, cancel, *, target_ips, known_ips):
         assert target_ips == {"192.168.0.20"}
         return [
             DiscoveryObservation(

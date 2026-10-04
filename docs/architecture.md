@@ -1,5 +1,41 @@
 # Architecture and workspace review
 
+For the current structure, read [Current architecture](architecture-current.md).
+The dated sections below are historical review evidence and may describe superseded behaviour.
+
+## Latest live review — 2 October 2026
+
+The [live-check record](live-check-20261002.md) supersedes older test counts and
+network-observation snapshots below. The JSON/FastAPI/job/provider separation remains
+intact. CVE button eligibility is now presentation metadata computed by the exact
+backend lookup policy, not a second partial implementation in JavaScript. Evidence
+files are unchanged by report rendering or reference lookup.
+
+The latest review identified two follow-ups: conservative resolution of renamed CVE
+product identifiers, and explicit handling of laptop sleep during long scans.
+Neither should be hidden by reporting missing checks as successful. The new source
+layout test protects template/static import reachability alongside Python imports.
+
+## CVE references — 2 October 2026
+
+The new `api/cves.py` route performs user-requested research on a saved service.
+`scanner/cve.py` handles conservative CPE selection and bounded NVD requests;
+`explanations/cve.py` validates Ollama's reviewed match-context wording. Typed results
+live in `schemas/cve.py` and the existing annotation store, separate from scan facts.
+`static/js/cves.mjs` renders source links and explicit lookup controls. The live
+scanner and rule engine do not treat a CVE candidate as an assessed vulnerability.
+See [CVE flow and limits](cve-references.md). The current asset tree has nine JS modules.
+
+## Source organisation review — 2 October 2026
+
+The existing separation of API boundaries, job orchestration, scanner collectors,
+JSON storage and AI validation remains appropriate. Import and asset traversal found
+no unreferenced application module, template or JavaScript file. Removed only a
+disused discovery-parser wrapper, obsolete score-ring/icon styles and a redundant
+report-formatting wrapper. Framework-registered callbacks, demo APIs and the optional
+Pi-hole connector remain active or intentionally supported. Generated build/cache
+folders were archived separately; see [workspace organisation](workspace.md).
+
 ## Network recovery — 1 October 2026
 
 Scope precedence is unchanged: saved manual range, backend configuration, then a
@@ -160,11 +196,11 @@ Browser templates + JavaScript
 | `app/explanations/` | Redacted structured input, Ollama, reviewed wording and fallback audit |
 | `app/schemas/` | Primary data and validated history/progress projections |
 | `app/storage/` | Atomic JSON, locks, bounded files, archives and explicit recovery |
-| `app/templates/`, `static/` | Four pages, shared layout, CSS and seven active JS modules |
+| `app/templates/`, `static/` | Four page types (six routes), shared layout, CSS and nine active JS modules |
 | `app/demo/` | Fictional demonstration data; separate from real scan observations |
 | `tests/`, `scripts/` | Automated checks, installed-package verification and cleanup tooling |
 
-All five HTML templates, seven JavaScript modules and the stylesheet are referenced by
+All five HTML templates, nine JavaScript modules and the stylesheet are referenced by
 active pages/imports. The asset-traversal integration test checks that every shipped
 static file is reachable. All substantive Python modules are reachable from the app/CLI;
 package initialisers are retained. No live source module was removed just because it

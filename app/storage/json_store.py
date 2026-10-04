@@ -453,7 +453,7 @@ class JsonStore:
         await asyncio.to_thread(self._delete_scan, scan_id)
 
     def _save_raw_output(self, scan_id: UUID | str, name: str, payload: bytes) -> None:
-        if not re.fullmatch(r"(?:discovery|host-[0-9-]+)\.xml", name):
+        if not re.fullmatch(r"(?:discovery|host-[0-9-]+(?:-attempt-[12])?)\.xml", name):
             raise ValueError("invalid raw output name")
         if len(payload) > self.max_document_bytes:
             raise ValueError("raw output exceeds the size limit")

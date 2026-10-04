@@ -21,6 +21,7 @@ from app.explanations.service import PROMPT_VERSION
 from app.risk.catalogue import RULESET_VERSION
 from app.risk.guidance import guidance_status
 from app.scanner.commands import DEEP_PROFILE, DEEP_UDP_PORTS, PORTS, PROFILE_ID, UDP_PORTS
+from app.scanner.cve import service_cpe
 from app.scanner.mdns import mdns_available
 from app.schemas.api import RefreshGuidanceRequest, ScanCreateRequest
 from app.schemas.scan import ScanDocument
@@ -154,22 +155,35 @@ async def _create_validated_live_scan(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    from app.scanner.network import connection_snapshot
+
+    context = await asyncio.to_thread(
+        connection_snapshot, request.app.state.config, scope, settings.interface
+    )
+    if context is None:
+        raise HTTPException(
+            409,
+            "The current network connection could not be verified. "
+            "Check Network range and Interface in Settings before scanning.",
+        )
     ai_available = await request.app.state.explanations.provider_available()
     mdns_interface_ip = None
+    mdns_warning = None
     if settings.mdns_enabled:
         if not mdns_available():
-            raise HTTPException(status_code=503, detail="Optional mDNS discovery is not installed")
-        mdns_interface_ip = await asyncio.to_thread(
-            nmap_interface_ipv4, request.app.state.config, scope, settings.interface
-        )
-        if mdns_interface_ip is None:
+            mdns_warning = (
+                "Additional device-name discovery is not installed. "
+                "The authorised Nmap checks will still run."
+            )
+        else:
+            mdns_interface_ip = await asyncio.to_thread(
+                nmap_interface_ipv4, request.app.state.config, scope, settings.interface
+            )
+        if mdns_interface_ip is None and mdns_warning is None:
             diagnostic = await asyncio.to_thread(
                 nmap_interface_diagnostic, request.app.state.config, scope, settings.interface
             )
-            raise HTTPException(
-                status_code=422,
-                detail=mdns_interface_message(diagnostic["reason"], scope, detected),
-            )
+            mdns_warning = mdns_interface_message(diagnostic["reason"], scope, detected)
     scan_id = str(uuid4())
     targets = [
         {"ip": host, "discovery_status": "not_run", "service_status": "pending"}
@@ -181,11 +195,12 @@ async def _create_validated_live_scan(
         target={"mode": validated.mode, "cidr": validated.cidr, "hosts": list(validated.hosts)},
         policy={
             "allowed_network": scope,
+            "network_context": context,
             "profile_id": PROFILE_ID if body.profile == "light" else DEEP_PROFILE,
             "profile": body.profile,
             "tcp_ports": list(PORTS) if body.profile == "light" else ["all-tcp"],
             "udp_ports": list(UDP_PORTS) if body.profile == "light" else list(DEEP_UDP_PORTS),
-            "interface": settings.interface,
+            "interface": settings.interface or context.get("interface"),
             "retain_raw_xml": settings.retain_raw_xml,
             "mdns_enabled": bool(mdns_interface_ip),
             "mdns_interface_ip": mdns_interface_ip,
@@ -216,6 +231,8 @@ async def _create_validated_live_scan(
             }
         ],
     )
+    if mdns_warning:
+        document.warnings.append({"code": "MDNS_UNAVAILABLE", "message": mdns_warning})
     await request.app.state.store.create_scan(document)
     try:
         await request.app.state.supervisor.start(scan_id)
@@ -242,6 +259,8 @@ async def get_live_scan(request: Request, scan_id: str):
         raise HTTPException(status_code=404, detail="Live scan result not found")
     payload = document.model_dump(mode="json")
     # Presentation is editorial and never saved over scan facts.
+    for service, presented in zip(document.services, payload["services"], strict=True):
+        presented["cve_lookup_available"] = service_cpe(service) is not None
     payload["plain_guidance"] = {item.finding_id: plain_finding(item) for item in document.findings}
     payload["plain_overview"] = plain_report(document)
     payload["guidance_status"] = {**guidance_status(document), "ai_prompt_version": PROMPT_VERSION}

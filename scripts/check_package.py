@@ -21,7 +21,17 @@ def main():
     python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     wheel = next(wheels.glob("*.whl"))
     subprocess.run(
-        [str(python), "-m", "pip", "install", "-r", str(root / "requirements.lock"), str(wheel)],
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "-r",
+            str(root / "requirements.lock"),
+            "-r",
+            str(root / "requirements-testclient.lock"),
+            str(wheel),
+        ],
         check=True,
     )
     subprocess.run([str(python), "-m", "pip", "check"], check=True)

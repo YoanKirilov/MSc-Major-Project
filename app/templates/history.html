@@ -3,6 +3,11 @@
 <section class="card">
   <h2>Saved reports</h2>
   <p>Reopen results saved on this computer. Opening a report does not start a new scan.</p>
+  <details><summary>Backups and storage</summary>
+    <button type="button" id="storageUsageButton">Check saved data size</button>
+    <p id="storageUsage" role="status"></p>
+    <p>Back up before removing old reports. Stop the app, then use its storage export command to copy live reports, names and settings into a new private folder. Restore into a new folder, never over existing evidence. See docs/storage-backups.md for exact commands. Backups contain private network details; do not publish them.</p>
+  </details>
   <form id="history-filters">
     <label for="history-query">Search all reports by title, nickname, device or address</label><input id="history-query" type="search" maxlength="120" />
     <label for="history-profile">Scan type</label><select id="history-profile"><option value="">All types</option><option value="light">Light</option><option value="deep-tcp-v1">Deep</option></select>

@@ -24,7 +24,7 @@
         "instanceLimit": 1
       },
       "presentation": {
-        "reveal": "silent",
+        "reveal": "always",
         "focus": false,
         "panel": "dedicated"
       },

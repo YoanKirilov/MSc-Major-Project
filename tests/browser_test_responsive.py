@@ -175,6 +175,8 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
             page.set_viewport_size({"width": 320, "height": 568})
             page.goto(base + f"/scans/{scan_id}")
             expect(page.locator("#first-action")).to_be_visible()
+            page.locator("#technical-devices > summary").focus()
+            page.keyboard.press("Enter")
             page.locator(".device-table-wrap").focus()
             expect(page.locator(".device-table-wrap")).to_be_focused()
             page.keyboard.press("ArrowRight")

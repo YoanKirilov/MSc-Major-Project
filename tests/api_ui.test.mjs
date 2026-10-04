@@ -72,3 +72,13 @@ test('API calls explicitly bypass browser response caches', async () => {
   await app.request("request('/api/status')");
   assert.ok(app.calls.every((call) => call.options.cache === 'no-store'));
 });
+
+test('explicit CVE timeout is bounded and is not sent as a fetch option', async () => {
+  const app = setup();
+  const deadlines = [];
+  app.context.setTimeout = (_fn, ms) => { deadlines.push(ms); return 1; };
+  app.context.clearTimeout = () => {};
+  await app.request("request('/api/cve-test', { timeoutMs: 120000 })");
+  assert.deepEqual(deadlines, [20000, 60000]);
+  assert.ok(app.calls.every(call => !('timeoutMs' in call.options)));
+});

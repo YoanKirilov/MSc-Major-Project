@@ -23,6 +23,7 @@ def no_dns_in_offline_tests(request, monkeypatch):
     monkeypatch.setattr("app.api.scans.detect_private_network", lambda: None)
     monkeypatch.setattr("app.api.session.detect_private_network", lambda: None)
     monkeypatch.setattr("app.api.library.detect_private_network", lambda: None)
+    monkeypatch.setattr("app.scanner.network.connection_snapshot", lambda *a, **k: {"test": True})
 
     async def no_extra_network(*args, **kwargs):
         return None

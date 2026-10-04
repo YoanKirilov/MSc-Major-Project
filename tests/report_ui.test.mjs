@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as presentation from '../app/static/js/presentation.mjs';
+import { createCvePanel } from '../app/static/js/cves.mjs';
 import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from '../app/static/js/report.mjs';
 
 test('equal priorities use rule, numeric address and service instead of completion order or scan IDs', () => {
@@ -149,7 +150,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     createElement() { return new Element(); },
   };
   const context = vm.createContext({ document, window: { location: { pathname: '/scans/test' } }, URL,
-    ...presentation, prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
+    ...presentation, createCvePanel, prioritise, formatServiceLabel: serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
   const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\npoll\(\);\s*$/, '');
   vm.runInContext(source, context);
@@ -208,17 +209,22 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   } } };
   vm.runInContext('render(data)', context);
   assert.match(text(elements.get('#nextStepsList').children[0]), /Plain action/);
-  assert.match(text(elements.get('#detailPanel')), /Plain explanation/);
+  assert.match(text(elements.get('#detailPanel')), /What we found Observed service/);
+  assert.doesNotMatch(text(elements.get('#detailPanel')), /Plain explanation/);
+  assert.match(text(elements.get('#detailPanel')), /Plain action/);
   assert.match(text(elements.get('#detailPanel')), /Original rule-based explanation/);
   context.data.explanations = [];
   assert.equal(elements.get('#refreshGuidanceButton').hidden, false);
   context.data.findings = []; context.data.state = 'failed';
   vm.runInContext('render(data)', context);
   assert.match(text(elements.get('#findingsList')), /Scan incomplete/);
+  context.data.services[0].cve_lookup_available = true;
+  vm.runInContext('render(data)', context);
+  assert.match(text(elements.get('#device-summaries')), /Check CVEs for this software/);
   assert.match(text(elements.get('#report-first-step')), /retry the unfinished/);
   context.data.state = 'completed';
   context.data.analysis_status = 'ready';
-  context.data.report_explanation = { prompt_version: '3.0.0', content: {
+  context.data.report_explanation = { status: 'ready', source: 'ai', ai_fields: ['meaning', 'why_it_matters', 'recommended_steps', 'how_to_check', 'limitations'], prompt_version: '3.0.0', content: {
     meaning: 'Recorded observations.', why_it_matters: 'Review the selected checks.',
     recommended_steps: ['Reviewed report-level next step.'], how_to_check: ['Reviewed report-level verification.'],
   }, display_limitations: ['Other settings were not checked.'] };
@@ -232,7 +238,10 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     recommended_steps: ['Plain report-level next step.'], how_to_check: ['Plain report check.'],
   }, limitations: ['Plain limits.'] };
   vm.runInContext('render(data)', context);
-  assert.match(text(elements.get('#nextStepsList')), /Plain report-level next step/);
+  assert.match(text(elements.get('#nextStepsList')), /Reviewed report-level next step/);
+  assert.match(text(elements.get('#result-lead')), /Recorded observations/);
+  context.data.report_explanation.status = 'fallback';
+  vm.runInContext('render(data)', context);
   assert.match(text(elements.get('#result-lead')), /Plain overview/);
   delete context.data.plain_overview;
   context.data.report_explanation.prompt_version = 'old';

@@ -1,5 +1,162 @@
 # Testing status
 
+## Test-client warning remediation — 4 October 2026
+
+Starlette's supported test client is now installed through the development-only
+`requirements-testclient.lock` (httpx2/httpcore2 2.13.1, truststore 0.10.4), shared
+by the development lock and installed-wheel verifier. Application HTTP clients
+continue using the existing runtime httpx pin. Pytest treats the legacy-client
+warning as an error rather than suppressing it; a dedicated test checks the client
+type and a real in-process request. The dependency validator now follows included
+lockfiles and rejects conflicting or non-exact pins.
+
+The VS Code `.venv` also had Starlette 1.6.0 despite the existing 1.7.0 lock pin.
+It was aligned to 1.7.0. Its test client now imports with all warnings treated as
+errors, and both project environments pass `pip check`. A running backend must be
+restarted when idle to load changed installed dependencies; no restart or live scan
+was performed for this fix.
+
+Installed-wheel verification passed without the warning, including six pages,
+ten assets and demo read/create/reopen: `.test-artifacts/package-faf9a0cda3/`.
+Full suite passed: **397 Python tests**, one real-provider test deselected, **no
+warnings**, and **50 JavaScript tests**, with Chromium/Firefox/WebKit, lint/format
+and module syntax checks: `.test-artifacts/checks-2dd463f127/`.
+Earlier dated warning records below describe earlier runs, not current failures.
+
+## Architecture refactor — 4 October 2026
+
+See [the architecture review](architecture-review-20261004.md). Report transitions
+were extracted and duplicate job admission was guarded. 396 Python/50 JavaScript
+tests passed with three browser engines and installed-package verification.
+Isolated live Light checked all ten discovered devices, with ten open services and
+seven review items; evidence and AI replay passed. Sony Deep was cancelled after
+the user confirmed standby/off; cancellation, saved-report navigation and responsive
+checks passed, but a complete awake-TV Deep run remains pending. No normal-backend
+restart or report migration was performed. These test reports use a separate folder.
+
+## Repeat verification and task handoff — reviewed 4 October 2026
+
+The [repeat live record](live-repeat-20261003.md) confirms Light checked ten of 11
+devices (one unreachable), Sony Deep completed with 15 open services/ten review
+items, AI/evidence replay passed, and all 155 pre-existing scan JSON files were
+unchanged. Refresh, history, Run again and mobile widths passed. The repeated
+offline suite passed 394 Python/50 JavaScript tests across three browser engines
+in `.test-artifacts/checks-046c935987/`. The agent-owned idle test backend was stopped
+afterwards so it would not block the VS Code Start backend task again.
+
+## Remediation verification — 3 October 2026
+
+Latest details: [live-check-20261003.md](live-check-20261003.md). Final full regression
+passed in `.test-artifacts/checks-243fbcc4e8/`; the final installed wheel passed
+in `.test-artifacts/package-5ce852931f/`. Light evidence replay and mobile checks
+passed with two unreachable devices honestly recorded. Sony Deep completed with
+15 open services, nine review items and ten accepted AI records; evidence replay,
+refresh/history, responsive widths and Run again navigation passed. The final
+Run again loading-race fix is included in the full regression and installed wheel.
+
+See [the execution plan](development-plan-20261003.md) for the implementation scope
+and pending external evaluation. Full regression after the main changes passed
+**394 Python tests**, **50 JavaScript tests**, Chromium/Firefox/WebKit, lint/format
+for 118 Python files and nine module syntax checks. One real-provider test was
+deselected and the existing Starlette/httpx deprecation warning remains.
+Artifacts: `.test-artifacts/checks-243fbcc4e8/`.
+
+Fresh installed wheel passed six pages, ten static assets, demo read/create/reopen
+and dependency consistency: `.test-artifacts/package-5ce852931f/`.
+The public nginx identifier regression returned 15 candidate NVD records in 27.09s,
+with original/resolved identifiers and dictionary provenance preserved. This was
+reference research, not proof of a vulnerability on a home device.
+
+Initial live Light `31f203bb-646b-4467-a3c0-309ba59e1715` exposed a raw-evidence filename
+integration defect and saved an honest failed report. The storage whitelist now
+accepts bounded attempt-1/attempt-2 names; 45 focused supervisor/storage tests passed
+with raw retention enabled. The fresh live run completed as described above;
+the initial failed report is preserved, not overwritten or counted as a pass.
+
+## Home live scans and final regression — 2 October 2026
+
+See [the live-check record](live-check-20261002.md) for real Light/Deep outcomes,
+laptop-sleep interruption evidence, AI/evidence replay, mobile checks and the
+remaining CVE product-identifier matching gap. Live tests use normal saved history;
+offline suites use isolated data.
+
+After fixing CVE button eligibility and adding template/static reachability checks,
+`.venv-quality/Scripts/python.exe scripts/check.py --browser --browser-engines chromium,firefox,webkit`
+passed **377 Python tests**, with one real-provider test deselected and one existing
+Starlette/httpx deprecation warning, plus **50 JavaScript tests** and nine module
+syntax checks. Python lint/format passed for 110 files. Artifacts:
+`.test-artifacts/checks-e2e57a6589/`.
+
+The fresh installed-wheel test passed six pages, ten static assets, demo
+read/create/reopen and `pip check`:
+`.test-artifacts/package-3fdfb07a8d/`.
+These synthetic/provider-stub regressions are separate from the live Ollama results.
+
+An earlier focused layout test was prevented by Windows sandbox access to its
+pytest temporary directory; the elevated isolated retry passed. The preliminary
+`.venv-brief` suite passed 374 tests but used an older pytest-asyncio with additional
+Python 3.14 deprecation warnings. The final lock-aligned run above supersedes it.
+
+## CVE reference lookup — 2 October 2026
+
+Implemented the [CVE reference flow](cve-references.md): retained service CPEs,
+version-specific public NVD lookup, reviewed local Ollama context, canonical source
+links, explicit uncertainty, and bounded persistent reference notes. Neither ports
+alone nor generated text can establish a vulnerability. Existing report evidence
+and finding severities are unchanged.
+
+Verification:
+
+- Focused parser/lookup/AI/storage checks: **73 passed**.
+- Full regression/browser run: **373 Python passed**, one live-provider test
+  deselected, one existing Starlette/httpx deprecation warning; **50 JavaScript
+  passed**. Lint, formatting (110 Python files), nine JS syntax checks and the
+  Chromium/Firefox/WebKit workflows passed. Artifact: `checks-2be62b0c5e/` under
+  `.test-artifacts/`.
+- Final cached-AI retry update: **21 focused Python/browser tests passed**, including
+  the added case which retries failed AI context without requerying cached NVD data.
+  Artifacts: `.test-artifacts/cve-final-20261002/`. This focused rerun verifies the
+  final update after the full suite; it is not a second complete-suite run.
+- Fresh installed wheel passed six pages, ten assets, demo read/create/reopen and
+  dependency checks: `.test-artifacts/package-fe357ab841/`.
+- Live public-reference smoke test: Apache HTTP Server 2.4.49 returned 69 NVD
+  records, of which five were retained. Real Ollama produced accepted context.
+  The first eight-second AI limit timed out; the final bounded 40-second limit
+  passed. This used a public software example, not evidence of a home vulnerability.
+- Restarted the verified idle normal backend and checked its new route plus the CVE
+  section on a saved report at mobile width. No browser errors, no scan submitted,
+  and all **42 saved scan JSON hashes unchanged**. Evidence:
+  `.test-artifacts/cve-review-20261002/running-verification.json`.
+
+The initial restart identity check stopped before mutation because Windows appended
+a trailing space to the command. A subsequent verification was initially prevented
+by an automatic-approval usage-limit error. On continuation, approval succeeded,
+the command was reverified after trimming whitespace, and activation completed.
+Old reports without saved CPEs show an explanation and general NVD link; a new
+authorised scan may collect the missing fingerprint. No current-network scan was run.
+
+## Source cleanup — 2 October 2026
+
+Reviewed Python imports/callback registration, template inheritance and static module
+references. Removed the unused discovery-parser wrapper, obsolete score-ring and
+danger-icon styles, and a duplicate report service-label wrapper. All five templates
+and eight JavaScript modules remain in use. The workspace cleanup archived 91 files
+before removing `build`, `.ruff_cache` and the empty `front end` folder; recovery
+details are in [workspace organisation](workspace.md).
+
+The isolated full Python/browser run passed **353 tests**, with one live-provider
+test deselected and one existing Starlette/httpx deprecation warning. Chromium,
+Firefox and WebKit workflow/responsive checks passed. Lint and formatting checks
+passed for 104 Python files. Artifacts: `.test-artifacts/checks-57508b17d0/`.
+
+The first JavaScript pass exposed a test-harness import alias mismatch after removing
+the wrapper. Updated the harness's injected binding; no application change was
+needed. All four JavaScript suites then passed **49 tests** (6 API, 27 dashboard,
+14 report, 2 Live Server bridge), and all eight module syntax checks passed.
+No additional live network scan, model generation, dependency change or packaged
+installation was needed for this cleanup. Saved scan data and virtual environments
+were not modified; source changes remain reviewable in Git.
+
 ## Running-backend recovery and network recheck — 2 October 2026
 
 The repeated old mDNS message came from a backend that predated the source fix:

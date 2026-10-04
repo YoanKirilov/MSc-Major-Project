@@ -1,5 +1,10 @@
 # NetGuard AI (Network Assessor)
 
+Current development: [3 October implementation plan](docs/development-plan-20261003.md),
+[current architecture](docs/architecture-current.md), and
+[private JSON backup/restore](docs/storage-backups.md). Dated test logs describe the
+version tested at that time; see [testing status](docs/testing.md) for verification.
+
 NetGuard AI is a local research prototype for assessing an authorised home network or a single lab device. It uses Nmap to record observed devices and services, applies fixed rules to produce findings, and presents the results in plain language. Every new live scan saves its facts, runs local Ollama report preparation, validates and saves the wording, and then opens the report. Scans, settings, and explanations are saved as JSON files on this computer.
 
 The report describes what the selected checks observed. A missing finding does not establish that a device or network is secure. Demo results are labelled separately and do not represent a real scan.
@@ -18,12 +23,31 @@ evaluation. See [future work](docs/evaluation.md#future-improvement-optional-pi-
 - Seven deterministic finding rules for selected services, with evidence, severity, limitations, and actions. Device type hints are conservative. Incomplete or failed checks remain visible in the report.
 - Automatic Ollama preparation for the report overview and all findings, including reports with no findings or unsuccessful checks. The model selects reviewed alternatives tied to the saved facts. Original guidance remains available; an AI outage opens the factual report with an explicit retry message.
 - Actions on a saved report to refresh guidance or retry AI preparation without rescanning. Unfinished host checks can be retried in a new scan limited to those devices. **Saved reports** reopens local history.
-- Host checks receive at most two attempts, with separate unreachable-device, timeout, scanner-error, invalid-output, output-limit and cancellation reasons. Light checks allow up to 180 seconds per host inside Nmap and 210 seconds per process; Deep limits remain 900/960 seconds. Two host workers share a global two-process limit, with a 30-minute host-stage budget; unfinished checks remain explicit.
+- Host checks receive at most two attempts for suitable transient failures, with per-attempt diagnostics and optional XML. Permission/driver errors are not repeatedly retried. Light checks allow up to 180 seconds per host inside Nmap and 210 seconds per process; Deep limits remain 900/960 seconds. Host checks and discovery share two scanner slots. The 30-minute host-stage budget charges active execution, not queue waiting; queue waits have a separate one-hour limit. Unfinished checks remain explicit.
 - Device names combine Nmap discovery/service results, reverse DNS and optional mDNS, recording source, time and disagreements. Optional Pi-hole v6 integration adds names from address leases or matched historical records. A failed Pi-hole source does not discard names from another working source. A name does not establish reachability or device identity.
 - Local JSON storage with validated documents, per-scan locks, atomic writes, previous-version backups, and compact history summaries. The backend also supports labelled fictional demo data and saved demo runs.
 - A loopback-only web server with a bootstrap session URL, an HTTP-only session cookie, and Origin and CSRF checks for changes. The configured scan scope is checked on the server.
 
 ## Recent usability and concurrency updates
+
+Each finding now includes **CVE: published software problems** below its guidance
+and reference links. Choose **Check CVEs for this software** when Nmap has recorded
+a sufficiently confident, versioned application fingerprint. Both Light and Deep
+preserve these fingerprints. Older reports without them remain readable and explain
+why a new Deep scan may be needed; a port number alone is never a CVE match.
+
+This explicit online lookup queries the [NIST NVD](https://nvd.nist.gov/developers/vulnerabilities)
+with the software fingerprint, not your device addresses, names or report. It saves
+up to five possible CVE references with the database total and lookup time. Local
+Ollama selects validated plain-language context and next steps; it cannot invent
+CVE IDs, links or vulnerability claims. Published technical descriptions stay
+expandable. Matches need vendor/version/configuration review and do not change
+the scan's findings or severity. No matches does not mean safe.
+
+Reference notes use the existing atomic JSON annotation store and survive reopening.
+Successful database results are reused for 24 hours, with a retry for unavailable
+AI wording. Internet/database/AI failures leave the factual report available. No API
+key or paid service is required. See [CVE implementation and limits](docs/cve-references.md).
 
 Network Settings now offer Automatic detection or a saved Manual range, with the
 effective range and its source shown. Automatic scans ask you to confirm the current
@@ -170,6 +194,9 @@ This workspace has a local VS Code task named **NetGuard: Start backend**. It st
 Right-click `app/templates/dashboard.html` and choose **Open with Live Server** if you prefer that shortcut. The static preview redirects to the Python app at `http://127.0.0.1:8765/`; Live Server alone cannot run scans or read saved JSON. Refresh the browser after HTML/CSS/JavaScript edits, and restart the Python task after backend changes. If port 8765 is in use, stop the previous backend task before starting another.
 
 The `.vscode/tasks.json` tasks are shared in Git; other editor settings remain local.
+Development installs include `requirements-testclient.lock` through the development
+lockfile. This pins Starlette's supported `httpx2` test client separately from the
+app's runtime HTTP clients; installed-wheel verification uses the same test pins.
 The manual **NetGuard: Start backend with Pi-hole** task prompts for an origin and a
 private password-file path. Stop the existing backend before using it. See the
 [Pi-hole setup guide](docs/pihole-setup.md); this task does not install or start Pi-hole.
@@ -237,7 +264,7 @@ The default provider is Ollama at `http://127.0.0.1:11434`. The dashboard and Se
 
 The backend first saves factual scan results, then sends selected structured facts to the loopback Ollama API. IP and MAC addresses, hostnames, device/service IDs and raw scanner output are excluded. The report overview covers device and service counts, findings, coverage, failed checks and next steps. Each accepted sentence must match a reviewed alternative for its source; AI cannot change severity, evidence or rule-based actions.
 
-Requests use batches of up to six items, prioritise higher-severity findings, and have at most two attempts per batch. There is no silent 24-finding cutoff. A 15-minute overall deadline includes waiting for the local model slot; individual calls have a 180-second ceiling in addition to the configured HTTP timeout. Accepted batches and progress counts are saved and reused on retry. Failed preparation shows reviewed rule-based guidance with a visible retry message. The display consistently prefers approved plain-language alternatives, including where the model retained original wording; this editorial choice is not presented as new AI output. Original guidance and model, prompt version, input hash, output and failure reasons remain available. Readability still requires evaluation with nontechnical readers.
+Requests use batches of up to six items, prioritise higher-severity findings, and have at most two attempts per batch. There is no silent 24-finding cutoff. The 15-minute preparation budget starts after admission to the scan AI slot; queue waiting has a separate one-hour limit. Provider calls retain their own bounded timeout. Accepted batches and progress counts are saved and reused on retry. Failed preparation shows reviewed rule-based guidance with a visible retry message. The report prefers accepted AI-selected fields, with reviewed plain-language fallbacks for rejected, stale or unchanged fields. Original guidance and model, prompt version, input hash, output and failure reasons remain available. Readability still requires evaluation with nontechnical readers.
 
 ### Optional Pi-hole names (deferred future improvement)
 

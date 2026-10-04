@@ -9,6 +9,8 @@ from typing import Any
 
 from filelock import Timeout as StorageLockTimeout
 
+from app.jobs.scheduling import ExecutionBudget, QueueCancelled, QueueExpired, capacity_slot
+from app.jobs.transitions import close_unfinished, interrupted_document, mark_host_failure
 from app.profiling.classifier import classify_device
 from app.risk.engine import evaluate_device
 from app.scanner.commands import (
@@ -19,7 +21,9 @@ from app.scanner.commands import (
     discovery_command,
     host_command,
 )
+from app.scanner.diagnostics import FAILURE_ADVICE, process_failure
 from app.scanner.mdns import browse_mdns
+from app.scanner.network import NetworkGuard, NetworkInterrupted
 from app.scanner.parser import (
     HostUnreachable,
     host_failure_detail,
@@ -28,7 +32,7 @@ from app.scanner.parser import (
 )
 from app.scanner.runner import ProcessResult, run_process
 from app.schemas.common import iso_z, utc_now
-from app.schemas.scan import AnalysisProgress, ExplanationRecord, ScanDocument
+from app.schemas.scan import AnalysisProgress, HostAttempt, ScanDocument
 from app.storage.json_store import JsonStore
 
 logger = logging.getLogger(__name__)
@@ -44,6 +48,7 @@ class ScanSupervisor:
         mdns_browser=browse_mdns,
         max_concurrent_scans: int = 5,
         pihole_client=None,
+        app_config=None,
     ):
         self.store = store
         self.nmap_path = nmap_path
@@ -51,6 +56,7 @@ class ScanSupervisor:
         self.explanation_service = explanation_service
         self.mdns_browser = mdns_browser
         self.pihole_client = pihole_client
+        self.app_config = app_config
         self.max_concurrent_scans = max(1, max_concurrent_scans)
         self._tasks: dict[str, asyncio.Task] = {}
         self._analysis_tasks: dict[str, asyncio.Task] = {}
@@ -61,6 +67,8 @@ class ScanSupervisor:
         self._detail_capacity = asyncio.Semaphore(2)
         self.details_timeout_s = 30
         self.host_stage_timeout_s = 1800
+        self.queue_timeout_s = 3600
+        self.analysis_timeout_s = 900
 
     def is_active(self, scan_id: str | None = None) -> bool:
         if scan_id is not None:
@@ -92,6 +100,8 @@ class ScanSupervisor:
 
     async def start(self, scan_id: str) -> None:
         async with self._admission:
+            if self.is_active(scan_id) or self.is_analysis_active(scan_id):
+                raise RuntimeError("SCAN_BUSY")
             if not self.has_capacity():
                 raise RuntimeError("SCAN_CAPACITY")
             cancel_event = asyncio.Event()
@@ -186,20 +196,7 @@ class ScanSupervisor:
     async def _checkpoint(self, scan_id: str, mutate: Callable[[Any], Any]) -> None:
         await self.store.update_scan(scan_id, mutate)
 
-    @staticmethod
-    def _close_unfinished(current, reason: str, *, cancelled: bool = False):
-        coverage = current.coverage.model_copy(deep=True)
-        for target in coverage.targets:
-            eligible = (
-                current.target.get("mode") == "known_hosts" or target.discovery_status == "observed"
-            )
-            if eligible and target.service_status in {"pending", "running"}:
-                target.service_status = "cancelled" if cancelled else "failed"
-                target.reason_code = reason
-                if not cancelled:
-                    coverage.service_failed_count += 1
-        coverage.service_stage_complete = False
-        return current.model_copy(update={"coverage": coverage})
+    _close_unfinished = staticmethod(close_unfinished)
 
     async def _local_hostname(self, ip: str) -> str | None:
         try:
@@ -282,12 +279,20 @@ class ScanSupervisor:
                     document.policy["mdns_interface_ip"],
                     cancel_event,
                     target_ips=set(document.target["hosts"]),
+                    known_ips=set(document.target["hosts"]),
                 ),
                 timeout=7,
             )
+            warnings = getattr(observations, "warnings", [])
             observations = [o for o in observations if o.ip in document.target["hosts"]]
             await self._checkpoint(
-                scan_id, lambda current: current.model_copy(update={"observations": observations})
+                scan_id,
+                lambda current: current.model_copy(
+                    update={
+                        "observations": observations,
+                        "warnings": [*current.warnings, *warnings],
+                    }
+                ),
             )
         except Exception:
             await self._checkpoint(
@@ -319,94 +324,43 @@ class ScanSupervisor:
             timeout_s=self.details_timeout_s,
         )
 
-    @staticmethod
-    def _interrupted_document(current):
-        if current.phase == "analysis" and current.analysis_status == "running":
-            return current.model_copy(
-                update={
-                    "state": current.scan_outcome or "failed",
-                    "phase": "finished",
-                    "analysis_status": "failed",
-                    "analysis_error": "process_restarted",
-                    "analysis_progress": current.analysis_progress.model_copy(
-                        update={"state": "finished", "active": 0}
-                    )
-                    if current.analysis_progress
-                    else None,
-                    "finished_at": iso_z(utc_now()),
-                }
-            )
-        if current.phase == "analysis" and current.state in {"completed", "partial"}:
-            finished_at = iso_z(utc_now())
-            existing = {record.finding_id: record for record in current.explanations}
-            explanations = []
-            for finding in current.findings:
-                record = existing.get(finding.finding_id)
-                if record is not None and record.status == "ready":
-                    explanations.append(record)
-                else:
-                    explanations.append(
-                        ExplanationRecord(
-                            finding_id=finding.finding_id,
-                            status="fallback",
-                            source="fixed",
-                            completed_at=finished_at,
-                            fallback_reason="process_restarted",
-                            content=finding.fixed_explanation,
-                        )
-                    )
-            return current.model_copy(
-                update={
-                    "phase": "finished",
-                    "explanations": explanations,
-                    "warnings": [
-                        *current.warnings,
-                        {
-                            "code": "AI_EXPLANATION_INTERRUPTED",
-                            "message": (
-                                "Plain-language AI wording was interrupted; fixed guidance is "
-                                "shown."
-                            ),
-                        },
-                    ],
-                }
-            )
-        coverage = current.coverage.model_copy(deep=True)
-        for target in coverage.targets:
-            if target.service_status in {"pending", "running"}:
-                target.service_status = "cancelled"
-                target.reason_code = "process_restarted"
-        coverage.service_stage_complete = False
-        state = "partial" if current.devices else "failed"
-        return current.model_copy(
-            update={
-                "state": state,
-                "phase": "finished",
-                "finished_at": iso_z(utc_now()),
-                "coverage": coverage,
-                "errors": [
-                    *current.errors,
-                    {
-                        "code": "SCAN_INTERRUPTED",
-                        "message": "The application stopped before this scan completed.",
-                        "device_id": None,
-                    },
-                ],
-            }
-        )
+    _interrupted_document = staticmethod(interrupted_document)
 
     async def _run(self, scan_id: str, cancel_event: asyncio.Event) -> None:
+        network_monitor = None
+        guard = None
         try:
             document = await self.store.load_scan(scan_id)
             settings = await self.store.load_settings()
             interface = document.policy.get("interface", settings.interface)
             retain_raw_xml = document.policy.get("retain_raw_xml", settings.retain_raw_xml)
+            if document.policy.get("network_context"):
+                from app.config import load_config
+                from app.scanner.network import connection_snapshot
+
+                config = self.app_config or load_config()
+                guard = NetworkGuard(
+                    document.policy["network_context"],
+                    lambda: connection_snapshot(
+                        config, document.policy["allowed_network"], interface
+                    ),
+                )
+                await guard.check()
+
+                async def watch_network():
+                    while not cancel_event.is_set():
+                        await asyncio.sleep(2)
+                        try:
+                            await guard.check()
+                        except NetworkInterrupted:
+                            cancel_event.set()
+                            return
+
+                network_monitor = asyncio.create_task(watch_network())
             nmap_observed: set[str] = set()
             discovery_details = {}
             mdns_observed: set[str] = set()
-            initial_phase = (
-                "discovery" if document.target.get("mode") == "discover" else "service_scan"
-            )
+            initial_phase = "queued"
             await self._checkpoint(
                 scan_id,
                 lambda current: current.model_copy(
@@ -420,9 +374,17 @@ class ScanSupervisor:
             target_hosts = tuple(document.target.get("hosts", []))
             if document.target.get("mode") == "discover":
                 cidr = document.target.get("cidr")
-                result = await self.process_runner(
-                    discovery_command(self.nmap_path, cidr, interface), 45, cancel_event
-                )
+                async with capacity_slot(
+                    self._host_capacity, timeout_s=self.queue_timeout_s, cancel_event=cancel_event
+                ):
+                    if guard:
+                        await guard.check()
+                    await self._checkpoint(
+                        scan_id, lambda current: current.model_copy(update={"phase": "discovery"})
+                    )
+                    result = await self.process_runner(
+                        discovery_command(self.nmap_path, cidr, interface), 45, cancel_event
+                    )
                 if retain_raw_xml and result.stdout:
                     await self.store.save_raw_output(scan_id, "discovery.xml", result.stdout)
                 if result.cancelled:
@@ -442,7 +404,16 @@ class ScanSupervisor:
                                 document.policy["mdns_interface_ip"],
                                 cancel_event,
                                 target_ips=set(candidates),
+                                known_ips=nmap_observed,
                             )
+                            mdns_warnings = getattr(observations, "warnings", [])
+                            if mdns_warnings:
+                                await self._checkpoint(
+                                    scan_id,
+                                    lambda current: current.model_copy(
+                                        update={"warnings": [*current.warnings, *mdns_warnings]}
+                                    ),
+                                )
                             observations = [item for item in observations if item.ip in candidates]
                             mdns_observed = {
                                 item.ip for item in observations if item.ip in candidates
@@ -514,7 +485,7 @@ class ScanSupervisor:
                     scan_id,
                     lambda current: current.model_copy(
                         update={
-                            "phase": "service_scan",
+                            "phase": "queued",
                             "coverage": current.coverage.model_copy(
                                 update={"discovery_complete": False}
                             ),
@@ -533,7 +504,9 @@ class ScanSupervisor:
                         if target.ip == ip:
                             target.service_status = "running"
                             target.reason_code = None
-                    return current.model_copy(update={"coverage": coverage})
+                    return current.model_copy(
+                        update={"coverage": coverage, "phase": "service_scan"}
+                    )
 
                 await self._checkpoint(scan_id, mark_running)
                 profile = document.policy.get("profile", "light")
@@ -542,6 +515,8 @@ class ScanSupervisor:
                 parse_error_code = "HOST_RESULT_INVALID"
                 parse_error_detail = None
                 for attempt in range(1, 3):
+                    if guard:
+                        await guard.check()
 
                     def mark_attempt(current, attempt=attempt):
                         coverage = current.coverage.model_copy(deep=True)
@@ -559,9 +534,7 @@ class ScanSupervisor:
                         960 if deep else 210,
                         cancel_event,
                     )
-                    if result.cancelled or cancel_event.is_set() or result.overflow:
-                        break
-                    if not result.timed_out and result.returncode == 0:
+                    if not process_failure(result) and not cancel_event.is_set():
                         try:
                             parsed = parse_host(
                                 result.stdout,
@@ -574,7 +547,6 @@ class ScanSupervisor:
                                 profile_udp_ports=UDP_PORTS if not deep else DEEP_UDP_PORTS,
                                 fill_unknown=not deep,
                             )
-                            break
                         except ValueError as exc:
                             parse_error_detail = host_failure_detail(exc)
                             parse_error_code = (
@@ -584,6 +556,37 @@ class ScanSupervisor:
                                 if "timed out" in str(exc)
                                 else "HOST_RESULT_INVALID"
                             )
+                    outcome = process_failure(result) or (
+                        "completed" if parsed else parse_error_code
+                    )
+
+                    def record_attempt(current, outcome=outcome, result=result, attempt=attempt):
+                        coverage = current.coverage.model_copy(deep=True)
+                        for target in coverage.targets:
+                            if target.ip == ip:
+                                target.attempt_details.append(
+                                    HostAttempt(
+                                        attempt=attempt,
+                                        duration_s=max(0, round(result.duration_s, 3)),
+                                        exit_code=result.returncode,
+                                        outcome=outcome,
+                                    )
+                                )
+                        return current.model_copy(update={"coverage": coverage})
+
+                    await self._checkpoint(scan_id, record_attempt)
+                    if retain_raw_xml and result.stdout:
+                        await self.store.save_raw_output(
+                            scan_id,
+                            f"host-{ip.replace('.', '-')}-attempt-{attempt}.xml",
+                            result.stdout,
+                        )
+                    if cancel_event.is_set() or outcome not in {
+                        "HOST_SCAN_TIMEOUT",
+                        "HOST_UNREACHABLE",
+                        "HOST_RESULT_INVALID",
+                    }:
+                        break
                 if retain_raw_xml and result.stdout:
                     await self.store.save_raw_output(
                         scan_id, f"host-{ip.replace('.', '-')}.xml", result.stdout
@@ -599,17 +602,15 @@ class ScanSupervisor:
                     return
                 if result.timed_out or result.overflow or result.returncode != 0:
                     status = "timed_out" if result.timed_out else "failed"
-                    failure_code = (
-                        "HOST_SCAN_TIMEOUT"
-                        if result.timed_out
-                        else "HOST_OUTPUT_LIMIT"
-                        if result.overflow
-                        else "HOST_SCAN_FAILED"
-                    )
+                    failure_code = process_failure(result) or "HOST_SCAN_FAILED"
                     await self._checkpoint(
                         scan_id,
                         lambda current, ip=ip, status=status: self._mark_host_failure(
-                            current, ip, status, failure_code
+                            current,
+                            ip,
+                            status,
+                            failure_code,
+                            detail=FAILURE_ADVICE.get(failure_code),
                         ),
                     )
                     return
@@ -682,19 +683,24 @@ class ScanSupervisor:
                 await self._checkpoint(scan_id, commit)
 
             remaining_hosts = iter(target_hosts)
+            execution_budget = ExecutionBudget(self.host_stage_timeout_s)
 
             async def worker():
                 while not cancel_event.is_set():
                     ip = next(remaining_hosts, None)
                     if ip is None:
                         return
-                    async with self._host_capacity:
-                        await check_host(ip)
+                    async with capacity_slot(
+                        self._host_capacity,
+                        timeout_s=self.queue_timeout_s,
+                        cancel_event=cancel_event,
+                    ):
+                        async with execution_budget.run():
+                            await check_host(ip)
 
             workers = [asyncio.create_task(worker()) for _ in range(min(2, len(target_hosts)))]
             try:
-                async with asyncio.timeout(self.host_stage_timeout_s):
-                    await asyncio.gather(*workers)
+                await asyncio.gather(*workers)
             finally:
                 for task in workers:
                     if not task.done():
@@ -705,9 +711,18 @@ class ScanSupervisor:
                     scan_id,
                     lambda current: current.model_copy(update={"phase": "enrichment"}),
                 )
+            if guard:
+                await guard.check()
             await self._known_host_announcements(scan_id, cancel_event)
             await self._enrich_names(scan_id, cancel_event)
+            if guard:
+                await guard.check()
             await self._enrich_details(scan_id, cancel_event)
+            if guard:
+                await guard.check()
+            if network_monitor:
+                network_monitor.cancel()
+                await asyncio.gather(network_monitor, return_exceptions=True)
             latest = await self.store.load_scan(scan_id)
             if cancel_event.is_set():
                 await self._checkpoint(
@@ -746,6 +761,44 @@ class ScanSupervisor:
             if should_explain:
                 self._analysis_tasks[scan_id] = asyncio.create_task(self._run_explanations(scan_id))
                 await self._analysis_tasks[scan_id]
+        except QueueCancelled:
+            interrupted = bool(guard and guard.failed)
+            await self.store.finish_scan(
+                scan_id,
+                lambda current: self._close_unfinished(
+                    current,
+                    "network_interrupted" if interrupted else "host_scan_cancelled",
+                    cancelled=not interrupted,
+                ).model_copy(
+                    update={
+                        "state": ("partial" if current.devices else "failed")
+                        if interrupted
+                        else "cancelled",
+                        "phase": "finished",
+                        "finished_at": iso_z(utc_now()),
+                        "errors": [
+                            *current.errors,
+                            *(
+                                [
+                                    {
+                                        "code": "NETWORK_INTERRUPTED",
+                                        "message": (
+                                            "The network changed or the computer was suspended "
+                                            "while this scan waited. Confirm your home network "
+                                            "before retrying."
+                                        ),
+                                        "device_id": None,
+                                    }
+                                ]
+                                if interrupted
+                                else []
+                            ),
+                        ],
+                    }
+                ),
+            )
+            if interrupted and self.explanation_service is not None:
+                await self.request_analysis_after_failure(scan_id)
         except asyncio.CancelledError:
             # The analysis task persists its cancellation state before propagating.
             pass
@@ -754,7 +807,11 @@ class ScanSupervisor:
             from app.storage.json_store import DocumentTooLarge
 
             code = (
-                "RESULT_SIZE_LIMIT"
+                "NETWORK_INTERRUPTED"
+                if isinstance(exc, NetworkInterrupted)
+                else "SCAN_QUEUE_EXPIRED"
+                if isinstance(exc, QueueExpired)
+                else "RESULT_SIZE_LIMIT"
                 if isinstance(exc, DocumentTooLarge)
                 else "STORAGE_BUSY"
                 if isinstance(exc, StorageLockTimeout)
@@ -774,6 +831,18 @@ class ScanSupervisor:
                             {
                                 "code": code,
                                 "message": (
+                                    "The network connection changed, became unavailable, "
+                                    "or the computer was suspended. Scanning stopped. "
+                                    "Confirm your home network before "
+                                    "retrying; saved observations remain available."
+                                )
+                                if code == "NETWORK_INTERRUPTED"
+                                else (
+                                    "The scan waited too long for scanner capacity. Some checks "
+                                    "never started; saved observations remain available."
+                                )
+                                if code == "SCAN_QUEUE_EXPIRED"
+                                else (
                                     "The result reached the storage limit; "
                                     "earlier observations are "
                                     "saved."
@@ -799,18 +868,33 @@ class ScanSupervisor:
             if (
                 code != "RESULT_SIZE_LIMIT"
                 and self.explanation_service is not None
-                and not cancel_event.is_set()
+                and (not cancel_event.is_set() or code == "NETWORK_INTERRUPTED")
             ):
                 await self.request_analysis_after_failure(scan_id)
         finally:
+            if network_monitor:
+                network_monitor.cancel()
+                await asyncio.gather(network_monitor, return_exceptions=True)
             self._cancel_events.pop(scan_id, None)
             self._tasks.pop(scan_id, None)
 
     async def _run_explanations(self, scan_id: str) -> None:
         try:
-            async with asyncio.timeout(900):
-                async with self._analysis_capacity:
+            await self._checkpoint(
+                scan_id,
+                lambda current: current.model_copy(
+                    update={
+                        "analysis_progress": (
+                            current.analysis_progress or AnalysisProgress()
+                        ).model_copy(update={"state": "waiting", "active": 0}),
+                    }
+                ),
+            )
+            async with capacity_slot(self._analysis_capacity, timeout_s=self.queue_timeout_s):
+                async with asyncio.timeout(self.analysis_timeout_s):
                     await self.explanation_service.explain_scan(scan_id)
+        except QueueExpired:
+            await self._finish_explanations(scan_id, warning_code="AI_QUEUE_EXPIRED")
         except asyncio.CancelledError:
             await self._finish_explanations(scan_id, warning_code="AI_EXPLANATION_CANCELLED")
             raise
@@ -865,29 +949,4 @@ class ScanSupervisor:
         self._analysis_tasks[scan_id] = asyncio.create_task(self._run_explanations(scan_id))
         await self._analysis_tasks[scan_id]
 
-    @staticmethod
-    def _mark_host_failure(current, ip, status, code, *, cancelled=False, detail=None):
-        coverage = current.coverage.model_copy(deep=True)
-        if not cancelled:
-            coverage.service_failed_count += 1
-        for target in coverage.targets:
-            if target.ip == ip:
-                target.service_status = status
-                target.reason_code = code.lower()
-        if cancelled:
-            return current.model_copy(update={"coverage": coverage})
-        return current.model_copy(
-            update={
-                "coverage": coverage,
-                "errors": [
-                    *current.errors,
-                    {
-                        "code": code,
-                        "message": f"The device check for {ip} did not complete ({status})."
-                        + (f" {detail}" if detail else ""),
-                        "device_id": None,
-                        "target_ip": ip,
-                    },
-                ],
-            }
-        )
+    _mark_host_failure = staticmethod(mark_host_failure)

@@ -18,17 +18,13 @@ async def enrich_details(
 ):
     from app.profiling.history import compare_history
     from app.scanner.details import netbios_name, network_details
-    from app.scanner.mdns import MAX_ADVERTISEMENTS, MAX_UNIQUE_HOSTS
     from app.scanner.observations import detail, existing_details
 
     document = await store.load_scan(scan_id)
     if not document.policy.get("extra_details_enabled") or cancel_event.is_set():
         return
     devices = [d.model_copy(deep=True) for d in document.devices]
-    mdns_limit_reached = (
-        len(document.observations) >= MAX_ADVERTISEMENTS
-        or len({item.ip for item in document.observations}) >= MAX_UNIQUE_HOSTS
-    )
+    mdns_limit_reached = any(w.get("code") == "MDNS_BUDGET_REACHED" for w in document.warnings)
     finished = set()
     failed = set()
 

@@ -94,6 +94,17 @@ async def test_mdns_limits_new_hosts_added_to_a_scan(browser_fixture):
     state.replies = {name: [info(f"192.168.0.{name}")] for name in state.events}
     observations = await browse()
     assert len({item.ip for item in observations}) == mdns.MAX_UNIQUE_HOSTS
+    assert observations.warnings
+
+
+@pytest.mark.asyncio
+async def test_mdns_enriches_more_than_eight_already_discovered_hosts(browser_fixture):
+    state = browser_fixture
+    state.events = [str(n) for n in range(1, 13)]
+    state.replies = {name: [info(f"192.168.0.{name}")] for name in state.events}
+    known = {f"192.168.0.{n}" for n in range(1, 13)}
+    observations = await browse(target_ips=known, known_ips=known)
+    assert {item.ip for item in observations} == known
 
 
 @pytest.mark.asyncio

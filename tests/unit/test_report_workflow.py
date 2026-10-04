@@ -197,7 +197,7 @@ async def test_mdns_only_device_is_advertised_not_a_confirmed_service_response(t
         )
         return ProcessResult(xml, b"", 0, 0.01)
 
-    async def advertisements(*args, target_ips):
+    async def advertisements(*args, target_ips, known_ips):
         return [
             DiscoveryObservation(
                 ip="192.168.56.10",

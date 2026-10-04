@@ -133,6 +133,25 @@ def detect_private_network() -> str | None:
 
     Return its real size; choosing a bounded scan target is a separate decision.
     """
+    if os.name == "nt":
+        from app.scanner.network import windows_connections
+
+        rows = windows_connections()
+        if rows is not None:
+            networks = set()
+            for row in rows:
+                if not any(g and g != "0.0.0.0" for g in (row.get("Gateways") or [])):
+                    continue
+                for address in row.get("Addresses") or []:
+                    try:
+                        network = ipaddress.ip_network(
+                            f"{address['IPAddress']}/{address['PrefixLength']}", strict=False
+                        )
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if isinstance(network, ipaddress.IPv4Network) and _is_rfc1918(network):
+                        networks.add(str(network))
+            return next(iter(networks)) if len(networks) == 1 else None
     try:
         if os.name == "nt":
             result = subprocess.run(
@@ -333,7 +352,8 @@ def nmap_interface_diagnostic(config: AppConfig, scope: str, selected: str | Non
         if address in allowed:
             matches.add((match.group(1), str(address)))
     if len(matches) == 1:
-        return {"address": next(iter(matches))[1], "reason": "ready"}
+        interface, address = next(iter(matches))
+        return {"address": address, "interface": interface, "reason": "ready"}
     reason = (
         "multiple_matches"
         if matches

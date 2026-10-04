@@ -1,6 +1,7 @@
 import { request } from './api.js?v=20261001-network-recovery';
+import { createCvePanel } from './cves.mjs?v=20261002-cve';
 import { matchesSearch, deviceSearchValues, deviceLabel, featureLabel, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs?v=20261001-network-recovery';
-import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261001-network-recovery';
+import { prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261001-network-recovery';
 
 const severityConfig = {
   high: { label: 'High', color: '#ff626d' },
@@ -176,10 +177,6 @@ function text(tag, value, className = '') {
   return element;
 }
 
-function formatServiceLabel(service, fallback = 'Selected service') {
-  return serviceLabel(service, fallback);
-}
-
 function deviceCategory(device) {
   if (device.user_category) return device.user_category;
   const labels = {
@@ -196,13 +193,18 @@ function explanationFor(finding) {
     && usableAiRecord(item, currentData)
   ));
   const plain = currentData?.plain_guidance?.[finding.finding_id];
+  const aiFields = record?.ai_fields?.length ? record.ai_fields : (record ? ['meaning', 'why_it_matters'] : []);
+  const content = { ...(plain?.content || finding.fixed_explanation) };
+  for (const field of ['meaning', 'why_it_matters', 'recommended_steps', 'how_to_check']) {
+    if (aiFields.includes(field) && record?.content?.[field] !== undefined) content[field] = record.content[field];
+  }
   return {
-    content: plain?.content || record?.content || finding.fixed_explanation,
+    content,
     editorial: Boolean(plain),
     aiAssisted: Boolean(record),
-    aiFields: record?.ai_fields?.length ? record.ai_fields : (record ? ['meaning', 'why_it_matters'] : []),
-    title: plain?.title || record?.display_title || finding.title,
-    limitations: plain?.limitations || record?.display_limitations || finding.limitations,
+    aiFields,
+    title: (aiFields.includes('title') && record?.display_title) || plain?.title || finding.title,
+    limitations: (aiFields.includes('limitations') && record?.display_limitations) || plain?.limitations || finding.limitations,
     rejectedFields: record?.rejected_fields || {},
   };
 }
@@ -257,7 +259,7 @@ function showDetail(finding) {
   detailPanel.append(text(
     'p',
     explanation.aiAssisted
-      ? 'Local AI reviewed this item. The display prefers reviewed plain-language guidance; original wording is available below.'
+      ? 'Local AI selected the validated wording shown here. Parts it could not simplify retain reviewed guidance; original wording is available below.'
       : 'Reviewed plain-language guidance from the recorded observations, not a new AI conclusion. Original guidance is available below.',
     `explanation-source${explanation.aiAssisted ? ' is-ai' : ''}`,
   ));
@@ -355,6 +357,18 @@ function showDetail(finding) {
     references.append(text('h4', 'Learn more'), referenceList);
     detailPanel.append(references);
   }
+  detailPanel.append(cvePanel(service));
+}
+
+function cvePanel(service) {
+  return createCvePanel(document, scanId, service,
+    annotations?.cve_lookups?.find(item => item.service_id === service?.service_id), payload => {
+      // Never adopt a newer revision alongside stale editable fields from another tab.
+      if (payload.annotations) {
+        annotations = payload.annotations;
+        document.querySelector('#report-user-title').textContent = annotations.title;
+      }
+    });
 }
 
 function renderFindings(data) {
@@ -416,7 +430,7 @@ function renderNextSteps(data) {
   const steps = [...groups.values()].slice(0, 3);
   if (!steps.length) {
     nextStepsList.append(text('li', emptyFindingMessage(data), 'empty-state'));
-    const overview = data.plain_overview || currentOverview(data);
+    const overview = currentOverview(data) || data.plain_overview;
     (overview?.content.recommended_steps || []).forEach((step) => nextStepsList.append(text('li', step)));
     return;
   }
@@ -440,12 +454,18 @@ function renderNextSteps(data) {
 
 function currentOverview(data) {
   const record = data.report_explanation;
-  return ['ready', 'failed'].includes(data.analysis_status) && record?.content
-    && record.prompt_version === data.guidance_status?.ai_prompt_version ? record : null;
+  if (!['ready', 'failed'].includes(data.analysis_status) || !record || !usableAiRecord(record, data)) return null;
+  const plain = data.plain_overview;
+  const content = { ...(plain?.content || record.content) };
+  const fields = record.ai_fields || [];
+  for (const field of ['meaning', 'why_it_matters', 'recommended_steps', 'how_to_check']) {
+    if (fields.includes(field) && record.content[field] !== undefined) content[field] = record.content[field];
+  }
+  return { ...record, content, limitations: fields.includes('limitations') ? record.display_limitations : plain?.limitations || record.display_limitations };
 }
 
 function renderBeginnerGuide(data) {
-  const overview = data.plain_overview || currentOverview(data);
+  const overview = currentOverview(data) || data.plain_overview;
   const unfinished = (data.coverage?.service_failed_count || 0) > 0 || ['partial', 'failed', 'cancelled'].includes(data.state);
   reportFirstStep.textContent = overview?.content.recommended_steps?.join(' ') || (unfinished
     ? 'Review any listed items, then retry the unfinished device checks. Missing results cannot tell you whether those devices are safe.'
@@ -516,6 +536,15 @@ function renderDeviceSummaries(data) {
       services.slice(0, 5).forEach((service) => features.append(text('li', featureLabel(service))));
       card.append(features);
       if (services.length > 5) card.append(text('p', `${services.length - 5} more features are listed in the device table below.`));
+    }
+    const eligibleServices = services.filter(service => service.cve_lookup_available);
+    if (eligibleServices.length) {
+      const references = document.createElement('details');
+      references.append(text('summary', 'Check published software problems (CVE references)'));
+      eligibleServices.forEach(service => {
+        references.append(text('h4', formatServiceLabel(service)), cvePanel(service));
+      });
+      card.append(references);
     }
     const first = prioritise(findings, data.devices, data.services)[0];
     card.append(text('p', first
@@ -735,9 +764,8 @@ function render(data) {
   count.textContent = data.findings.length;
   priorityBreakdown.textContent = ['high', 'medium', 'low', 'informational'].map((level) => `${data.findings.filter((item) => item.severity === level).length} ${level === 'informational' ? 'informational' : level + ' priority'}`).join(' · ');
   coverage.textContent = coverageSummary(data);
-  const overview = data.report_explanation;
   if (data.plain_overview || currentOverview(data)) {
-    const displayed = data.plain_overview || overview;
+    const displayed = currentOverview(data) || data.plain_overview;
     lead.textContent = displayed.content.meaning;
     status.textContent = [displayed.content.why_it_matters, ...(displayed.limitations || displayed.display_limitations || [])].join(' ');
   }
@@ -753,12 +781,15 @@ function render(data) {
     const reasons = { host_scan_timeout: 'timed out', host_result_invalid: 'returned an incomplete or invalid result',
       host_unreachable: 'could not reach the device for checking (it may be asleep, disconnected or not responding; the cause is unknown)',
       host_output_limit: 'returned more output than the scanner can retain', host_scan_failed: 'ended with a scanner error',
+      host_privilege_required: 'could not start because Nmap lacks the required permissions',
+      host_driver_unavailable: 'could not start because Nmap could not use the packet-capture driver or adapter',
+      network_interrupted: 'stopped because the network changed or the computer was suspended',
       result_size_limit: 'could not be saved within the report size limit', scan_failed: 'stopped because the scan encountered an error',
       scan_time_limit: 'did not finish within the scan time budget',
       storage_busy: 'stopped because report storage was busy',
       host_scan_cancelled: 'was cancelled', process_restarted: 'was interrupted when the app stopped' };
     const reason = reasons[target.reason_code] || 'did not finish';
-    problems.push({ message: `The device check for ${target.ip} ${reason} after ${target.attempts || 1} attempt(s). Its remaining checks were not assessed.` });
+    problems.push({ message: `The device check for ${target.ip} ${reason} after ${target.attempts ?? 0} attempt(s). Its remaining checks were not assessed.` });
   });
   scanProblems.hidden = !problems.length;
   if (problems.length) {

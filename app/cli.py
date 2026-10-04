@@ -19,11 +19,12 @@ def build_parser() -> argparse.ArgumentParser:
     storage = subparsers.add_parser(
         "storage", help="Offline JSON audit, retention preview or recovery"
     )
-    storage.add_argument("action", choices=("audit", "retention", "recover"))
+    storage.add_argument("action", choices=("audit", "retention", "recover", "export", "restore"))
     storage.add_argument("--data-dir", required=True)
     storage.add_argument("--scan-id")
     storage.add_argument("--older-than-days", type=int, default=90)
     storage.add_argument("--apply", action="store_true")
+    storage.add_argument("--destination", help="New folder outside the source, for export/restore")
 
     serve = subparsers.add_parser("serve", help="Start the local web server")
     serve.add_argument("--port", type=int, default=8765)
@@ -44,6 +45,15 @@ def main(argv: list[str] | None = None) -> int:
         from .storage.maintenance import maintain, print_result
 
         try:
+            if args.action in {"export", "restore"}:
+                from .storage.backup import transfer
+
+                if not args.destination or args.apply:
+                    parser.error("Export/restore require --destination and do not use --apply")
+                print_result(
+                    transfer(args.data_dir, args.destination, restore=args.action == "restore")
+                )
+                return 0
             print_result(
                 maintain(
                     args.data_dir,

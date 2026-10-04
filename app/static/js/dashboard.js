@@ -229,6 +229,9 @@ function updateProgress(scan) {
     percent = 92;
     phaseText.textContent = 'Gathering device details';
     detailText.textContent = 'Looking for names and other clues to help you recognise your devices.';
+  } else if (scan.phase === 'queued') {
+    phaseText.textContent = 'Waiting for a scanner slot';
+    detailText.textContent = 'Your request is saved. Device checks have not started yet.';
   } else if (scan.phase === 'discovery') {
     phaseText.textContent = 'Looking for devices';
     detailText.textContent = candidates ? `Checking ${candidates} private addresses` : 'Checking the private scope';

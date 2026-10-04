@@ -1,5 +1,6 @@
 # Development dependencies; runtime pins have a single source.
 -r requirements.lock
+-r requirements-testclient.lock
 build==1.6.1
 coverage==7.16.1
 greenlet==3.5.6

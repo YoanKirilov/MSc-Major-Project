@@ -1,5 +1,66 @@
 # Implementation brief status
 
+## Architecture organisation — 4 October 2026
+
+Extracted report-state transformations into `jobs/transitions.py` and protected
+admission from duplicate active IDs. No source files were deleted. 396 Python and
+50 JavaScript tests, three browser engines and installed-package checks passed.
+Live Light completed; the standby/off Sony Deep run was cancelled and saved honestly.
+An awake-TV Deep run remains pending. See [the review](architecture-review-20261004.md)
+for scope, exact evidence and test-data isolation. Restart the normal backend task
+when idle to load the code changes; it was intentionally left undisturbed.
+
+## Remediation and live verification — 3 October 2026
+
+Implemented the [review plan](development-plan-20261003.md): bounded queue versus
+execution budgets, shared discovery/host capacity, network-change interruption,
+structured Windows scope detection, conservative CVE dictionary resolution,
+validated AI wording precedence, service-level CVE controls, annotation snapshots,
+per-attempt diagnostics, fairer bounded mDNS naming and offline backup/restore.
+Current structure is documented in [architecture-current.md](architecture-current.md).
+
+Final regression passed 394 Python and 50 JavaScript tests, three browser engines,
+lint/format and installed-package verification. Live Light checked 11 of 13 devices;
+two remained unreachable after bounded retries. Evidence replay and mobile checks
+passed. Sony Deep completed on its first attempt: 15 open services, nine review
+items and all ten AI records accepted. Both evidence replays, refresh/history and
+Run again navigation passed; 147 prior scan JSON files remained unchanged. See the
+[current live record](live-check-20261003.md) for honest coverage, the raw-evidence
+filename defect found and fixed during testing, and outstanding evaluation gates.
+The previous dated sections below are retained as historical evidence.
+
+## Latest home verification — 2 October 2026
+
+Completed the requested normal-app Light scan and a successful Sony Deep scan;
+preserved a separate sleep-interrupted Deep attempt. Light checked 12 of 13 discovered
+devices; one remained unreachable. Fresh Deep checked the Sony on its first attempt,
+with 15 open services, nine review items and all ten AI records ready. Saved evidence
+replay, history, refresh, mobile widths and Run again checks passed. All 42 previous
+reports remained unchanged. See [the detailed live check](live-check-20261002.md).
+
+Fixed CVE-button eligibility, added page/asset reachability regression, and archived
+only generated build/cache folders. Final verification: 377 Python and 50 JavaScript
+tests, three browser engines and installed-wheel checks passed. The app retains local
+JSON storage; no SQLite or Pi-hole deployment was introduced.
+
+Remaining priorities found live: resolve outdated CVE product identifiers using
+authoritative dictionary mappings, and explain laptop-sleep interruptions explicitly.
+Empty exact-CPE searches can currently miss references after product naming changes;
+this is not a clean-bill-of-health result. The prepared report remains accessible
+when a scan cannot finish.
+
+## CVE references — 2 October 2026
+
+Implemented and activated the [CVE reference feature](cve-references.md). Findings
+offer NVD source links and an explicit software/version lookup when saved Nmap CPE
+evidence is sufficient. Local Ollama selects reviewed match-context explanations;
+it cannot create IDs, links or vulnerability findings. References persist separately
+in report annotations, with caching, timeouts, retry and clear unavailable/no-match
+states. Light and Deep both preserve CPE evidence on new scans. Old reports remain
+readable without that field. Regression, browser, installed-package and real public
+NVD/local Ollama checks passed; the normal backend was restarted and its saved-report
+UI verified. All 42 prior report hashes were unchanged. See [testing](testing.md).
+
 ## Running app and network recheck — 2 October 2026
 
 Restarted the verified idle old backend and confirmed the current API is running;

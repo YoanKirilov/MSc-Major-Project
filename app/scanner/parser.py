@@ -113,10 +113,6 @@ def _require_completed(root):
         raise ValueError("Nmap reported an unsuccessful scan")
 
 
-def parse_discovery(xml_bytes: bytes, candidates: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(sorted(parse_discovery_details(xml_bytes, candidates)))
-
-
 def parse_discovery_details(xml_bytes: bytes, candidates: tuple[str, ...]) -> dict[str, dict]:
     try:
         root = ElementTree.fromstring(xml_bytes)
@@ -255,6 +251,15 @@ def parse_host(
                 detection_method=method,
                 nmap_confidence=confidence,
                 tunnel=tunnel,
+                cpes=list(
+                    dict.fromkeys(
+                        node.text.strip()
+                        for node in service_node.findall("cpe")
+                        if node.text and len(node.text.strip()) <= 512
+                    )
+                )[:8]
+                if service_node is not None
+                else [],
                 script_results=_script_results(port_node),
             )
             key = (protocol, port)

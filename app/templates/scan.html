@@ -46,7 +46,7 @@
             <p id="annotation-notice" class="simulation-note" role="status" hidden></p>
             <details class="scan-technical"><summary>Technical scan details</summary><p id="result-technical"></p></details>
             <div class="hero-actions">
-              <button class="primary-button" id="runAgainButton" type="button">Run again</button>
+              <button class="primary-button" id="runAgainButton" type="button" disabled>Run again</button>
               <button class="text-button" id="simplifyButton" type="button" hidden>Simplify this saved report</button>
               <button class="text-button" id="refreshGuidanceButton" type="button" hidden>Refresh saved guidance</button>
               <button class="text-button" id="retryHostsButton" type="button" hidden>Retry unfinished device checks</button>
@@ -111,7 +111,8 @@
           <p id="device-search-count" role="status"></p>
           <div id="device-summaries" class="device-summaries"></div>
           <details class="scan-technical"><summary>Compared with earlier scans</summary><p>Only compatible, completed checks can be compared. Not observed does not mean resolved; a matching adapter address is not proof of identity.</p><div id="comparison-list" class="device-summaries"></div></details>
-          <h3>Technical device details</h3>
+          <details id="technical-devices" class="scan-technical">
+          <summary>Technical device details — addresses, ports and check output</summary>
           <p>The response column distinguishes a device that answered a check from one that only announced itself.</p>
           <div class="device-table-wrap" tabindex="0" role="region" aria-label="Technical device details; scroll sideways on small screens">
             <table class="device-table">
@@ -120,6 +121,7 @@
               <tbody id="device-table-body"></tbody>
             </table>
           </div>
+          </details>
         </section>
         <section class="device-section" id="mdns-section" aria-labelledby="mdns-title" hidden><div><p class="eyebrow">Extra local discovery</p><h2 id="mdns-title">Device announcements</h2><p class="hero-lead">These names and services were advertised on the local network. Advertisements are unverified claims, not proof of an open port or a security problem.</p></div><ul id="mdns-list"></ul></section>
         <section class="next-steps" aria-labelledby="next-title">

@@ -38,10 +38,10 @@
           {% if not scan_page | default('') %}
           <div class="scan-mode" role="group" aria-label="Scan depth">
             <button class="mode-button active" type="button" data-profile="light" aria-pressed="true"><strong>Light</strong><span>12 TCP + 3 UDP checks</span></button>
-            <button class="mode-button" type="button" data-profile="deep-tcp-v1" aria-pressed="false"><strong>Deep</strong><span>All TCP + expanded UDP checks</span></button>
+            <button class="mode-button" type="button" data-profile="deep-tcp-v1" aria-pressed="false"><strong>Deep</strong><span>All TCP + 25 UDP ports</span></button>
           </div>
           {% else %}
-          <p class="scan-config">{% if scan_page == 'deep' %}Deep checks one authorised device: all TCP ports and expanded UDP checks.{% else %}Light checks your authorised local network: 12 TCP and 3 UDP ports.{% endif %} You can keep the other scan page open alongside this one.</p>
+          <p class="scan-config">{% if scan_page == 'deep' %}Deep checks one authorised device: all 65,535 TCP ports and 25 UDP ports.{% else %}Light checks your authorised local network: 12 TCP and 3 UDP ports.{% endif %} You can keep the other scan page open alongside this one. Neither scan checks every possible security problem.</p>
           {% endif %}
           <div id="recentDevicePanel" hidden><label for="recentDeviceSelect">Choose from recent Light results</label><select id="recentDeviceSelect"></select><button id="refreshDeviceChoices" class="text-button" type="button">Refresh device choices</button><p id="recentDeviceNote" class="scan-config" role="status"></p></div>
           <label class="deep-host-field" id="deepHostField" hidden for="deepHostInput">Deep scan host</label>

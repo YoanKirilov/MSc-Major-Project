@@ -159,6 +159,19 @@ async def running_scans(request: Request):
     return {"items": items}
 
 
+@router.get("/storage-usage")
+async def storage_usage(request: Request):
+    require_session(request)
+    from app.storage.backup import storage_usage as measure
+
+    try:
+        return await asyncio.to_thread(measure, request.app.state.store.data_root)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            503, "Storage usage could not be measured; saved reports are unchanged"
+        ) from exc
+
+
 @router.get("/live-scans/{scan_id}/annotations")
 async def annotations(request: Request, scan_id: str):
     require_session(request)

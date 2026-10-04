@@ -53,10 +53,12 @@ async function parseResponse(response) {
 }
 
 async function fetchResponse(path, options = {}) {
+  const { timeoutMs = 20000, ...fetchOptions } = options;
+  const deadline = Number.isFinite(timeoutMs) ? Math.min(60000, Math.max(1000, timeoutMs)) : 20000;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
+  const timer = setTimeout(() => controller.abort(), deadline);
   try {
-    return await parseResponse(await fetch(path, { ...options, signal: controller.signal, cache: 'no-store' }));
+    return await parseResponse(await fetch(path, { ...fetchOptions, signal: controller.signal, cache: 'no-store' }));
   } catch (error) {
     if (controller.signal.aborted) {
       throw new Error('The local app took too long to respond. Reopen the dashboard to reconnect. If you already pressed Scan, it may still be running; do not start a duplicate scan.');

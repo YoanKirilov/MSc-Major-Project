@@ -7,6 +7,14 @@ const next = document.querySelector('#history-next');
 let offset = 0;
 let generation = 0;
 const filters = document.querySelector('#history-filters');
+document.querySelector('#storageUsageButton').addEventListener('click', async () => {
+  const output = document.querySelector('#storageUsage');
+  output.textContent = 'Measuring saved data…';
+  try {
+    const usage = await request('/api/storage-usage');
+    output.textContent = `${(usage.bytes / 1048576).toFixed(1)} MiB in ${usage.files} saved files. ${usage.warning || 'No files were removed.'}`;
+  } catch (error) { output.textContent = error.message; }
+});
 
 async function loadHistory() {
   const current = ++generation;

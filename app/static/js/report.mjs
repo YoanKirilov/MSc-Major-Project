@@ -135,7 +135,7 @@ export function aiExplanationNote(data) {
   if (data.analysis_status === 'ready' && reviewed(data.report_explanation)
       && (data.findings || []).every((finding) => records.some((record) => record.finding_id === finding.finding_id && reviewed(record)))) {
     const total = data.findings?.length || 0;
-    return `Ollama reviewed the report overview and ${total} review item${total === 1 ? '' : 's'}. This view prefers reviewed plain-language guidance; original wording remains available in details.`;
+    return `Ollama reviewed the report overview and ${total} review item${total === 1 ? '' : 's'}. Accepted AI wording is shown; parts without an accepted alternative use reviewed guidance. Original wording remains available in details.`;
   }
   if (count) return `Local AI selected reviewed wording for ${count} finding${count === 1 ? '' : 's'}; remaining wording is rule-based.`;
   if (records.some((record) => record.fallback_reason === 'provider_timeout')) return 'The local AI timed out. Rule-based guidance is shown.';

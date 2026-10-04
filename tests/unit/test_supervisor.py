@@ -19,11 +19,53 @@ XML = (Path(__file__).parents[1] / "fixtures" / "nmap_host.xml").read_bytes()
 
 
 @pytest.mark.asyncio
+async def test_duplicate_admission_preserves_original_job(tmp_path, monkeypatch):
+    supervisor = ScanSupervisor(JsonStore(tmp_path))
+    release = asyncio.Event()
+
+    async def wait_only(scan_id, cancel_event):
+        await release.wait()
+
+    monkeypatch.setattr(supervisor, "_run", wait_only)
+    await supervisor.start("same-job")
+    original = supervisor._tasks["same-job"]
+    cancellation = supervisor._cancel_events["same-job"]
+    try:
+        with pytest.raises(RuntimeError, match="SCAN_BUSY"):
+            await supervisor.start("same-job")
+        assert supervisor._tasks["same-job"] is original
+        assert supervisor._cancel_events["same-job"] is cancellation
+        assert supervisor.active_scan_count == 1
+    finally:
+        release.set()
+        await supervisor.shutdown()
+
+
+def test_report_transitions_do_not_mutate_input():
+    from app.jobs.transitions import close_unfinished, interrupted_document, mark_host_failure
+
+    scan = ScanDocument(
+        scan_id=str(uuid4()),
+        target={"mode": "known_hosts", "hosts": ["192.168.56.10"]},
+        coverage={"targets": [{"ip": "192.168.56.10", "service_status": "pending"}]},
+    )
+    before = scan.model_dump()
+    queued = close_unfinished(scan, "scan_queue_expired")
+    assert queued.coverage.targets[0].service_status == "skipped"
+    failed = mark_host_failure(scan, "192.168.56.10", "failed", "HOST_UNREACHABLE")
+    assert failed.coverage.service_failed_count == 1
+    interrupted = interrupted_document(scan)
+    assert interrupted.phase == "finished"
+    assert scan.model_dump() == before
+
+
+@pytest.mark.asyncio
 async def test_supervisor_persists_host_checkpoint(tmp_path):
     store = JsonStore(tmp_path)
     scan = ScanDocument(
         scan_id="66666666-6666-4666-8666-666666666666",
         created_at="2020-01-01T00:00:00Z",
+        policy={"retain_raw_xml": True},
         target={"mode": "known_hosts", "cidr": None, "hosts": ["192.168.56.10"]},
         coverage={"targets": [{"ip": "192.168.56.10", "service_status": "pending"}]},
     )
@@ -45,6 +87,10 @@ async def test_supervisor_persists_host_checkpoint(tmp_path):
     assert saved.coverage.service_attempted_count == 1
     assert saved.coverage.service_completed_count == 1
     assert saved.coverage.targets[0].service_status == "completed"
+    raw = store._scan_dir(scan.scan_id) / "raw"
+    assert (raw / "host-192-168-56-10-attempt-1.xml").read_bytes() == XML
+    assert (raw / "host-192-168-56-10.xml").read_bytes() == XML
+    assert saved.coverage.targets[0].attempt_details[0].outcome == "completed"
 
 
 @pytest.mark.asyncio
@@ -182,7 +228,7 @@ async def test_mdns_advertisement_adds_in_scope_host_without_creating_a_finding(
     )
     await store.create_scan(scan)
 
-    async def fake_browser(scope, interface_ip, cancel_event, *, target_ips):
+    async def fake_browser(scope, interface_ip, cancel_event, *, target_ips, known_ips):
         assert scope == "192.168.56.8/30"
         assert interface_ip == "192.168.56.9"
         assert target_ips == {"192.168.56.9", "192.168.56.10"}

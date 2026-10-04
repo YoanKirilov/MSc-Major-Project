@@ -11,11 +11,11 @@ and validated Ollama-selected wording. Record model, prompt version and report v
 Keep layout and questions identical. If AI falls back to original text, record that
 condition rather than claiming an AI rewrite. Do not run scans during the session.
 
-Important control: the normal report interface also prefers reviewed editorial
-plain-language alternatives. It is therefore not an original-versus-AI experiment
-by itself. Prepare and independently check fixed synthetic views of (A) stored
-original guidance and (B) actual validated model output, without the editorial display
-override in either condition. Record unchanged/model-fallback fields separately. If
+Important control: the normal report interface now prefers accepted AI-selected
+fields, but uses reviewed editorial alternatives for other fields. It is therefore
+not an original-versus-AI experiment by itself. Prepare and independently check fixed
+synthetic views of (A) stored original guidance and (B) actual validated model output.
+Record unchanged/model-fallback fields separately rather than attributing them to AI. If
 evaluating the ordinary interface instead, label it a combined-interface evaluation,
 not evidence that Ollama alone improved comprehension. These controlled views still
 need to be prepared before recruitment; this document does not implement them.
