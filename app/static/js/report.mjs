@@ -32,6 +32,20 @@ export function deviceCheckLabel(data) {
   return `${c.service_completed_count || 0} of ${(discover ? c.discovered_count : c.candidate_count) || 0} ${discover ? 'discovered' : 'selected'}`;
 }
 
+export function unfinishedDeviceCount(data) {
+  const c = data.coverage || {};
+  const discover = data.target?.mode === 'discover';
+  const total = (discover ? c.discovered_count : c.candidate_count) || 0;
+  const unfinished = (c.targets || []).filter(t => (!discover || t.discovery_status === 'observed') && t.service_status !== 'completed').length;
+  return Math.max(0, total - (c.service_completed_count || 0), unfinished, c.service_failed_count || 0);
+}
+
+export function partialScanTitle(data) {
+  const count = unfinishedDeviceCount(data);
+  return count ? `Scan finished; ${count} device${count === 1 ? '' : 's'} could not be checked.`
+    : 'Scan finished; some checks could not finish.';
+}
+
 export function completedCheckSummary(data) {
   const c = data.coverage || {};
   const total = data.target?.mode === 'discover' ? c.discovered_count : c.candidate_count;
@@ -48,6 +62,8 @@ export function serviceLabel(service, fallback = 'Selected service') {
     telnet: 'Older remote control (Telnet)', ftp: 'File transfer (FTP)',
     http: 'Device web page (HTTP)', https: 'Encrypted web connection (HTTPS)',
     'ms-wbt-server': 'Remote desktop', 'microsoft-ds': 'File sharing (SMB)',
+    msrpc: 'Windows communication between programs (MSRPC)',
+    'netbios-ssn': 'Older Windows sharing connection (NetBIOS)',
     mqtt: 'Smart-home messaging (MQTT)', ssh: 'Encrypted remote connection (SSH)',
     domain: 'Network name lookup (DNS)', dns: 'Network name lookup (DNS)',
     snmp: 'Device monitoring (SNMP)', rtsp: 'Media streaming (RTSP)',
@@ -67,7 +83,7 @@ export function coverageSummary(data) {
   const total = (discover ? c.discovered_count : c.candidate_count) || 0;
   const finished = c.service_completed_count || 0;
   const active = ['queued', 'running'].includes(data.state);
-  const remaining = Math.max(0, total - finished);
+  const remaining = unfinishedDeviceCount(data);
   if (!total && !active) {
     return discover
       ? 'No devices answered discovery. Device security could not be assessed.'
@@ -80,9 +96,9 @@ export function coverageSummary(data) {
 }
 
 export function emptyFindingMessage(data) {
-  if (['queued', 'running'].includes(data.state)) return 'Checks are still running. Findings are not final.';
+  if (['queued', 'running'].includes(data.state)) return 'Checks are still running. Review items are not final.';
   if (data.state !== 'completed') {
-    return 'Scan incomplete. No findings were recorded from the checks that finished. This does not establish that the devices are secure.';
+    return 'Scan incomplete. No review items were recorded from the checks that finished. This does not establish that the devices are secure.';
   }
   if (!data.coverage?.service_completed_count) return 'No devices were assessed. Their security could not be checked.';
   return 'No issues were flagged by the selected checks. Other services and security settings were not fully assessed.';
@@ -137,7 +153,7 @@ export function aiExplanationNote(data) {
     const total = data.findings?.length || 0;
     return `Ollama reviewed the report overview and ${total} review item${total === 1 ? '' : 's'}. Accepted AI wording is shown; parts without an accepted alternative use reviewed guidance. Original wording remains available in details.`;
   }
-  if (count) return `Local AI selected reviewed wording for ${count} finding${count === 1 ? '' : 's'}; remaining wording is rule-based.`;
+  if (count) return `Local AI selected reviewed wording for ${count} review item${count === 1 ? '' : 's'}; remaining wording is rule-based.`;
   if (records.some((record) => record.fallback_reason === 'provider_timeout')) return 'The local AI timed out. Rule-based guidance is shown.';
   if (records.some((record) => ['provider_unavailable', 'provider_not_configured'].includes(record.fallback_reason))) {
     return 'Local AI was unavailable. Rule-based guidance is shown.';

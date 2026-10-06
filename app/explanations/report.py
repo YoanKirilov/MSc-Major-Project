@@ -5,6 +5,7 @@ from app.schemas.scan import Finding, FixedExplanation, ScanDocument
 
 def report_input(document: ScanDocument) -> tuple[Finding, dict]:
     coverage = document.coverage
+    unfinished = document.unfinished_device_count
     count = len(document.devices)
     open_count = sum(service.state == "open" for service in document.services)
     finding_count = len(document.findings)
@@ -39,7 +40,7 @@ def report_input(document: ScanDocument) -> tuple[Finding, dict]:
             "The scan could not finish checking any devices, so it cannot tell "
             "you about their security."
         )
-    elif coverage.service_failed_count or document.scan_outcome in {
+    elif unfinished or document.scan_outcome in {
         "partial",
         "failed",
         "cancelled",
@@ -75,7 +76,7 @@ def report_input(document: ScanDocument) -> tuple[Finding, dict]:
             "Look at what the scan managed to check. An empty findings list "
             "does not mean everything is safe."
         )
-    if coverage.service_failed_count:
+    if unfinished:
         step = (
             "Review the saved findings and retry unfinished device checks "
             "before drawing conclusions about the full scan."
@@ -86,13 +87,13 @@ def report_input(document: ScanDocument) -> tuple[Finding, dict]:
         )
     check = (
         f"Device checks completed: {coverage.service_completed_count}; "
-        f"device checks unsuccessful: {coverage.service_failed_count}."
+        f"device checks unfinished: {unfinished}."
     )
     check_plain = (
         f"Checks finished for {coverage.service_completed_count} "
         f"device{'s' if coverage.service_completed_count != 1 else ''}; "
-        f"checks could not finish for {coverage.service_failed_count} "
-        f"device{'s' if coverage.service_failed_count != 1 else ''}."
+        f"checks could not finish for {unfinished} "
+        f"device{'s' if unfinished != 1 else ''}."
     )
     finding = Finding(
         finding_id="report-overview",

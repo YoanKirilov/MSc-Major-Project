@@ -1,5 +1,116 @@
 # Implementation brief status
 
+## Review fixes implemented — 6 October 2026
+
+Implemented the four confirmed application gaps from the latest review, followed by
+clearer service/role/comparison wording and user-owned checklist progress/filtering.
+Annotation projection is extracted into a tested module; factual evidence, original
+guidance and severity are unchanged. JSON remains the persistence system.
+See [the execution and verification record](fixes-and-improvements-20261006.md).
+Older sections below preserve the pre-fix review and earlier runs. The Windows
+runtime reset and actual reader/phone/Ubuntu evaluations remain pending.
+
+Verification complete: 459 Python/61 JavaScript, three browsers, installed package
+and security gates passed. New Light (12 devices) and PC Deep (14 open services)
+finished without scan errors; source-evidence replay and all 15 AI records passed.
+Refresh, history, Run again, responsive views and live checklist persistence passed.
+Generated build/cache folders were archived and removed; no source file was deleted.
+Normal reports/backend were preserved. Restart the normal backend when idle.
+
+## Live architecture review — 6 October 2026
+
+New Light and PC Deep completed without scan errors; all 14 AI records and saved
+evidence replays passed. Refresh/history, Run again and four responsive widths
+passed, as did a fresh 448 Python/57 JavaScript regression with three browsers.
+Additional review reproduced checklist snapshot drift, ambiguous unnamed-device
+controls, inconsistent annotation/title storage error responses and an unbounded
+saved-report AI retry backlog. Fixes/removals are deliberately deferred at the
+user's request. No unused application file was found. See
+[the review, cleanup candidates and recommended order](architecture-live-review-20261006.md).
+Normal source/data/backend were preserved; the Windows reset remains open.
+
+## Report experience recommendations executed — 6 October 2026
+
+Implemented all four repeat-live recommendations: reported-stage Deep activity,
+overview-to-device identification and visible naming controls, saved per-action
+checklists, and a promoted conservative comparison section. Checklist edits use
+locked, revision-protected annotations and never change scan evidence or severity.
+Paired controls synchronise, stale tab edits reload saved notes, and keyboard/mobile
+access is retained. Final regression passed 448 Python/57 JavaScript tests, three
+browser engines, lint/format and syntax checks. No new live scan was run; normal
+reports/backend were preserved. Restart the normal backend when idle to load this
+implementation. See [the execution plan](experience-plan-20261006.md).
+The intermittent Windows socket-reset runtime issue remains unresolved.
+
+## Second live verification — 6 October 2026
+
+Both profiles completed successfully again. Light checked six devices, while PC
+Deep returned 15 open services; neither had scan errors. All 13 AI records, saved
+evidence, refresh/history, responsive layouts and Run again passed. No new bug was
+observed. Suggested next improvements: step-based Deep progress, clearer device
+identification, user action checklists and more visible comparison information.
+See [the repeat evidence](live-repeat-20261006.md). Recommendations were not yet
+implemented during that live run; the subsequent implementation is recorded above.
+The intermittent Windows reset remains unresolved.
+
+## Post-restart live verification — 6 October 2026
+
+Current source completed authorised Light and PC Deep scans with no scan errors.
+Eight Light devices and the Deep host finished checking; all 13 AI records and both
+evidence replays passed. Refresh, history, responsive layouts, Run again and the
+mobile progress fixes passed. No new application failures or backend tracebacks
+were observed. This used a separate test instance; it does not certify the running
+normal app instance or add reports to its history. The intermittent Windows reset
+remains open. See [the evidence and recommendations](live-check-20261006.md).
+
+## Follow-up plan executed — 5 October 2026
+
+Mobile percentage wrapping, simpler waiting messages and device-role context in
+suggested actions are implemented and verified: 442 Python/56 JavaScript tests and
+three browser engines passed. The Windows socket-reset path was checked against
+installed Python 3.14.2 and upstream 3.14; no verified supported fix was identified.
+Diagnostics remain enabled; this dependency issue is explicitly not marked fixed.
+See [the execution plan](follow-up-plan-20261005.md). No network rescans or changes
+to normal report storage were made.
+
+## Reliability and usability improvements — 5 October 2026
+
+Implemented bounded subprocess pipe cleanup, validated annotations-backup recovery
+with corruption quarantine and revision safety, live scanner activity, compact
+mobile device cards, report navigation and recorded gateway/scan-computer roles.
+Added scoped Windows runtime diagnostics without suppressing exceptions; the
+underlying shutdown-reset issue is diagnosed, not claimed fixed. Verification:
+442 Python/53 JavaScript tests and three browser engines passed. Fresh Light saved
+9 checked devices plus one unreachable target; Deep completed with 15 open services
+and no scan errors. All 14 AI records and both evidence replays passed. One minor
+mobile percentage-wrapping issue and simpler progress wording remain follow-ups.
+See [the implementation and live report](improvements-20261005.md). Normal data and
+backend were preserved; restart the normal task when idle to load the changes.
+
+## Live verification and focused cleanup — 5 October 2026
+
+The updated network guard completed both authorised live profiles without the
+previous interruption. Light: seven devices/ten open services/seven review items;
+PC Deep: one device/14 open services/four informational review items. All 13 AI
+records and XML replay passed. Removed the redundant private adapter-query fallback
+branch and consolidated imports; no source files were deleted. Final checks:
+433 Python/51 JavaScript tests and three browsers passed. A Windows connection-reset
+callback traceback is a remaining diagnostic follow-up, not a scan failure. See
+[the live report and improvements](live-check-20261005.md).
+
+
+## Network diagnostics and unfinished report counts — 4 October 2026
+
+Overlapping Windows network queries are shared without a stale cache; guards still
+stop on unavailable or changed context and now preserve diagnostic reasons.
+Safety cancellation retains its origin at host/attempt level. Headlines and AI
+wording include cancelled/unstarted checks in unfinished counts. Prompt 4.2.2 and
+updated asset versions avoid presenting older wording as current. Verification:
+427 Python and 51 JavaScript tests plus three browsers passed; real concurrent
+adapter-query check passed. A new full live scan is not claimed. See
+[the fix report](live-recheck-fixes-20261004.md). Restart the backend when idle.
+
+
 ## Self-scan and cancellation remediation — 4 October 2026
 
 Windows exact self-targets now use automatic local Nmap routing while remote

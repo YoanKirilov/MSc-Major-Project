@@ -219,6 +219,15 @@ function updateProgress(scan) {
   const discovered = coverage.discovered_count || 0;
   const completed = coverage.service_completed_count || 0;
   const attempted = coverage.service_attempted_count || 0;
+  const deep = (scan.policy?.profile || selectedProfile) === 'deep-tcp-v1';
+  const phases = ['discovery', 'service_scan', 'enrichment', 'analysis'];
+  const activeStage = phases.indexOf(scan.phase);
+  ['Discovery', 'Checks', 'Details', 'Analysis'].forEach((stage, index) => {
+    const element = document.querySelector(`#scanStage${stage}`);
+    const label = [deep ? 'Confirm device' : 'Find devices', 'Check features', 'Gather details', 'Explain results'][index];
+    element.dataset.state = activeStage === index ? 'current' : activeStage > index ? 'previous' : 'waiting';
+    element.textContent = `${activeStage === index ? 'Current: ' : activeStage > index ? 'Earlier: ' : ''}${label}`;
+  });
   let percent = 0;
   if (scan.phase === 'analysis') {
     const p = scan.analysis_progress;
@@ -244,14 +253,35 @@ function updateProgress(scan) {
       ? `Scanning discovered devices: ${completed} of ${serviceDenominator} complete`
       : `Analysing ${attempted} completed host${attempted === 1 ? '' : 's'}`;
   }
-  percentText.textContent = `${percent}%`;
+  const checkingOne = deep && scan.phase === 'service_scan';
+  percentText.textContent = checkingOne ? 'Running' : `${percent}%`;
+  percentText.dataset.activity = checkingOne ? 'true' : 'false';
+  progressBar.classList.toggle('is-active', checkingOne);
   progressBar.style.width = `${percent}%`;
+  if (checkingOne) detailText.textContent = 'Checking this device’s features. Results will be saved when the check returns.';
   progressNote.textContent = scan.phase === 'analysis'
     ? 'Scan observations have been saved. This final step can take a few minutes.'
     : `${scan.device_count ?? scan.devices?.length ?? 0} device results saved, ${scan.finding_count ?? scan.findings?.length ?? 0} items to review so far.`;
   if (scan.started_at) {
     const elapsed = Math.max(0, Math.floor((Date.now() - Date.parse(scan.started_at)) / 60000));
     if (Number.isFinite(elapsed)) progressNote.textContent += ` Elapsed: ${elapsed} minute${elapsed === 1 ? '' : 's'}. Device response times vary.`;
+  }
+  if (scan.runtime?.backend_checked_at) {
+    progressNote.textContent += ' App connection confirmed.';
+    const running = scan.runtime.scanner_checks_running || 0;
+    if (running) {
+      progressNote.textContent += ` ${running} check${running === 1 ? ' is' : 's are'} running. Waiting for results; the time remaining is unknown.`;
+    } else if (scan.runtime.job_active && ['discovery', 'service_scan'].includes(scan.phase)) {
+      progressNote.textContent += ' The scan is waiting or preparing its next check.';
+    }
+    const eventAt = Date.parse(scan.runtime.last_scanner_event_at);
+    const event = scan.runtime.last_scanner_event;
+    if (Number.isFinite(eventAt) && ['started', 'returned'].includes(event) && ['discovery', 'service_scan'].includes(scan.phase)) {
+      const seconds = Math.max(0, Math.floor((Date.now() - eventAt) / 1000));
+      const minutes = Math.floor(seconds / 60);
+      const age = minutes ? `${minutes} minute${minutes === 1 ? '' : 's'} ago` : 'less than a minute ago';
+      progressNote.textContent += ` ${event === 'started' ? 'The most recent check started' : 'A check ended'} ${age}. This does not confirm that a device answered.`;
+    }
   }
 }
 

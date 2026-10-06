@@ -94,3 +94,22 @@ On Ubuntu, install the pinned runtime/dev dependencies in a new virtual environm
 run `python scripts/check.py --browser --browser-engines chromium,firefox,webkit` and
 `python scripts/check_package.py`, and record exact results. A live Nmap check needs
 separate authorisation of the connected network. No Ubuntu execution is claimed here.
+
+## New report-note tasks — 6 October 2026
+
+Use only synthetic, saved reports with at least two identically named or unnamed
+devices. Ask readers to identify which checklist control belongs to each device,
+mark one action Checked, filter by Need help, then explain what the review-progress
+count means. A correct interpretation distinguishes their notes from completed scan
+checks and does not claim Checked proves safety. Reopen a different report and verify
+that review statuses have not silently carried over.
+
+For comparison, include separate first-report, missing adapter-address, different
+profile and incomplete-check examples. Ask why each cannot be compared rather than
+asking readers to guess whether a device is new or fixed. Include a self-check report:
+ask whether a local answer proves internet exposure (it does not). Record mistakes,
+help requested, clarity and task time separately from AI-only scoring.
+
+On real phones/assistive technology, specifically check the labelled status dropdown,
+announcement after a save failure, focus after name/CVE lookups, and text-size reflow
+of address-specific labels. These are prepared tasks, not completed evaluations.

@@ -26,7 +26,7 @@ from .retries import field_locked, needs_retry, retained_values, retry_payload
 from .validation import validated_line
 from .wording import wording_choices
 
-PROMPT_VERSION = "4.2.1"
+PROMPT_VERSION = "4.2.2"
 ShortText = Annotated[str, Field(min_length=1, max_length=600)]
 ShortList = Annotated[list[ShortText], Field(max_length=8)]
 AI_BATCH_SIZE = 6

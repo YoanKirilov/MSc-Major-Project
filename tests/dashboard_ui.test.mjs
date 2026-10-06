@@ -6,10 +6,65 @@ import { analysisProgressText, readScanSetup, ollamaStatusText } from '../app/st
 
 const scanId = '11111111-1111-4111-8111-111111111111';
 const key = 'network-assessor-pending-scan';
+test('Deep uses stage activity during its device check and exact AI counts afterwards', async () => {
+  let phase = 'service_scan';
+  const app = setup(async path => path === '/api/status' ? { ...ready, active_scan_ids: [scanId] } : path === `/api/scans/${scanId}`
+    ? { policy: { profile: 'deep-tcp-v1' } } : { state: 'running', phase, policy: { profile: 'deep-tcp-v1' },
+      coverage: { candidate_count: 1 }, analysis_progress: { total: 5, completed: 2, state: 'preparing' } }, null, `#scan=${scanId}`, '/deep');
+  await app.load();
+  assert.equal(app.elements.get('#progressPercent').textContent, 'Running');
+  assert.match(app.elements.get('#scanStageChecks').textContent, /Current/);
+  assert.equal(app.elements.get('#scanStageAnalysis').dataset.state, 'waiting');
+  phase = 'analysis';
+  await app.timers.shift()();
+  assert.match(app.elements.get('#scanStageAnalysis').textContent, /Current/);
+  assert.match(app.elements.get('#progressDetail').textContent, /2 of 5/);
+});
+test('runtime progress distinguishes a responsive app from scanner-check progress', async () => {
+  const app = setup(async path => path === '/api/status' ? { ...ready, active_scan_id: scanId } : {
+    state: 'running', phase: 'service_scan', coverage: { candidate_count: 1, service_completed_count: 0 },
+    runtime: { backend_checked_at: new Date().toISOString(), job_active: true, scanner_checks_running: 1, last_scanner_event: 'started', last_scanner_event_at: new Date().toISOString() },
+  }, scanId);
+  await app.load();
+  const note = app.elements.get('#progressNote').textContent;
+  assert.match(note, /App connection confirmed/);
+  assert.match(note, /1 check is running/);
+  assert.match(note, /time remaining is unknown/);
+  assert.match(note, /most recent check started less than a minute ago/);
+  assert.match(note, /does not confirm that a device answered/);
+  assert.doesNotMatch(note, /lifecycle/);
+});
+
+test('progress describes multiple checks and returned activity without promising success', async () => {
+  for (const running of [0, 2]) {
+    const app = setup(async path => path === '/api/status' ? { ...ready, active_scan_id: scanId } : {
+      state: 'running', phase: 'service_scan', runtime: { backend_checked_at: new Date().toISOString(), job_active: true,
+        scanner_checks_running: running, last_scanner_event: 'returned', last_scanner_event_at: new Date(Date.now() - 125000).toISOString() },
+    }, scanId);
+    await app.load();
+    const note = app.elements.get('#progressNote').textContent;
+    assert.match(note, running ? /2 checks are running/ : /waiting or preparing/);
+    assert.match(note, /A check ended 2 minutes ago/);
+    assert.match(note, /does not confirm that a device answered/);
+  }
+});
+
+test('missing activity time and AI phase do not invent scanner timing', async () => {
+  for (const phase of ['service_scan', 'analysis']) {
+    const app = setup(async path => path === '/api/status' ? { ...ready, active_scan_id: scanId } : {
+      state: 'running', phase, runtime: { backend_checked_at: new Date().toISOString(), job_active: true,
+        scanner_checks_running: 0, last_scanner_event: 'started', last_scanner_event_at: phase === 'analysis' ? new Date().toISOString() : null },
+    }, scanId);
+    await app.load();
+    const note = app.elements.get('#progressNote').textContent;
+    assert.doesNotMatch(note, /check started|check ended|NaN|lifecycle/);
+    if (phase === 'analysis') assert.match(note, /observations have been saved/);
+  }
+});
 function setup(request, saved = null, hash = '', pathname = '/') {
   const elements = new Map();
   class Element {
-    constructor() { this.events = {}; this.textContent = ''; this.style = {}; this.dataset = {}; }
+    constructor() { this.events = {}; this.textContent = ''; this.style = {}; this.dataset = {}; this.classList = { toggle() {} }; }
     addEventListener(name, fn) { this.events[name] = fn; }
     querySelector() { return this.label ||= new Element(); }
     replaceChildren() { this.children = []; }

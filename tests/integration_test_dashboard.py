@@ -117,7 +117,7 @@ def test_pages_and_modules_disable_stale_browser_caching():
             response = client.get(path)
             assert response.headers["cache-control"] == "no-store"
         page = client.get("/")
-        assert "dashboard.js?v=20261001-network-recovery" in page.text
+        assert "dashboard.js?v=20261006-experience" in page.text
         module = client.get("/static/js/dashboard.js?v=20261001-network-recovery")
         assert "report.mjs?v=20261001-network-recovery" in module.text
 

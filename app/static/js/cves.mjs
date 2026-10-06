@@ -9,6 +9,7 @@ export function createCvePanel(document, scanId, service, saved, onSaved) {
   };
   const panel = element('section');
   panel.className = 'detail-block cve-references';
+  panel.dataset.notePanel = 'cve';
   panel.append(element('h4', 'CVE: published software problems'));
   panel.append(element('p', 'A CVE is a reference number for a publicly reported software problem. A port number alone cannot tell us which CVE applies.'));
   const browse = element('a', 'Browse the CVE database (NVD)');
@@ -61,20 +62,38 @@ export function createCvePanel(document, scanId, service, saved, onSaved) {
   }
 
   if (saved) show(saved);
+  let shown = saved ? JSON.stringify(saved) : '';
+  panel.updateNotes = snapshot => {
+    const record = snapshot?.cve_lookups?.find(item => item.service_id === service?.service_id);
+    const signature = record ? JSON.stringify(record) : '';
+    if (signature === shown) return;
+    shown = signature;
+    if (record) show(record);
+    else {
+      output.replaceChildren();
+      button.textContent = 'Check CVEs for this software';
+    }
+  };
   if (eligible) {
     panel.append(element('p', 'This online lookup sends the detected software fingerprint to NIST, without your device name, local address or scan report.'));
     panel.append(button);
     button.addEventListener('click', async () => {
+      const hadFocus = document.activeElement === button;
       button.disabled = true;
       button.textContent = 'Checking published CVEs…';
       try {
         const payload = await request(`/api/live-scans/${encodeURIComponent(scanId)}/services/${encodeURIComponent(service.service_id)}/cves`, { method: 'POST', body: '{}', timeoutMs: 95000 });
-        onSaved(payload);
-        show(payload.lookup);
+        // A delayed lookup response may contain an older snapshot than another
+        // completed edit. Its caller rejects it rather than regressing the UI.
+        if (onSaved(payload) !== false) { show(payload.lookup); shown = JSON.stringify(payload.lookup); }
       } catch (error) {
         output.append(element('p', error.message));
         button.textContent = 'Retry CVE lookup';
-      } finally { button.disabled = false; }
+      } finally {
+        button.disabled = false;
+        if (button.textContent === 'Checking published CVEs…') button.textContent = shown ? 'Check CVEs again' : 'Check CVEs for this software';
+        if (hadFocus && document.activeElement === document.body) button.focus({ preventScroll: true });
+      }
     });
   } else if (!saved) {
     output.append(element('p', 'This scan did not identify a precise software fingerprint and version. A new Deep scan may collect more detail; a matching CVE cannot be inferred from the port.'));

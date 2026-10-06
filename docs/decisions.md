@@ -1,5 +1,21 @@
 # Implementation decisions
 
+- 6 October 2026: every full report-note snapshot is projected in place through
+  `notes.mjs`; older delayed replies cannot regress revision or visible editable
+  fields, including after a failed read. Keep evidence, filters, selection, focus
+  and expanded device cards separate from mutable notes. Note storage errors are
+  mapped consistently, without resetting corruption or replaying writes.
+- Five-job admission counts unique IDs across scan and analysis tasks, including
+  saved-report AI retries. An already-admitted scan's automatic AI phase is not a
+  second admission. Excess retries leave saved state untouched and get inline
+  retryable feedback, not a popup or automatic POST.
+- Your review progress counts all unique actions in the saved report, not duplicated
+  controls, checked hosts or safety. New reports do not inherit statuses. Conservative
+  comparison reasons are made specific without adding IP-only identity matching.
+- Synthetic history timing is a baseline, not a load guarantee. Keep bounded JSON
+  projections and defer index/database changes until measurements justify them.
+  Real reader/phone/Ubuntu protocols are updated but not labelled completed.
+
 - 1 October 2026, network recovery: correct IPv6-first Windows gateway parsing and
   keep manual scope semantics explicit. Add optional request scope pinning and ask
   permission on each automatic scan, rather than treating a CIDR as network identity.

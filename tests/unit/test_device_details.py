@@ -331,11 +331,11 @@ def test_history_requires_matching_mac_scope_profile_and_completed_checks():
     current.devices[0].details = []
     current.devices[0].mac = None
     compare_history(current, [old])
-    assert "identity could not be matched" in current.devices[0].details[-1].value
+    assert "No usable network-adapter address" in current.devices[0].details[-1].value
     current.devices[0].details = []
     old.policy["allowed_network"] = "192.168.1.0/24"
     compare_history(current, [old])
-    assert "No matching device" in current.devices[0].details[-1].value
+    assert "No earlier finished report" in current.devices[0].details[-1].value
 
 
 @pytest.mark.asyncio

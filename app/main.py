@@ -21,6 +21,7 @@ from .demo.adapter import DemoFindingsAdapter
 from .demo.runs import DemoRunStore
 from .explanations import ExplanationService, OllamaExplanationProvider
 from .jobs.supervisor import ScanSupervisor
+from .runtime_diagnostics import observe_asyncio_errors
 from .scanner.cve import NvdClient
 from .scanner.pihole import PiholeClient
 from .security.session import SessionManager
@@ -44,8 +45,10 @@ async def lifespan(app: FastAPI):
             )
         ) from exc
     try:
-        async with owned_lifespan(app):
-            yield
+        with observe_asyncio_errors(asyncio.get_running_loop()) as diagnostics:
+            app.state.asyncio_diagnostics = diagnostics
+            async with owned_lifespan(app):
+                yield
     finally:
         lock.release()
 

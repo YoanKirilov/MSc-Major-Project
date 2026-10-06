@@ -17,11 +17,29 @@ from app.scanner.name_refresh import lookup_names
 from app.schemas.common import StrictModel
 from app.schemas.scan import ScanState
 from app.security.scope import validate_target
-from app.storage.annotations import AnnotationStore, TitleUpdate
+from app.storage.annotations import ActionCheckUpdate, AnnotationStore, TitleUpdate
 from app.storage.library import search_reports
 from app.storage.nicknames import NicknameStore
 
 router = APIRouter(prefix="/api")
+
+
+async def note_operation(operation):
+    """Consistent failure boundary for notes; never reset notes or retry writes."""
+    try:
+        return await operation
+    except OSError as exc:
+        raise HTTPException(
+            503,
+            "Saved report notes are unavailable. Original scan results are preserved; "
+            "reload before editing.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            409,
+            "Report notes changed, are unreadable, or this action is unavailable; "
+            "reload before saving.",
+        ) from exc
 
 
 class NameRefreshRequest(StrictModel):
@@ -62,12 +80,7 @@ async def refresh_name(request: Request, scan_id: str, device_id: str, body: Nam
             422, "This saved address is outside the current authorised scope"
         ) from exc
     lock = request.app.state.name_refresh_lock
-    try:
-        await AnnotationStore(request.app.state.store).load(scan_id)
-    except (OSError, ValueError) as exc:
-        raise HTTPException(
-            409, "Saved identification annotations are unreadable; no lookup started"
-        ) from exc
+    await note_operation(AnnotationStore(request.app.state.store).load(scan_id))
     if lock.locked():
         raise HTTPException(429, "Another identification lookup is running; try again shortly")
     async with lock:
@@ -80,7 +93,9 @@ async def refresh_name(request: Request, scan_id: str, device_id: str, body: Nam
             raise HTTPException(
                 503, "Identification timed out; original scan evidence is unchanged"
             ) from exc
-        return await AnnotationStore(request.app.state.store).update(scan_id, refresh=refresh)
+        return await note_operation(
+            AnnotationStore(request.app.state.store).update(scan_id, refresh=refresh)
+        )
 
 
 async def live_document(request, scan_id):
@@ -176,19 +191,16 @@ async def storage_usage(request: Request):
 async def annotations(request: Request, scan_id: str):
     require_session(request)
     await live_document(request, scan_id)
-    return await AnnotationStore(request.app.state.store).load(scan_id)
+    return await note_operation(AnnotationStore(request.app.state.store).load(scan_id))
 
 
 @router.put("/live-scans/{scan_id}/title")
 async def title(request: Request, scan_id: str, body: TitleUpdate):
     require_session(request, csrf=True)
     await live_document(request, scan_id)
-    try:
-        return await AnnotationStore(request.app.state.store).update(scan_id, title=body)
-    except ValueError as exc:
-        raise HTTPException(
-            409, "Title changed or annotations are unreadable; reload before saving"
-        ) from exc
+    return await note_operation(
+        AnnotationStore(request.app.state.store).update(scan_id, title=body)
+    )
 
 
 @router.get("/live-scans/{scan_id}/nicknames")
@@ -196,3 +208,12 @@ async def nicknames(request: Request, scan_id: str, revision: int | None = Query
     require_session(request)
     doc = await live_document(request, scan_id)
     return await NicknameStore(request.app.state.store).snapshot(doc, revision)
+
+
+@router.put("/live-scans/{scan_id}/action-checks")
+async def action_checks(request: Request, scan_id: str, body: ActionCheckUpdate):
+    require_session(request, csrf=True)
+    await live_document(request, scan_id)
+    return await note_operation(
+        AnnotationStore(request.app.state.store).update(scan_id, action_check=body)
+    )

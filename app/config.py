@@ -140,7 +140,8 @@ def detect_private_network() -> str | None:
         if rows is not None:
             networks = set()
             for row in rows:
-                if not any(g and g != "0.0.0.0" for g in (row.get("Gateways") or [])):
+                # This is an absent-route filter, not a socket/listener bind.
+                if not any(g and g != "0.0.0.0" for g in (row.get("Gateways") or [])):  # nosec B104
                     continue
                 for address in row.get("Addresses") or []:
                     try:

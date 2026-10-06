@@ -267,6 +267,21 @@ class ScanDocument(StrictModel):
     warnings: list[dict[str, str]] = Field(default_factory=list)
     errors: list[dict[str, str | None]] = Field(default_factory=list)
 
+    @property
+    def unfinished_device_count(self) -> int:
+        """Selected/discovered checks, not every silent address in a subnet."""
+        discover = self.target.get("mode") == "discover"
+        coverage = self.coverage
+        total = coverage.discovered_count if discover else coverage.candidate_count
+        unfinished = sum(
+            target.service_status != "completed"
+            for target in coverage.targets
+            if not discover or target.discovery_status == "observed"
+        )
+        return max(
+            0, total - coverage.service_completed_count, unfinished, coverage.service_failed_count
+        )
+
     @field_validator("scan_id")
     @classmethod
     def validate_scan_id(cls, value: str):

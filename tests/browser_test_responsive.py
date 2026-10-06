@@ -56,7 +56,7 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
         phase="finished",
         analysis_status="failed",
         target={"mode": "known_hosts", "hosts": [device.ip]},
-        policy={"profile": "deep-tcp-v1"},
+        policy={"profile": "deep-tcp-v1", "network_context": {"address": device.ip}},
         coverage={
             "candidate_count": 1,
             "service_completed_count": 1,
@@ -139,6 +139,36 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                 ]:
                     page.goto(base + route)
                     expect(page.locator(selector)).to_be_visible()
+                    if route in ("/", "/light", "/deep"):
+                        # Render progress without launching a scanner. Whole-page
+                        # overflow checks alone miss a percentage wrapping in place.
+                        for percentage in ("0%", "90%", "100%", "Running"):
+                            for text_scale in ("100%", "200%"):
+                                page.evaluate(
+                                    """([value, scale]) => {
+                                      document.documentElement.style.fontSize = scale;
+                                      document.querySelector('#scanProgress').hidden = false;
+                                      document.querySelector('#progressPercent').textContent =
+                                        value;
+                                      document.querySelector('#progressPercent').dataset.activity =
+                                        String(value === 'Running');
+                                      document.querySelector('#progressDetail').textContent =
+                                        'Scanning discovered devices: 0 of 1 complete';
+                                    }""",
+                                    [percentage, text_scale],
+                                )
+                                bounds = page.locator("#progressPercent").evaluate(
+                                    """element => {
+                                      const range = document.createRange();
+                                      range.selectNodeContents(element);
+                                      return [...range.getClientRects()].map(r => r.top);
+                                    }"""
+                                )
+                                assert len(set(bounds)) == 1, (engine, width, percentage)
+                                assert not page.evaluate(
+                                    "document.documentElement.scrollWidth > innerWidth"
+                                )
+                        page.evaluate("document.documentElement.style.fontSize = ''")
                     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth"), (
                         engine,
                         width,
@@ -146,8 +176,17 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                         route,
                     )
                     if route.startswith("/scans/"):
+                        expect(page.locator(".next-steps > *")).to_have_count(2)
+                        expect(page.locator(".next-steps > div #checklist-filter")).to_have_count(1)
+                        expect(page.locator("#self-check-notice")).to_be_visible()
                         expect(page.locator("#device-metric")).to_have_text("1 of 1 selected")
                         expect(page.locator("#report-checks")).to_contain_text("All selected")
+                        expect(page.locator("#report-first-step")).to_contain_text(
+                            "Computer that ran this scan"
+                        )
+                        expect(page.locator("#nextStepsList")).to_contain_text(
+                            "Computer that ran this scan"
+                        )
                         action = page.locator("#first-action").bounding_box()
                         stats = page.locator(".result-summary-card").bounding_box()
                         # Restored layout: guidance belongs below the result summary.
@@ -175,6 +214,17 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
             page.set_viewport_size({"width": 320, "height": 568})
             page.goto(base + f"/scans/{scan_id}")
             expect(page.locator("#first-action")).to_be_visible()
+            device_card = page.locator("#device-summaries .device-summary-group > details").first
+            expect(device_card).not_to_have_attribute("open", "")
+            collapsed_height = page.evaluate("document.documentElement.scrollHeight")
+            device_card.locator("summary").first.focus()
+            page.keyboard.press("Enter")
+            expect(device_card).to_have_attribute("open", "")
+            assert page.evaluate("document.documentElement.scrollHeight") > collapsed_height
+            page.get_by_role("navigation", name="Report sections").get_by_role(
+                "link", name="Devices", exact=True
+            ).click()
+            assert page.url.endswith("#devices-title")
             page.locator("#technical-devices > summary").focus()
             page.keyboard.press("Enter")
             page.locator(".device-table-wrap").focus()

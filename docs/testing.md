@@ -1,5 +1,133 @@
 # Testing status
 
+## Architecture fixes and report improvements — 6 October 2026
+
+The four confirmed review findings are now implemented: full note-snapshot UI
+synchronisation, consistent notes storage errors, distinct checklist labels and
+bounded saved-report AI retry admission. Delayed snapshots and lookup-button focus
+also have regressions. The prior review sections below describe their historical
+pre-fix state, not the current implementation.
+
+Offline verification, live results and remaining evaluation limits are recorded in
+[the execution record](fixes-and-improvements-20261006.md). Live tests use isolated
+JSON; normal report history and the existing backend are preserved.
+
+Final regression passed **459 Python / 61 JavaScript tests**, three browser engines,
+eight viewports, lint/format and ten module syntax checks. Installed-wheel and
+security gates passed. Actual Light checked 12/12 devices with 12 open services and
+8 review items; PC Deep checked 1/1 with 14 services and 5 items. No scan errors or
+unfinished device checks. Both XML replays and all 15 AI records passed, with zero
+rejected fields/fallbacks and identifier-free inputs. Refresh/history, Run again,
+four live widths and actual checklist save/reopen/reset passed. Normal/copied history
+was unchanged; the owned backend was stopped. Restart the normal task only when idle.
+
+## Live architecture review — 6 October 2026
+
+Both new live jobs completed: Light 11 devices/12 open services/8 review items;
+PC Deep 13 services/4 informational items. No scan errors; Deep retains the local
+self-scan limitation note. Both XML replays and all 14 AI records passed, with no
+rejected fields or identifier leakage. Refresh, history, Run again and four live
+viewport widths passed; no backend exception traceback was logged.
+
+Fresh full regression passed 448 Python/57 JavaScript tests and three browser
+engines. Additional isolated diagnostics nevertheless found stale checklist UI
+after annotation snapshots, generic 500 note/title error paths, duplicate unnamed
+checklist labels and unbounded saved-AI retry admission. These are not fixed.
+All 65 application Python modules and routed assets remain reachable; only small
+CSS/generated-output cleanup candidates were identified. No application source or
+normal reports were changed, and the owned backend was stopped. See
+[the complete review and ordered follow-ups](architecture-live-review-20261006.md).
+
+## Report experience improvements — 6 October 2026
+
+Final isolated regression: **448 Python tests / 57 JavaScript tests passed**, one
+opt-in real-provider test deselected; Chromium, Firefox, WebKit, Ruff lint/format
+and all nine module syntax checks passed. Artifacts:
+`.test-artifacts/checks-e4afab43d9/`. No new live scan or local model call was made.
+
+New checks cover checklist persistence without modifying scan evidence, invalid
+actions/unfinished reports, session/CSRF and concurrent stale-edit rejection.
+Browser verification covers two-tab conflicts, reopening, paired checklist controls,
+keyboard focus, visible mobile naming buttons and desktop toolbar/device grouping.
+Responsive stages pass eight viewport sizes and doubled text size. Early assertion
+and stale-selector failures were corrected and the complete suite rerun, not excluded.
+Normal history/backend were preserved. Restart the normal task only when idle.
+The intermittent Windows socket reset remains open. See
+[the execution plan and results](experience-plan-20261006.md).
+
+## Repeat live verification — 6 October 2026
+
+Repeated Light and PC Deep completed with no scan errors. Light: six checked
+devices/ten open services/seven items; Deep: 15 services/four informational items.
+Both evidence replays, all 13 AI records, refresh/history, mobile/navigation and
+Run again passed. No backend exceptions were logged. Two previously observed Light
+addresses were absent from discovery, not failed checks. Windows reset remains open.
+See [the repeat report and recommendations](live-repeat-20261006.md). Results used
+isolated storage and the owned backend was stopped. Application source was not
+changed and the full offline suite was not repeated in this pass.
+
+## Fresh live Light and PC Deep — 6 October 2026
+
+Both profiles completed successfully with no scan errors. Light checked eight
+devices: ten open services/seven review items, 220.9 seconds. PC Deep checked one
+device: 15 open services/four informational items, 551.4 seconds. Saved XML replay
+and all 13 AI records passed validation. Refresh/history, four viewport widths and
+Run again passed. Fresh mobile progress kept the percentage on one line and showed
+the updated wording; keyboard expansion/navigation passed. No backend traceback
+occurred, though the intermittent Windows reset remains open. See
+[the live evidence](live-check-20261006.md). New data used an isolated folder; the
+owned backend was stopped and the normal app was left undisturbed. The last full
+offline/browser suite remains 442 Python/56 JavaScript tests; it was not rerun for
+this live-only verification.
+
+## Follow-up UI fixes — 5 October 2026
+
+Fixed progress percentage wrapping, replaced lifecycle jargon with check-start/end
+wording and added saved device-role context beside suggested actions. Final checks:
+442 Python tests, 56 JavaScript tests, Chromium/Firefox/WebKit, lint/format and
+syntax checks passed. The expanded responsive matrix verifies percentage text at
+eight viewport sizes and doubled text size. No new live scans were run; normal
+reports were preserved. The Python socket-reset issue remains diagnosed but open.
+See [the execution plan and results](follow-up-plan-20261005.md).
+
+## Reliability improvements and fresh live tests — 5 October 2026
+
+Latest verification: **442 Python / 53 JavaScript tests passed**, one real-provider
+test deselected, no warnings; Chromium/Firefox/WebKit, lint/format and syntax checks
+passed. Fresh Light checked 9 of 10 discovered devices: one host remained unreachable
+after two attempts and is explicitly reported as incomplete. PC Deep completed on
+its first attempt: 15 open services, four informational items, no scan errors.
+Both saved-evidence replays and all 14 AI records passed validation. Refresh,
+history, four viewport widths and Run again passed. Fresh mobile cards, keyboard
+navigation and live activity display passed, but the progress percentage wraps at
+390 px and the lifecycle wording remains too technical. No backend exception
+traceback occurred this run. See [the implementation and evidence](improvements-20261005.md).
+Test data were isolated and the owned backend stopped; restart the normal task
+when idle to load the changes. Older dated sections below describe earlier runs.
+
+## Successful Light and PC Deep live verification — 5 October 2026
+
+Light completed all seven discovered device checks in 210.8 seconds; Deep completed
+this Windows PC on its first attempt in 540.9 seconds. Both had no scan errors,
+saved evidence replay matched, and all 13 AI records revalidated. Refresh/history,
+responsive widths and Run again passed. One non-fatal Windows connection-reset
+callback traceback remains to investigate. Final post-cleanup verification passed
+433 Python/51 JavaScript tests and Chromium/Firefox/WebKit, lint/format and syntax
+checks. See [live-check-20261005.md](live-check-20261005.md) for scope, limitations,
+cleanup and recommendations. Normal data/backend were preserved.
+
+
+## Network continuity and coverage fixes — 4 October 2026
+
+The three latest live-recheck issues are addressed; see
+[live-recheck-fixes-20261004.md](live-recheck-fixes-20261004.md). Final checks passed
+427 Python tests (one real-provider test deselected), 51 JavaScript tests,
+Chromium/Firefox/WebKit, lint/format and syntax checks. Three concurrent real
+Windows adapter requests shared one successful query. Read-only replay of the
+saved partial Light report now counts its cancelled device correctly. No new
+Light/Deep scan was run, and the earlier incomplete runs remain incomplete.
+
+
 ## Self-scan routing and pre-cancellation fixes — 4 October 2026
 
 Both findings from the scanning-tools review are fixed; see

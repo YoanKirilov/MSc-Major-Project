@@ -42,7 +42,7 @@ async def test_supervisor_self_scan_routing_retains_guard(
     context = {"address": "192.168.56.10" if self_scan else "192.168.56.20", "interface": "eth6"}
     checks, commands = [], []
 
-    def snapshot(config, scope, interface):
+    def snapshot(config, scope, interface, **kwargs):
         checks.append(interface)
         return context
 
@@ -102,7 +102,7 @@ async def test_supervisor_stops_before_probe_when_context_changed(tmp_path, monk
         coverage={"targets": [{"ip": "192.168.0.2", "service_status": "pending"}]},
     )
     await store.create_scan(doc)
-    monkeypatch.setattr("app.scanner.network.connection_snapshot", lambda *a: {"adapter": 2})
+    monkeypatch.setattr("app.scanner.network.connection_snapshot", lambda *a, **k: {"adapter": 2})
 
     async def forbidden(*args):
         pytest.fail("Network changed; scanner must not run")

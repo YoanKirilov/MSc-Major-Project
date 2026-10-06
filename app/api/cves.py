@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 
 from app.api.dependencies import require_session
-from app.api.library import live_document
+from app.api.library import live_document, note_operation
 from app.explanations.cve import explain_cves
 from app.scanner.cve import NvdBusy, service_cpe
 from app.schemas.common import utc_now
@@ -28,10 +28,7 @@ async def lookup_cves(request: Request, scan_id: str, service_id: str):
         raise HTTPException(429, "Another CVE lookup is running. Try again shortly.")
     async with lock:
         store = AnnotationStore(request.app.state.store)
-        try:
-            annotations = await store.load(scan_id)
-        except (OSError, ValueError) as exc:
-            raise HTTPException(409, "Saved reference notes could not be read") from exc
+        annotations = await note_operation(store.load(scan_id))
         cached = next((r for r in annotations.cve_lookups if r.service_id == service_id), None)
         if (
             cached
@@ -50,7 +47,7 @@ async def lookup_cves(request: Request, scan_id: str, service_id: str):
                         request.app.state.explanations.provider,
                         busy=bool(request.app.state.supervisor.active_scan_ids),
                     )
-                    annotations = await store.update(scan_id, cve=cached)
+                    annotations = await note_operation(store.update(scan_id, cve=cached))
                 return {
                     "lookup": cached,
                     "revision": annotations.revision,
@@ -72,7 +69,7 @@ async def lookup_cves(request: Request, scan_id: str, service_id: str):
             request.app.state.explanations.provider,
             busy=bool(request.app.state.supervisor.active_scan_ids),
         )
-        updated = await store.update(scan_id, cve=result)
+        updated = await note_operation(store.update(scan_id, cve=result))
         return {
             "lookup": result,
             "revision": updated.revision,

@@ -242,7 +242,9 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             expect(page.locator("#result-title")).to_have_text("Your local scan is ready.")
             expect(page.locator("#resultsSummary")).to_contain_text("Ollama reviewed")
             expect(page.locator("#report-content")).to_be_visible()
-            expect(page.locator("#device-summaries article")).to_have_count(1)
+            expect(
+                page.locator("#device-summaries .device-summary-group > .device-summary")
+            ).to_have_count(1)
             expect(page.locator("#device-summaries")).to_contain_text(
                 "not a full security assessment"
             )

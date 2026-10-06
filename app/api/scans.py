@@ -282,7 +282,7 @@ async def get_live_progress(request: Request, scan_id: str):
         raise HTTPException(status_code=404, detail="Live scan result not found") from exc
     if progress["source"] != "live":
         raise HTTPException(status_code=404, detail="Live scan result not found")
-    return progress
+    return {**progress, "runtime": request.app.state.supervisor.runtime_progress(scan_id)}
 
 
 @router.post("/live-scans/{scan_id}/retry-hosts", status_code=202)
@@ -367,6 +367,13 @@ async def simplify_saved_scan(request: Request, scan_id: str):
     try:
         await request.app.state.supervisor.request_explanations(scan_id)
     except RuntimeError as exc:
+        if str(exc) == "SCAN_CAPACITY":
+            raise HTTPException(
+                status_code=429,
+                detail="All job slots are in use. Your saved report is unchanged; "
+                "try again after a job finishes.",
+                headers={"Retry-After": "10"},
+            ) from exc
         if str(exc) in {"SCAN_BUSY", "SCAN_NOT_READY"}:
             raise HTTPException(
                 status_code=409, detail="This report is not ready for AI wording."

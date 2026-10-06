@@ -114,11 +114,26 @@ def compare_history(current, previous):
             continue
         if not matches:
             address_seen = any(d.ip == device.ip for p in previous for d in p.devices)
-            message = (
-                "This IP address appeared before, but device identity could not be matched."
-                if address_seen
-                else "No matching device was found in the recent reports checked. "
-                "This does not mean the device is new to your network."
+            if not previous:
+                message = (
+                    "No earlier finished report for this network was available "
+                    "among the recent reports checked."
+                )
+            elif not mac or mac == "00:00:00:00:00:00":
+                message = (
+                    "No usable network-adapter address was recorded to match this device reliably."
+                )
+            elif address_seen:
+                message = (
+                    "This IP address appeared before, but device identity could not be matched."
+                )
+            else:
+                message = (
+                    "No matching network-adapter address was found in the recent reports checked."
+                )
+            message += (
+                " This does not mean the device is new to your network; "
+                "an IP address alone is not a reliable identity."
             )
             detail(
                 device, "history", "Earlier observations", message, "Saved reports", "not_checked"
@@ -150,12 +165,27 @@ def compare_history(current, previous):
             and complete(last, old.ip)
         )
         if not comparable:
+            reasons = []
+            if not complete(current, device.ip) or not complete(last, old.ip):
+                reasons.append("one or both device checks did not finish")
+            if current.policy.get("profile_id") is None or any(
+                not isinstance(doc.policy.get(key), list)
+                for doc in (current, last)
+                for key in ("tcp_ports", "udp_ports")
+            ):
+                reasons.append("the scan profile or selected ports were not recorded")
+            elif any(
+                current.policy.get(key) != last.policy.get(key)
+                for key in ("profile_id", "tcp_ports", "udp_ports")
+            ):
+                reasons.append("the scans used different profiles or port selections")
             detail(
                 device,
                 "history",
                 "Service comparison",
-                "Not compared: profiles differ, port selections are missing, "
-                "or a device check was incomplete.",
+                "Not compared: "
+                + "; ".join(reasons)
+                + ". No conclusion about service changes is available.",
                 "Saved reports",
                 "not_checked",
             )

@@ -5,6 +5,14 @@ Current development: [3 October implementation plan](docs/development-plan-20261
 [private JSON backup/restore](docs/storage-backups.md). Dated test logs describe the
 version tested at that time; see [testing status](docs/testing.md) for verification.
 
+Latest implementation: [6 October fixes and improvements](docs/fixes-and-improvements-20261006.md).
+Report titles, checklists, later names and CVE notes now synchronise as one
+revision-aware snapshot, without replacing focused controls. Five-job admission
+includes saved-report AI retries. Device-specific checklist labels, **Your review
+progress** and status filters help organise your own review without implying safety.
+Windows service descriptions, recorded gateway roles, self-check limits and reasons
+for unavailable comparisons are clearer; technical evidence remains accessible.
+
 NetGuard AI is a local research prototype for assessing an authorised home network or a single lab device. It uses Nmap to record observed devices and services, applies fixed rules to produce findings, and presents the results in plain language. Every new live scan saves its facts, runs local Ollama report preparation, validates and saves the wording, and then opens the report. Scans, settings, and explanations are saved as JSON files on this computer.
 
 The report describes what the selected checks observed. A missing finding does not establish that a device or network is secure. Demo results are labelled separately and do not represent a real scan.
@@ -77,9 +85,14 @@ include safe address-bar instructions. AI preparation shows saved explanation co
 after refresh. Validation errors and busy storage have readable messages, and blocked
 browser session storage no longer prevents startup. Settings/report lock acquisition
 is limited to five seconds; a busy API operation returns a retryable response.
-Use **Add your own nickname** on a device card to assign a local label; edit and clear
+Use **Add your own nickname** below a device card to assign a local label; edit and clear
 it to remove it. Nicknames are not detected names or proof of identity. Reuse across
 reports requires a recent, unique same-scope adapter-address match, never just an IP.
+The overview's **Recognise or name this device** shortcut opens the relevant device.
+Naming controls remain visible when mobile device details are collapsed.
+Scan progress shows the reported stages; a single-device Deep check shows **Running**
+instead of an uninformative zero-percent completed-device count. This is an activity
+indicator, not a time estimate or proof that the device has answered.
 Windows/Ubuntu automation is configured in `.github/workflows/checks.yml`; it does not
 run live network scans. See [verification status](docs/testing.md) and the
 [reader-study kit](docs/evaluation-session.md).
@@ -140,9 +153,14 @@ session link and refresh the browser.
   reverse-DNS lookup plus mDNS when enabled. Later names retain their source and time;
   they are claims about that address, not proof of device identity or new service checks.
 - **Compared with earlier scans** displays saved comparison observations and their
-  limitations. Missing observations do not establish that an issue was resolved.
+  limitations near the overview, with a count of available and unavailable comparisons.
+  Missing observations do not establish that an issue was resolved.
+- Action checklists offer **To check**, **Checked** and **Need help** in review details
+  and grouped next steps. Statuses survive refresh and reopening this report. They record
+  your own review, not verified fixes or a safety verdict. Stale edits from another tab
+  are rejected and the latest saved notes loaded before you try again.
 
-Titles and later name lookups are stored separately in each report's `annotations.json`;
+Titles, action checklists and later name lookups are stored separately in each report's `annotations.json`;
 nicknames retain their shared store and conservative matching rules. Optional-data errors
 do not hide the original scan results. Large-archive search performance and real-network
 name-refresh behaviour still need evaluation. See the
@@ -318,6 +336,8 @@ The app uses **local JSON only**; there is no SQLite database. By default, the d
 <data-dir>/scans/<scan-id>/terminal.json        # final status if primary hits size cap
 <data-dir>/scans/<scan-id>/raw/*.xml            # only if raw retention is enabled
 <data-dir>/scans/<scan-id>/guidance/*.json      # archived guidance snapshots
+<data-dir>/scans/<scan-id>/annotations.json    # report title, checklist and later lookups
+<data-dir>/scans/<scan-id>/annotations.previous.json # previous editable notes
 <data-dir>/demo-runs/<run-id>.json              # saved fictional demo run
 ```
 
@@ -327,6 +347,10 @@ During scanning/analysis, the UI polls `GET /api/live-scans/{scan_id}/progress` 
 repeatedly downloading full evidence. It opens the full report after processing finishes.
 
 `POST /api/live-scans/{scan_id}/retry-hosts` starts a new scan limited to eligible unfinished hosts and requires the saved revision. Archived guidance is available from `/api/live-scans/{scan_id}/guidance/{name}`. The `/history` page reopens saved live reports.
+
+`PUT /api/live-scans/{scan_id}/action-checks` saves a valid action's review status on a
+finished live report. It requires the session, CSRF token and expected annotation
+revision; it does not update the original scan document.
 
 Managed JSON reads and writes share a 20 MiB UTF-8 byte limit. An oversized write preserves the previous checkpoint and backup. At most three guidance snapshots stay inline; older snapshots, or snapshots that would exceed the document limit, move to separate JSON files with references in the report. Unusually large scan evidence can still hit the limit and is reported as incomplete rather than publishing an unreadable document. See [storage lifecycle planning](docs/storage-lifecycle.md).
 

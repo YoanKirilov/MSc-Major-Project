@@ -4,7 +4,51 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as presentation from '../app/static/js/presentation.mjs';
 import { createCvePanel } from '../app/static/js/cves.mjs';
+import { createNoteState, checkStatus, projectNotes, reviewProgress } from '../app/static/js/notes.mjs';
+import { unfinishedDeviceCount, partialScanTitle } from '../app/static/js/report.mjs';
 import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from '../app/static/js/report.mjs';
+
+test('unfinished counts include cancelled and unstarted selected checks, not silent addresses', () => {
+  for (const status of ['cancelled', 'pending', 'skipped', 'failed', 'timed_out']) {
+    const data = { target: { mode: 'discover' }, coverage: { candidate_count: 254, discovered_count: 2, service_completed_count: 1, service_failed_count: 0,
+      targets: [{ discovery_status: 'observed', service_status: 'completed' }, { discovery_status: 'observed', service_status: status }, { discovery_status: 'not_seen', service_status: 'skipped' }] } };
+    assert.equal(unfinishedDeviceCount(data), 1);
+    assert.match(partialScanTitle(data), /1 device could not be checked/);
+    assert.match(coverageSummary(data), /1 did not finish/);
+    assert.equal(unfinishedDeviceCount({ target: { mode: 'known_hosts' }, coverage: { candidate_count: 2, service_completed_count: 1 } }), 1);
+  }
+  assert.doesNotMatch(partialScanTitle({ coverage: { discovered_count: 0 } }), /0 devices/);
+});
+
+test('gateway role is sourced from the saved connection, never from a guessed address', () => {
+  const device = { ip: '192.168.0.1' };
+  assert.equal(presentation.recordedDeviceRole(device, {}), '');
+  const data = { policy: { network_context: { address: '192.168.0.2', connection: { Gateways: ['192.168.0.1'] } } } };
+  assert.match(presentation.recordedDeviceRole(device, data), /when this scan started/);
+  assert.equal(presentation.recordedDeviceRole({ ip: '192.168.0.2' }, data), 'Computer that ran this scan');
+  assert.equal(presentation.recordedDeviceRole({ ip: '192.168.0.3' }, data), '');
+  assert.equal(device.hostname, undefined);
+});
+
+test('action labels preserve nicknames and add only recorded roles', () => {
+  const device = { ip: '192.168.0.1', user_nickname: 'Home router' };
+  const data = { policy: { network_context: { address: '192.168.0.2', connection: { Gateways: [device.ip] } } } };
+  assert.match(presentation.actionDeviceLabel(device, data), /Home router \(your nickname\).*Network gateway/);
+  assert.match(presentation.actionDeviceLabel(device, data), /not a verified device name/);
+  assert.equal(presentation.actionDeviceLabel(device, {}), 'Home router (your nickname) (192.168.0.1)');
+  assert.equal(presentation.actionDeviceLabel(null, data), 'Observed device');
+  assert.match(presentation.actionDeviceLabel({ ip: '192.168.0.2' }, data), /Computer that ran this scan/);
+  const duplicateNames = ['192.168.0.3', '192.168.0.4', '192.168.0.5'].map(ip => presentation.actionDeviceLabel({ ip, hostname: 'Display' }, {}));
+  assert.equal(new Set(duplicateNames).size, 3);
+});
+
+test('Windows feature labels are readable and retain service evidence provenance', () => {
+  for (const [name, port, plain] of [['msrpc', 135, 'Windows communication'], ['netbios-ssn', 139, 'Older Windows sharing']]) {
+    assert.match(presentation.featureLabel({ name }), new RegExp(plain));
+    assert.match(serviceLabel({ name, port, detection_method: 'table' }), new RegExp(plain));
+    assert.match(serviceLabel({ name, port, detection_method: 'table' }), /name inferred from port/);
+  }
+});
 
 test('equal priorities use rule, numeric address and service instead of completion order or scan IDs', () => {
   const devices = [{ device_id: 'a', ip: '192.168.0.2' }, { device_id: 'b', ip: '192.168.0.10' }];
@@ -150,7 +194,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     createElement() { return new Element(); },
   };
   const context = vm.createContext({ document, window: { location: { pathname: '/scans/test' } }, URL,
-    ...presentation, createCvePanel, prioritise, formatServiceLabel: serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
+    ...presentation, createNoteState, checkStatus, projectNotes, partialScanTitle, createCvePanel, prioritise, formatServiceLabel: serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
   const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\npoll\(\);\s*$/, '');
   vm.runInContext(source, context);
@@ -190,6 +234,11 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   ];
   vm.runInContext('render(data)', context);
   assert.equal(elements.get('#device-summaries').children.length, 2);
+  elements.get('#device-summaries').children.forEach(group => {
+    assert.equal(group.className, 'device-summary-group');
+    assert.equal(group.children[0].className, 'device-summary');
+    assert.equal(group.children[1].className, 'device-name-tools');
+  });
   assert.match(text(elements.get('#device-summaries')), /Room TV \(previously reported\)/);
   assert.match(text(elements.get('#device-summaries')), /192.168.0.53/);
   assert.match(text(elements.get('#device-summaries')), /Missing results do not mean it is safe/);
@@ -262,4 +311,10 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   assert.match(context.window.location.href, /hosts=192.168.0.53/);
   elements.get('#anotherDeviceButton').events.click();
   assert.doesNotMatch(context.window.location.href, /hosts=/);
+  context.data.state = 'partial';
+  context.data.coverage = { candidate_count: 2, service_completed_count: 1, service_failed_count: 0,
+    targets: [{ ip: '192.168.0.53', service_status: 'completed' }, { ip: '192.168.0.54', service_status: 'cancelled', reason_code: 'network_interrupted' }] };
+  vm.runInContext('render(data)', context);
+  assert.match(elements.get('#result-title').textContent, /1 device could not be checked/);
+  assert.match(text(elements.get('#scan-problems')), /network safety check/);
 });

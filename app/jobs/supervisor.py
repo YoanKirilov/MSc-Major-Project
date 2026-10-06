@@ -23,7 +23,12 @@ from app.scanner.commands import (
 )
 from app.scanner.diagnostics import FAILURE_ADVICE, process_failure
 from app.scanner.mdns import browse_mdns
-from app.scanner.network import NetworkGuard, NetworkInterrupted, host_scan_interface
+from app.scanner.network import (
+    NetworkGuard,
+    NetworkInterrupted,
+    host_scan_interface,
+    interruption_message,
+)
 from app.scanner.parser import (
     HostUnreachable,
     host_failure_detail,
@@ -61,6 +66,7 @@ class ScanSupervisor:
         self._tasks: dict[str, asyncio.Task] = {}
         self._analysis_tasks: dict[str, asyncio.Task] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
+        self._scanner_activity: dict[str, dict] = {}
         self._admission = asyncio.Lock()
         self._analysis_capacity = asyncio.Semaphore(1)
         self._host_capacity = asyncio.Semaphore(2)
@@ -76,9 +82,36 @@ class ScanSupervisor:
             return task is not None and not task.done()
         return any(not task.done() for task in self._tasks.values())
 
+    def runtime_progress(self, scan_id):
+        """Live operational status, never written into scan evidence or cached projections."""
+        activity = self._scanner_activity.get(scan_id, {})
+        return {
+            "backend_checked_at": iso_z(utc_now()),
+            "job_active": scan_id in self.active_scan_ids,
+            "scanner_checks_running": activity.get("running", 0),
+            "last_scanner_event_at": activity.get("last_event_at"),
+            "last_scanner_event": activity.get("last_event"),
+        }
+
+    async def _run_scanner(self, scan_id, args, timeout_s, cancel_event):
+        activity = self._scanner_activity.setdefault(scan_id, {"running": 0})
+        activity.update(
+            running=activity["running"] + 1, last_event="started", last_event_at=iso_z(utc_now())
+        )
+        try:
+            return await self.process_runner(args, timeout_s, cancel_event)
+        finally:
+            activity.update(
+                running=max(0, activity["running"] - 1),
+                last_event="returned",
+                last_event_at=iso_z(utc_now()),
+            )
+
     @property
     def active_scan_count(self) -> int:
-        return sum(not task.done() for task in self._tasks.values())
+        # A scan awaiting its automatic AI phase exists in both maps. Count its
+        # admission once, but include standalone saved-report AI retries too.
+        return len(self.active_scan_ids)
 
     @property
     def active_scan_ids(self) -> tuple[str, ...]:
@@ -125,6 +158,8 @@ class ScanSupervisor:
                 raise RuntimeError("SCAN_NOT_READY")
             if self.explanation_service is None:
                 raise RuntimeError("AI_NOT_CONFIGURED")
+            if not self.has_capacity():
+                raise RuntimeError("SCAN_CAPACITY")
             await self._checkpoint(
                 scan_id,
                 lambda current: current.model_copy(
@@ -342,7 +377,7 @@ class ScanSupervisor:
                 guard = NetworkGuard(
                     document.policy["network_context"],
                     lambda: connection_snapshot(
-                        config, document.policy["allowed_network"], interface
+                        config, document.policy["allowed_network"], interface, strict=True
                     ),
                 )
                 await guard.check()
@@ -382,8 +417,11 @@ class ScanSupervisor:
                     await self._checkpoint(
                         scan_id, lambda current: current.model_copy(update={"phase": "discovery"})
                     )
-                    result = await self.process_runner(
-                        discovery_command(self.nmap_path, cidr, interface), 45, cancel_event
+                    result = await self._run_scanner(
+                        scan_id,
+                        discovery_command(self.nmap_path, cidr, interface),
+                        45,
+                        cancel_event,
                     )
                 if retain_raw_xml and result.stdout:
                     await self.store.save_raw_output(scan_id, "discovery.xml", result.stdout)
@@ -556,7 +594,8 @@ class ScanSupervisor:
                         return current.model_copy(update={"coverage": coverage})
 
                     await self._checkpoint(scan_id, mark_attempt)
-                    result: ProcessResult = await self.process_runner(
+                    result: ProcessResult = await self._run_scanner(
+                        scan_id,
                         host_command(
                             self.nmap_path,
                             ip,
@@ -588,8 +627,11 @@ class ScanSupervisor:
                                 if "timed out" in str(exc)
                                 else "HOST_RESULT_INVALID"
                             )
-                    outcome = process_failure(result) or (
-                        "completed" if parsed else parse_error_code
+                    outcome = (
+                        "NETWORK_INTERRUPTED"
+                        if guard and guard.failed
+                        else process_failure(result)
+                        or ("completed" if parsed else parse_error_code)
                     )
 
                     def record_attempt(current, outcome=outcome, result=result, attempt=attempt):
@@ -628,7 +670,13 @@ class ScanSupervisor:
                     await self._checkpoint(
                         scan_id,
                         lambda current, ip=ip: self._mark_host_failure(
-                            current, ip, "cancelled", "HOST_SCAN_CANCELLED", cancelled=True
+                            current,
+                            ip,
+                            "cancelled",
+                            "NETWORK_INTERRUPTED"
+                            if guard and guard.failed
+                            else "HOST_SCAN_CANCELLED",
+                            cancelled=True,
                         ),
                     )
                     return
@@ -814,11 +862,8 @@ class ScanSupervisor:
                                 [
                                     {
                                         "code": "NETWORK_INTERRUPTED",
-                                        "message": (
-                                            "The network changed or the computer was suspended "
-                                            "while this scan waited. Confirm your home network "
-                                            "before retrying."
-                                        ),
+                                        "message": interruption_message(guard.failure_reason),
+                                        "reason": guard.failure_reason,
                                         "device_id": None,
                                     }
                                 ]
@@ -851,6 +896,7 @@ class ScanSupervisor:
                 if isinstance(exc, TimeoutError)
                 else "SCAN_FAILED"
             )
+            interruption_reason = exc.reason if isinstance(exc, NetworkInterrupted) else None
             await self.store.finish_scan(
                 scan_id,
                 lambda current: self._close_unfinished(current, code.lower()).model_copy(
@@ -862,12 +908,7 @@ class ScanSupervisor:
                             *current.errors,
                             {
                                 "code": code,
-                                "message": (
-                                    "The network connection changed, became unavailable, "
-                                    "or the computer was suspended. Scanning stopped. "
-                                    "Confirm your home network before "
-                                    "retrying; saved observations remain available."
-                                )
+                                "message": interruption_message(interruption_reason)
                                 if code == "NETWORK_INTERRUPTED"
                                 else (
                                     "The scan waited too long for scanner capacity. Some checks "
@@ -891,6 +932,7 @@ class ScanSupervisor:
                                 )
                                 if code == "STORAGE_BUSY"
                                 else "The scan did not complete.",
+                                "reason": interruption_reason,
                                 "device_id": None,
                             },
                         ],
@@ -909,6 +951,7 @@ class ScanSupervisor:
                 await asyncio.gather(network_monitor, return_exceptions=True)
             self._cancel_events.pop(scan_id, None)
             self._tasks.pop(scan_id, None)
+            self._scanner_activity.pop(scan_id, None)
 
     async def _run_explanations(self, scan_id: str) -> None:
         try:

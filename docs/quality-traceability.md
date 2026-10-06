@@ -20,6 +20,16 @@ The table below preserves the 28 September baseline. Later evidence is recorded 
 
 ## Original baseline
 
+Current follow-up — 6 October 2026: Q03/Q04/Q06/Q08/Q11 are covered by
+`tests/unit/test_review_fixes.py`, `tests/notes_ui.test.mjs` and the expanded
+two-tab `tests/browser_test_library.py`. They verify full-snapshot note adoption,
+storage fault/retry boundaries and unchanged evidence. Q05 covers unique five-job
+admission, cancellation and AI queue expiry. Q07/Q13 add reviewed service/role
+labels, specific comparison limits and user-owned checklist progress; actual human
+comprehension remains pending. `scripts/benchmark_history.py` measures Q05/Q11
+JSON search behaviour in synthetic libraries. Exact execution evidence belongs in
+`fixes-and-improvements-20261006.md`; the original table below remains historical.
+
 | ID | Required behaviour | Main implementation | Automated verification | New baseline status |
 | --- | --- | --- | --- | --- |
 | Q01 | Scan only authorised targets; preserve missing coverage | `app/security/scope.py`, `app/api/scans.py`, `app/jobs/supervisor.py` | `tests/unit/test_scope.py`, `tests/unit/test_supervisor.py`, `tests/unit/test_improvements.py` | PASS tested scope: home preflight and negative tests; one unreachable device remains unchecked |

@@ -1,8 +1,23 @@
 // Display-only helpers. Never turn annotations or optional observations into findings.
+export function recordedDeviceRole(device, data) {
+  const context = data.policy?.network_context;
+  if (!context || !device?.ip) return '';
+  if (context.address === device.ip) return 'Computer that ran this scan';
+  const gateways = context.connection?.Gateways;
+  return Array.isArray(gateways) && gateways.includes(device.ip)
+    ? 'Network gateway — the connection used to reach other networks when this scan started (recorded route, not a verified device name)' : '';
+}
+
 export function matchesSearch(query, values) {
   const normalise = value => String(value || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
   const haystack = normalise(values.filter(Boolean).join(' '));
   return normalise(query).split(/\s+/).filter(Boolean).every(word => haystack.includes(word));
+}
+
+export function actionDeviceLabel(device, data) {
+  const label = device ? `${deviceLabel(device)} (${device.ip})` : 'Observed device';
+  const role = recordedDeviceRole(device, data);
+  return role ? `${label} — ${role}` : label;
 }
 
 export function deviceSearchValues(device, services = []) {
@@ -16,6 +31,7 @@ export function featureLabel(service) {
   const names = { http: 'Device web page', https: 'Protected web connection',
     'http-proxy': 'Web-related connection', 'https-alt': 'Possible protected web connection',
     'microsoft-ds': 'File sharing', 'ms-wbt-server': 'Remote desktop', rtsp: 'Media streaming',
+    msrpc: 'Windows communication between programs', 'netbios-ssn': 'Older Windows sharing connection',
     domain: 'Network name lookup', dns: 'Network name lookup', ssh: 'Protected remote control',
     telnet: 'Older remote control (Telnet)', ftp: 'File transfer', mqtt: 'Smart-home messaging',
     snmp: 'Device monitoring', upnp: 'Device discovery', ssdp: 'Device discovery', ntp: 'Clock synchronisation',

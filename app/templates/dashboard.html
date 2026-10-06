@@ -63,6 +63,10 @@
         <section class="scan-progress" id="scanProgress" hidden aria-live="polite" aria-label="Scan progress">
           <div class="curl-loader" aria-hidden="true"><span></span><span></span><span></span></div>
           <p class="eyebrow" id="progressPhase">Preparing local scan</p>
+          <ol class="scan-stage-list" aria-label="Scan stages">
+            <li id="scanStageDiscovery">Find devices</li><li id="scanStageChecks">Check features</li>
+            <li id="scanStageDetails">Gather details</li><li id="scanStageAnalysis">Explain results</li>
+          </ol>
           <div class="progress-value"><strong id="progressPercent">0%</strong><span id="progressDetail">Waiting for the scanner</span></div>
           <div class="progress-track"><span id="progressBar"></span></div>
           <p class="progress-note" id="progressNote">Results will appear when the scan finishes.</p>
@@ -87,6 +91,6 @@
       }
       window.addEventListener('error', dashboardStartupFailed, true);
     </script>
-    <script type="module" src="/static/js/dashboard.js?v=20261001-network-recovery" onerror="dashboardStartupFailed()"></script>
+    <script type="module" src="/static/js/dashboard.js?v=20261006-experience" onerror="dashboardStartupFailed()"></script>
   </body>
 </html>
