@@ -43,6 +43,23 @@ Original reports, backups and raw output remain in their original folder. Interr
 backups become explicitly interrupted results, not resumed jobs. Recovery may lack later
 observations and does not bypass schema/size limits. No automatic repair is performed.
 
+This manual recovery procedure applies to **scan evidence**. Nicknames are separate
+presentation data and have bounded automatic recovery: a missing or invalid primary
+is restored only from a validated `nicknames.previous.json`, under `nicknames.lock`.
+I/O failures, oversized files, unsafe paths or invalid backups remain explicit errors;
+they are never silently reset. Recovery preserves corrupt primary bytes (up to five
+`nicknames.corrupt-*.json` copies) and advances the edit revision. The small
+`nicknames.recovery.json` revision fence prevents repeated recovery of the same backup
+from accepting a stale editor. Offline backups include both this fence and quarantine.
+Keep them with the nickname backup; do not delete the fence to resolve an edit conflict.
+The report/history notice explains that latest nickname edits may be missing while
+original scan results are unchanged. Reload before editing. Further corruption at the
+quarantine limit requires an inspected, offline manual recovery; nothing is deleted.
+Report notes use the same revision-reservation helper, with
+`scans/<uuid>/annotations.recovery.json` and a five-copy quarantine limit. These
+managed per-report files are likewise included in offline backups. Stale editors
+remain invalidated even after repeated recovery before another successful edit.
+
 ## Retention plan
 
 No automatic expiry is currently enabled. A future maintenance screen should show total

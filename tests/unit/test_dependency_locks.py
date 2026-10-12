@@ -6,7 +6,8 @@ from packaging.requirements import Requirement
 
 def test_lock_pins_satisfy_declared_runtime_and_development_requirements():
     root = Path(__file__).resolve().parents[2]
-    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    metadata = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    project = metadata["project"]
     pins = {}
     pending = [root / "requirements.lock", root / "requirements-dev.lock"]
     visited = set()
@@ -30,6 +31,10 @@ def test_lock_pins_satisfy_declared_runtime_and_development_requirements():
             version = specifiers[0].version
             assert name not in pins or pins[name] == version, f"Conflicting pins for {name}"
             pins[name] = version
-    for dependency in [*project["dependencies"], *project["optional-dependencies"]["dev"]]:
+    for dependency in [
+        *project["dependencies"],
+        *project["optional-dependencies"]["dev"],
+        *metadata["build-system"]["requires"],
+    ]:
         requirement = Requirement(dependency)
         assert pins[requirement.name.lower().replace("_", "-")] in requirement.specifier, dependency

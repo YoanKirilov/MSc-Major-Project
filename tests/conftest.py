@@ -1,4 +1,13 @@
 import pytest
+from tests.fixtures.offline import install_offline_guard
+
+
+@pytest.fixture(autouse=True)
+def prevent_live_work_in_synthetic_tests(request, monkeypatch):
+    if not request.node.get_closest_marker("live_lab"):
+        install_offline_guard(
+            monkeypatch, allow_browser=bool(request.node.get_closest_marker("browser"))
+        )
 
 
 @pytest.fixture(autouse=True)

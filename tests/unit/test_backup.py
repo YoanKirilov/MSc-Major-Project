@@ -39,3 +39,21 @@ def test_export_refuses_active_source(tmp_path):
     with FileLock(str(source / "app-instance.lock")):
         with pytest.raises(Timeout):
             transfer(source, tmp_path / "backup")
+
+
+def test_backup_includes_nickname_recovery_fence_and_quarantine(tmp_path):
+    from app.storage.nicknames import NicknameStore
+    from tests.unit.test_nickname_recovery import saved_names
+
+    source = tmp_path / "source"
+    store, doc, names = saved_names(source)
+    store._atomic_write(names.path, "interrupted synthetic write")
+    snapshot = names._snapshot(doc, None)
+    backup = tmp_path / "backup"
+    transfer(source, backup)
+    assert (backup / "nicknames.recovery.json").read_bytes() == (
+        source / "nicknames.recovery.json"
+    ).read_bytes()
+    assert len(list(backup.glob("nicknames.corrupt-*.json"))) == 1
+    restored = NicknameStore(JsonStore(backup))._snapshot(doc, None)
+    assert restored == snapshot

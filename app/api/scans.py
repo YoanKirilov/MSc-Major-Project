@@ -21,7 +21,7 @@ from app.explanations.service import PROMPT_VERSION
 from app.risk.catalogue import RULESET_VERSION
 from app.risk.guidance import guidance_status
 from app.scanner.commands import DEEP_PROFILE, DEEP_UDP_PORTS, PORTS, PROFILE_ID, UDP_PORTS
-from app.scanner.cve import service_cpe
+from app.scanner.cpe import service_cpe
 from app.scanner.mdns import mdns_available
 from app.schemas.api import RefreshGuidanceRequest, ScanCreateRequest
 from app.schemas.scan import ScanDocument
@@ -31,6 +31,21 @@ from app.storage.nicknames import NicknameStore, NicknameUpdate
 router = APIRouter(prefix="/api")
 
 
+async def _read_saved_result(load, scan_id):
+    """Only storage reads become retryable; preserve specific error boundaries."""
+    try:
+        return await load(scan_id)
+    except (FileNotFoundError, PermissionError, TimeoutError):
+        raise
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503,
+            headers={"Retry-After": "2"},
+            detail="The saved report could not be read right now. Reload or try again shortly. "
+            "Keep this scan open; do not start another scan to recover it.",
+        ) from exc
+
+
 @router.put("/live-scans/{scan_id}/devices/{device_id}/nickname")
 async def set_nickname(request: Request, scan_id: str, device_id: str, body: NicknameUpdate):
     require_session(request, csrf=True)
@@ -38,10 +53,21 @@ async def set_nickname(request: Request, scan_id: str, device_id: str, body: Nic
         document = await request.app.state.store.load_scan(scan_id)
         if document.source != "live" or document.phase != "finished":
             raise ValueError("Wait for the scan to finish before assigning a nickname")
-        revision = await NicknameStore(request.app.state.store).update(document, device_id, body)
-        return {"nickname_revision": revision}
+        if not any(device.device_id == device_id for device in document.devices):
+            raise FileNotFoundError("Device not found")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Report or device not found") from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="Reload the report and check the nickname"
+        ) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503, detail="The saved report is temporarily unavailable"
+        ) from exc
+    try:
+        revision = await NicknameStore(request.app.state.store).update(document, device_id, body)
+        return {"nickname_revision": revision}
     except ValueError as exc:
         raise HTTPException(
             status_code=409, detail="Reload the report and check the nickname"
@@ -49,6 +75,12 @@ async def set_nickname(request: Request, scan_id: str, device_id: str, body: Nic
     except TimeoutError as exc:
         raise HTTPException(
             status_code=503, detail="Nicknames are busy; try again shortly"
+        ) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Saved nicknames are unavailable. Original scan results are unchanged; "
+            "reload before editing.",
         ) from exc
 
 
@@ -64,7 +96,7 @@ async def list_scans(request: Request, source: str | None = None, offset: int = 
 async def get_scan(request: Request, scan_id: str):
     require_session(request)
     try:
-        document = await request.app.state.store.load_scan(scan_id)
+        document = await _read_saved_result(request.app.state.store.load_scan, scan_id)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="Scan not found") from exc
     return {
@@ -252,7 +284,7 @@ async def _create_validated_live_scan(
 async def get_live_scan(request: Request, scan_id: str):
     require_session(request)
     try:
-        document = await request.app.state.store.load_scan(scan_id)
+        document = await _read_saved_result(request.app.state.store.load_scan, scan_id)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="Live scan result not found") from exc
     if document.source != "live":
@@ -265,9 +297,11 @@ async def get_live_scan(request: Request, scan_id: str):
     payload["plain_overview"] = plain_report(document)
     payload["guidance_status"] = {**guidance_status(document), "ai_prompt_version": PROMPT_VERSION}
     try:
-        revision, names = await NicknameStore(request.app.state.store).view(document)
-        payload["nickname_revision"] = revision
-        payload["user_nicknames"] = names
+        snapshot = await NicknameStore(request.app.state.store).snapshot(document)
+        payload["nickname_revision"] = snapshot["revision"]
+        payload["user_nicknames"] = snapshot["names"]
+        if snapshot.get("recovery_notice"):
+            payload["nickname_recovery_notice"] = snapshot["recovery_notice"]
     except (OSError, ValueError):
         payload["nickname_error"] = "Saved nicknames could not be read; scan evidence is unchanged."
     return payload
@@ -277,7 +311,7 @@ async def get_live_scan(request: Request, scan_id: str):
 async def get_live_progress(request: Request, scan_id: str):
     require_session(request)
     try:
-        progress = await request.app.state.store.load_progress(scan_id)
+        progress = await _read_saved_result(request.app.state.store.load_progress, scan_id)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="Live scan result not found") from exc
     if progress["source"] != "live":

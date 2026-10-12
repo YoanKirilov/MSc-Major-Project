@@ -32,6 +32,7 @@ DEEP_UDP_PORTS = (
 PROFILE_ID = "tcp12-udp3-v5"
 LIGHT_PROFILE = "light"
 DEEP_PROFILE = "deep-tcp-v1"
+MAX_KNOWN_HOSTS = 254
 
 LIGHT_SAFE_SCRIPTS = "dns-recursion,snmp-info,upnp-info,http-title,http-headers,ssl-cert"
 DEEP_SAFE_SCRIPTS = (

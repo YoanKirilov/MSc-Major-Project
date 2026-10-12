@@ -1,14 +1,17 @@
 """User annotations kept separately from immutable scanner observations."""
 
 import asyncio
-from datetime import datetime, timedelta
+import shutil
+from datetime import timedelta
 from types import SimpleNamespace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.scanner.names import normalise_mac
-from app.schemas.common import StrictModel
+from app.schemas.common import StrictModel, observation_time
 from filelock import FileLock
 from pydantic import Field, field_validator
+
+from .recovery import reserve_recovery_revision
 
 
 class NicknameUpdate(StrictModel):
@@ -32,6 +35,7 @@ class NicknameEntry(StrictModel):
 class NicknameDocument(StrictModel):
     revision: int = Field(default=1, ge=1)
     entries: list[NicknameEntry] = Field(default_factory=list, max_length=200)
+    recovery_notice: str | None = Field(default=None, max_length=300)
 
 
 def matches(current, device, source, original):
@@ -44,7 +48,10 @@ def matches(current, device, source, original):
     if not mac or mac == "00:00:00:00:00:00" or normalise_mac(original.mac) != mac:
         return False
     # Reuse only a recent, earlier same-scope observation, never an IP association.
-    age = datetime.fromisoformat(current.created_at) - datetime.fromisoformat(source.created_at)
+    now, then = observation_time(current.created_at), observation_time(source.created_at)
+    if now is None or then is None:
+        return False
+    age = now - then
     return (
         timedelta(0) <= age <= timedelta(days=7)
         and source.phase == "finished"
@@ -60,11 +67,52 @@ class NicknameStore:
         self.lock = FileLock(str(store.data_root / "nicknames.lock"), timeout=5)
 
     def _load(self):
-        return (
-            NicknameDocument.model_validate(self.store._read_json(self.path))
-            if self.path.exists()
-            else NicknameDocument()
-        )
+        with self.lock:
+            return self._load_locked()
+
+    def _load_locked(self):
+        backup = self.path.with_name("nicknames.previous.json")
+        fence = self.path.with_name("nicknames.recovery.json")
+        if self.path.is_symlink() or (self.path.exists() and not self.path.is_file()):
+            raise ValueError("Refusing to replace an unsafe nicknames path")
+        if self.path.exists() and self.path.stat().st_size > self.store.max_document_bytes:
+            raise ValueError("Oversized nicknames require manual recovery")
+        if (
+            not self.path.exists()
+            and not backup.exists()
+            and not backup.is_symlink()
+            and not fence.exists()
+            and not fence.is_symlink()
+        ):
+            return NicknameDocument()
+        try:
+            return NicknameDocument.model_validate(self.store._read_json(self.path))
+        except ValueError:
+            saved = NicknameDocument.model_validate(self.store._read_json(backup))
+            # The lost primary normally had backup revision + 1. Invalidate that editor too.
+            recovered = saved.model_copy(
+                update={
+                    "recovery_notice": (
+                        "Device nicknames were recovered from the previous backup. The latest "
+                        "edits may be missing; original scan results are unchanged."
+                    ),
+                }
+            )
+            if (
+                self.path.exists()
+                and len(list(self.path.parent.glob("nicknames.corrupt-*.json"))) >= 5
+            ):
+                raise ValueError(
+                    "Nickname quarantine limit reached; manual recovery required"
+                ) from None
+            recovered.revision = reserve_recovery_revision(self.store, self.path, saved.revision)
+            if self.path.exists():
+                shutil.copy2(
+                    self.path, self.path.with_name(f"nicknames.corrupt-{uuid4().hex}.json")
+                )
+            # Do not overwrite the valid backup with corrupt primary bytes.
+            self.store._atomic_write(self.path, recovered.model_dump_json(indent=2))
+            return recovered
 
     def _matching(self, entries, document, device, sources=None):
         sources = {} if sources is None else sources
@@ -114,10 +162,13 @@ class NicknameStore:
 
     def _snapshot(self, document, known_revision):
         saved = self._load()
+        result = {"revision": saved.revision}
+        if saved.recovery_notice:
+            result["recovery_notice"] = saved.recovery_notice
         if known_revision == saved.revision:
-            return {"revision": saved.revision, "changed": False}
+            return {**result, "changed": False}
         revision, names = self._view(document, saved)
-        return {"revision": revision, "changed": True, "names": names}
+        return {**result, "revision": revision, "changed": True, "names": names}
 
     async def snapshot(self, document, known_revision=None):
         return await asyncio.to_thread(self._snapshot, document, known_revision)
@@ -127,7 +178,7 @@ class NicknameStore:
         if device is None:
             raise FileNotFoundError("Device not found")
         with self.lock:
-            saved = self._load()
+            saved = self._load_locked()
             if saved.revision != update.expected_revision:
                 raise ValueError("Nicknames changed; reload this report before saving")
             matched = self._matching(saved.entries, document, device)
@@ -141,7 +192,9 @@ class NicknameStore:
                         nickname=update.nickname,
                     )
                 )
-            changed = NicknameDocument(revision=saved.revision + 1, entries=entries)
+            changed = NicknameDocument(
+                revision=saved.revision + 1, entries=entries, recovery_notice=saved.recovery_notice
+            )
             self.store._atomic_write(
                 self.path,
                 changed.model_dump_json(indent=2),

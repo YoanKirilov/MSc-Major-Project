@@ -12,11 +12,25 @@ def test_missing_bootstrap_token_returns_401(tmp_path, monkeypatch):
 
 
 def test_session_bootstrap_allows_status_and_requires_csrf(tmp_path, monkeypatch):
+    async def unavailable_provider(self):
+        return False
+
+    # Authentication checks do not need this computer's scanner, adapters or model.
+    monkeypatch.setattr(
+        "app.api.session.nmap_preflight", lambda config: (True, "synthetic-version")
+    )
+    monkeypatch.setattr("app.api.session.nmap_interface_choices", lambda config: [])
+    monkeypatch.setattr(
+        "app.explanations.service.ExplanationService.provider_available", unavailable_provider
+    )
     monkeypatch.setenv("APP_DATA_DIR", str(tmp_path))
     manager = SessionManager()
     with TestClient(create_app(session_manager=manager), base_url=BASE_URL) as client:
         csrf_headers = authenticate_client(client, manager)
-        assert client.get("/api/status").status_code == 200
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        assert response.json()["scanner_version"] == "synthetic-version"
+        assert response.json()["ai_available"] is False
 
         rejected = client.patch("/api/settings", json={"expected_revision": 1})
         accepted = client.patch(

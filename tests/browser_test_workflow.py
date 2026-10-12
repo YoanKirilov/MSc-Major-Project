@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-import socket
 import threading
 import time
 from pathlib import Path
@@ -14,6 +13,7 @@ from app.main import create_app
 from app.scanner.runner import ProcessResult
 from app.schemas.scan import DeviceDetail
 from app.security.session import SessionManager
+from tests.fixtures.browser import browser_listener
 from tests.fixtures.provider import ReviewedProvider
 
 pytestmark = [
@@ -26,7 +26,8 @@ pytestmark = [
 
 
 @pytest.mark.parametrize("direct_pages", [False, True])
-def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages):
+@pytest.mark.parametrize("engine", os.getenv("RESPONSIVE_BROWSERS", "chromium").split(","))
+def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages, engine):
     from playwright.sync_api import expect, sync_playwright
 
     monkeypatch.setenv("APP_ALLOWED_NETWORK", "192.168.56.0/24")
@@ -50,8 +51,7 @@ def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages
 
     manager = SessionManager()
     app = create_app(session_manager=manager)
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", 0))
+    listener = browser_listener()
     port = listener.getsockname()[1]
     monkeypatch.setenv("APP_PORT", str(port))
     server = uvicorn.Server(uvicorn.Config(app, log_level="error"))
@@ -66,15 +66,20 @@ def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages
         app.state.supervisor.process_runner = runner
         base = f"http://127.0.0.1:{port}"
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            context = browser.new_context()
+            browser = getattr(playwright, engine).launch(headless=True)
+            context = browser.new_context(viewport={"width": 390, "height": 844})
             errors = []
             context.on("page", lambda page: page.on("pageerror", lambda e: errors.append(str(e))))
             light = context.new_page()
             light.goto(manager.get_bootstrap_url(port))
             expect(light.locator("#scan-config")).to_contain_text("Ready to scan")
+            expect(light.locator("#scanLaunchButton")).to_be_enabled()
             light_path = "/light" if direct_pages else "/"
             light.goto(base + light_path + "#setup=1&profile=light&hosts=192.168.56.10")
+            # Finish initial readiness reads before the setup-only reload. The
+            # later reloads still exercise both actively running jobs. WebKit can
+            # otherwise report cancelled initial fetches as access-control errors.
+            expect(light.locator("#scanLaunchButton")).to_be_enabled()
             # Fragment-only navigation does not reload a dashboard already open here.
             light.reload()
             expect(light.locator("#scanSetupNote")).to_contain_text("192.168.56.10")
@@ -98,9 +103,20 @@ def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages
             deep_id = deep.url.split("#scan=")[1]
             assert light_id != deep_id
             for page in (light, deep):
+                # Configure the mobile viewport before creating tabs. Resizing a
+                # background Firefox tab can stall the automation driver on Windows.
+                page.bring_to_front()
                 page.reload()
                 expect(page.locator("#scanLaunchButton")).to_be_disabled()
                 expect(page.locator("#progressPhase")).to_contain_text("Checking device")
+                expect(page.locator("#progressPhase")).to_be_in_viewport()
+                expect(page.locator("#scanProgress")).to_be_in_viewport()
+                expect(page.locator("#deepHostInput")).to_be_disabled()
+                expect(page.locator("#recentDeviceSelect")).to_be_disabled()
+                for button in page.locator(".mode-button").all():
+                    expect(button).to_be_disabled()
+            expect(deep.locator("#deepHostInput")).to_have_value("192.168.56.10")
+            expect(deep.locator("#progressTarget")).to_contain_text("192.168.56.10")
             assert light.url.endswith(light_id) and deep.url.endswith(deep_id)
             if direct_pages:
                 assert "/light#scan=" in light.url and "/deep#scan=" in deep.url
@@ -189,8 +205,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
     monkeypatch.setattr("app.scanner.details.network_details", synthetic_details)
     manager = SessionManager()
     app = create_app(session_manager=manager)
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", 0))
+    listener = browser_listener()
     port = listener.getsockname()[1]
     monkeypatch.setenv("APP_PORT", str(port))
     server = uvicorn.Server(uvicorn.Config(app, log_level="error"))
@@ -240,22 +255,25 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             released.set()
             page.wait_for_url("**/scans/*", timeout=15000)
             expect(page.locator("#result-title")).to_have_text("Your local scan is ready.")
-            expect(page.locator("#resultsSummary")).to_contain_text("Ollama reviewed")
+            expect(page.locator("#resultsSummary")).to_contain_text("review item")
+            page.locator("#explanation-about > summary").click()
+            expect(page.locator("#ai-report-source")).to_contain_text("Local AI contributed")
             expect(page.locator("#report-content")).to_be_visible()
             expect(
                 page.locator("#device-summaries .device-summary-group > .device-summary")
             ).to_have_count(1)
-            expect(page.locator("#device-summaries")).to_contain_text(
-                "not a full security assessment"
-            )
+            expect(page.locator("#device-summaries")).to_contain_text("not a safety verdict")
+            page.locator("#device-summaries .device-summary > summary").click()
             expect(page.locator("#device-summaries")).to_contain_text(
                 "Older remote control (Telnet)"
             )
             expect(page.locator("#report-first-step")).not_to_be_empty()
             expect(page.locator("#result-ring")).to_have_count(0)
             expect(page.locator("#priority-breakdown")).to_contain_text("priority")
-            page.once("dialog", lambda dialog: dialog.accept("My room device <script>"))
             page.get_by_role("button", name="Add your own nickname").click()
+            page.locator("#annotationEditorInput").fill("My room device <script>")
+            page.locator("#annotationEditorSave").click()
+            expect(page.locator("#annotationEditorDialog")).not_to_be_visible()
             expect(page.locator("#device-summaries")).to_contain_text(
                 "My room device <script> (your nickname)"
             )
@@ -263,17 +281,22 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             expect(page.locator("#device-summaries")).to_contain_text(
                 "My room device <script> (your nickname)"
             )
-            page.once("dialog", lambda dialog: dialog.accept(""))
             page.get_by_role("button", name="Edit or remove your nickname").click()
+            page.locator("#annotationEditorInput").fill("")
+            page.locator("#annotationEditorSave").click()
+            expect(page.locator("#annotationEditorDialog")).not_to_be_visible()
             expect(page.get_by_role("button", name="Add your own nickname")).to_be_visible()
             expect(page.locator("#report-checks")).to_contain_text("device")
-            extra = (
-                page.locator("details")
-                .filter(has=page.locator("summary", has_text="More about this device"))
-                .last
+            card = page.locator("#device-summaries .device-summary").first
+            # The device opened above stays open through the nickname reload.
+            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+            expect(card).to_have_attribute("open", "")
+            card.locator("summary", has_text="About this device").click()
+            extra_summary = card.get_by_text(
+                "Reported model and additional observations", exact=True
             )
-            page.locator("#technical-devices > summary").click()
-            extra.locator("summary").first.click()
+            extra = extra_summary.locator("..")
+            extra_summary.click()
             expect(extra).to_contain_text("Example room display <script>")
             expect(extra).to_contain_text("Device announcement")
             assert extra.locator("script").count() == 0
@@ -308,15 +331,21 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
                 page.locator("#scanLaunchButton").click()
             assert response.value.status == 202
             assert response.value.request.post_data_json["hosts"] == ["192.168.56.10"]
-            expect(page.locator("#result-status")).to_contain_text(
-                "AI simplification unavailable", timeout=15000
+            expect(page.locator("#ai-report-notice")).to_contain_text(
+                "AI simplification is unavailable", timeout=15000
             )
             expect(page.locator("#report-content")).to_be_visible()
             count = len(scanned)
             fail_ai.clear()
-            page.locator("#simplifyButton").click()
-            expect(page.locator("#resultsSummary")).to_contain_text(
-                "Ollama reviewed", timeout=15000
+            with page.expect_response(
+                lambda reply: reply.url.endswith("/explanations") and reply.request.method == "POST"
+            ) as retried:
+                page.locator("#simplifyButton").click()
+            assert retried.value.status == 202, retried.value.text()
+            expect(page.locator("#ai-report-notice")).to_be_hidden(timeout=15000)
+            page.locator("#explanation-about > summary").click()
+            expect(page.locator("#ai-report-source")).to_contain_text(
+                "Local AI contributed", timeout=15000
             )
             assert len(scanned) == count
             # Both profiles pass through the same detail collector and renderer.
@@ -331,24 +360,26 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             expect(page.locator("#result-title")).to_have_text(
                 "Your local scan is ready.", timeout=15000
             )
-            expect(page.get_by_text("Reported model: Example room display <script>")).to_have_count(
-                1
-            )
+            expect(
+                page.locator("#device-summaries").get_by_text(
+                    "Reported model: Example room display <script>"
+                )
+            ).to_have_count(1)
             page.screenshot(path=str(tmp_path / "report.png"), full_page=True)
             deep_report = page.url
             before_setup = len(scanned)
             page.locator("#runAgainButton").click()
-            expect(page.get_by_role("dialog")).to_be_visible()
+            expect(page.locator("#runAgainDialog")).to_be_visible()
             page.set_viewport_size({"width": 390, "height": 844})
             page.screenshot(path=str(tmp_path / "deep-rescan-dialog-mobile.png"))
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
             page.set_viewport_size({"width": 1280, "height": 720})
             page.get_by_role("button", name="Cancel", exact=True).click()
-            expect(page.get_by_role("dialog")).not_to_be_visible()
+            expect(page.locator("#runAgainDialog")).not_to_be_visible()
             assert page.url == deep_report
             page.locator("#runAgainButton").click()
             page.keyboard.press("Escape")
-            expect(page.get_by_role("dialog")).not_to_be_visible()
+            expect(page.locator("#runAgainDialog")).not_to_be_visible()
             page.locator("#runAgainButton").click()
             page.get_by_role("button", name="Same device", exact=True).click()
             page.wait_for_url(base + "/#setup=1**")

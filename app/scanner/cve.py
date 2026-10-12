@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import re
 from time import monotonic
 
 import httpx
@@ -10,39 +9,11 @@ import httpx
 from app.schemas.common import iso_z, utc_now
 from app.schemas.cve import CveLookup, CveReference
 
+from .cpe import application_cpe as application_cpe
+from .cpe import service_cpe as service_cpe
+
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 MAX_RESPONSE_BYTES = 1_000_000
-
-
-def application_cpe(value: str) -> str | None:
-    """Accept the simple lossless subset; never broaden escaped/packed CPE names."""
-    if value.startswith("cpe:/"):
-        fields = value[5:].split(":")
-        if not 4 <= len(fields) <= 7:
-            return None
-        fields = [part or "*" for part in fields] + ["*"] * (11 - len(fields))
-    elif value.startswith("cpe:2.3:"):
-        fields = value[8:].split(":")
-        if len(fields) != 11:
-            return None
-    else:
-        return None
-    if fields[0] != "a" or any(part in {"*", "-"} for part in fields[1:4]):
-        return None
-    if not any(char.isdigit() for char in fields[3]):
-        return None
-    if any(not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}|\*", part) for part in fields):
-        return None
-    return "cpe:2.3:" + ":".join(fields)
-
-
-def service_cpe(service) -> str | None:
-    if service.state != "open" or service.detection_method != "probed":
-        return None
-    if service.nmap_confidence is None or service.nmap_confidence < 7:
-        return None
-    identities = {cpe for raw in service.cpes if (cpe := application_cpe(raw))}
-    return next(iter(identities)) if len(identities) == 1 else None
 
 
 class NvdBusy(Exception):

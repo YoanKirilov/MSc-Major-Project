@@ -1,6 +1,6 @@
 import { request } from './api.js?v=20261001-network-recovery';
 import { configurePicker, startSetupTools } from './setup-tools.mjs?v=20261001-network-recovery';
-import { analysisProgressText, readScanSetup, ollamaStatusText } from './report.mjs?v=20261001-network-recovery';
+import { analysisProgressText, progressAnnouncement, readScanSetup, ollamaStatusText } from './report.mjs?v=20261009-followups';
 
 const launchButton = document.querySelector('#scanLaunchButton');
 const configText = document.querySelector('#scan-config');
@@ -29,6 +29,7 @@ const capacityNote = document.querySelector('#capacityNote');
 let capacityFull = false;
 let capacityCheckScheduled = false;
 let aiReadinessChecks = 0;
+let spokenProgressKey = '';
 
 function showCapacityWait() {
   capacityFull = true;
@@ -77,16 +78,34 @@ function savedScanId() {
 }
 
 async function resumeScan(id) {
-  if (pageProfile) {
-    const metadata = await request(`/api/scans/${id}`);
-    if (metadata.policy?.profile !== pageProfile) {
+  rememberScan(id);
+  launchButton.disabled = true;
+  deepHostInput.disabled = true;
+  modeButtons.forEach(button => { button.disabled = true; });
+  document.querySelector('#recentDeviceSelect').disabled = true;
+  document.querySelector('#refreshDeviceChoices').disabled = true;
+  let metadata;
+  try {
+    metadata = await request(`/api/scans/${id}`);
+    if (pageProfile && metadata.policy?.profile !== pageProfile) {
       // An explicitly pasted link to another profile belongs on the general dashboard.
       rememberScan(null);
       window.location.replace(`/#scan=${id}`);
       return;
     }
+  } catch {
+    // Progress can remain readable even if the full metadata is temporarily unavailable.
+    // Never interpret a metadata read failure as permission to launch another scan.
   }
-  rememberScan(id);
+  if (['light', 'deep-tcp-v1'].includes(metadata?.policy?.profile)) {
+    selectedProfile = metadata.policy.profile;
+    showSetup();
+  }
+  const hosts = metadata?.target?.hosts;
+  if (selectedProfile === 'deep-tcp-v1') deepHostInput.value = hosts?.[0] || '';
+  document.querySelector('#progressTarget').textContent = metadata?.target
+    ? `${selectedProfile === 'deep-tcp-v1' ? 'Deep' : 'Light'} scan: ${metadata.target.cidr || hosts?.join(', ') || 'saved target'}. This target is fixed for this scan.`
+    : 'Reconnecting to the saved target. Refreshing does not change or restart this scan.';
   // A URL pins this tab to its job even if session storage is blocked or copied.
   window.history.replaceState(null, '', `${pagePath}#scan=${id}`);
   setupNote.hidden = true;
@@ -97,6 +116,10 @@ async function resumeScan(id) {
   cancelButton.hidden = false;
   cancelButton.disabled = false;
   cancelButton.textContent = 'Cancel scan';
+  const main = document.querySelector('.scan-home-main');
+  main.classList.toggle('is-running', true);
+  main.insertBefore(progress, document.querySelector('.scan-landing'));
+  progress.scrollIntoView({ block: 'start', behavior: 'instant' });
   await pollScan(id);
 }
 
@@ -120,11 +143,12 @@ function showSetup() {
 deepHostInput.value = selectedProfile === 'deep-tcp-v1' ? (requestedSetup?.hosts[0] || '') : '';
 showSetup();
 modeButtons.forEach((button) => button.addEventListener('click', () => {
+  if (activeScanId) return;
   selectedProfile = button.dataset.profile;
   savedLightHosts = [];
   showSetup();
 }));
-clearTargetsButton.addEventListener('click', () => { savedLightHosts = []; showSetup(); });
+clearTargetsButton.addEventListener('click', () => { if (!activeScanId) { savedLightHosts = []; showSetup(); } });
 
 function setError(message) {
   errorPanel.hidden = false;
@@ -133,6 +157,16 @@ function setError(message) {
   launchButton.disabled = Boolean(activeScanId);
   launchButton.querySelector('span').textContent = 'Scan';
   cancelButton.hidden = true;
+  if (!activeScanId) {
+    deepHostInput.disabled = false;
+    modeButtons.forEach(button => { button.disabled = false; });
+    document.querySelector('#recentDeviceSelect').disabled = false;
+    document.querySelector('#refreshDeviceChoices').disabled = false;
+    const main = document.querySelector('.scan-home-main');
+    main.classList.toggle('is-running', false);
+    main.insertBefore(progress, errorPanel);
+    showSetup();
+  }
 }
 
 cancelButton.addEventListener('click', async () => {
@@ -226,6 +260,8 @@ function updateProgress(scan) {
     const element = document.querySelector(`#scanStage${stage}`);
     const label = [deep ? 'Confirm device' : 'Find devices', 'Check features', 'Gather details', 'Explain results'][index];
     element.dataset.state = activeStage === index ? 'current' : activeStage > index ? 'previous' : 'waiting';
+    if (activeStage === index) element.setAttribute('aria-current', 'step');
+    else element.removeAttribute('aria-current');
     element.textContent = `${activeStage === index ? 'Current: ' : activeStage > index ? 'Earlier: ' : ''}${label}`;
   });
   let percent = 0;
@@ -254,6 +290,11 @@ function updateProgress(scan) {
       : `Analysing ${attempted} completed host${attempted === 1 ? '' : 's'}`;
   }
   const checkingOne = deep && scan.phase === 'service_scan';
+  const speech = progressAnnouncement(scan, deep);
+  if (speech.key !== spokenProgressKey) {
+    spokenProgressKey = speech.key;
+    document.querySelector('#scan-progress-status').textContent = speech.message;
+  }
   percentText.textContent = checkingOne ? 'Running' : `${percent}%`;
   percentText.dataset.activity = checkingOne ? 'true' : 'false';
   progressBar.classList.toggle('is-active', checkingOne);

@@ -1,8 +1,10 @@
 """Read-only library search across all reports, before pagination."""
 
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from ipaddress import ip_address, ip_network
+
+from app.schemas.common import observation_time, utc_now
 
 from .annotations import AnnotationStore, ReportAnnotations
 from .nicknames import NicknameDocument, NicknameStore
@@ -35,12 +37,15 @@ def search_reports(
     warnings = set()
     try:
         saved_names = nicknames._load()
+        if saved_names.recovery_notice:
+            warnings.add(saved_names.recovery_notice)
     except (OSError, ValueError):
         saved_names = NicknameDocument()
         warnings.add("Saved nicknames are unreadable; nickname matches may be missing.")
     results, devices, unreadable = [], [], []
     seen = set()
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    now = utc_now()
+    cutoff = now - timedelta(days=7)
     for item in page["items"]:
         if item["storage_status"] != "ok":
             unreadable.append(item["scan_id"])
@@ -53,12 +58,19 @@ def search_reports(
                 continue
             if state and document.state != state:
                 continue
-            created = datetime.fromisoformat(document.created_at)
-            if (after and created.date() < after) or (before and created.date() > before):
-                continue
             if scope and document.policy.get("allowed_network") != scope:
                 continue
-            if recent_devices and (document.phase != "finished" or created < cutoff):
+            created = observation_time(document.created_at)
+            if created is None:
+                warnings.add(
+                    "Some report dates could not be verified. The reports remain available "
+                    "without date filters, but are excluded from recent device choices."
+                )
+                if after or before or recent_devices:
+                    continue
+            elif (after and created.date() < after) or (before and created.date() > before):
+                continue
+            if recent_devices and (document.phase != "finished" or not cutoff <= created <= now):
                 continue
             _, names = nicknames._view(document, saved_names)
             if recent_devices:

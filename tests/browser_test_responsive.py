@@ -1,7 +1,6 @@
 """Responsive synthetic reports; no Nmap, Ollama or device requests."""
 
 import os
-import socket
 import threading
 import time
 from pathlib import Path
@@ -15,6 +14,7 @@ from app.scanner.parser import parse_host
 from app.schemas.scan import ScanDocument
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
+from tests.fixtures.browser import browser_listener
 
 pytestmark = [
     pytest.mark.browser,
@@ -98,8 +98,7 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
         )
     )
     manager = SessionManager()
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", 0))
+    listener = browser_listener()
     port = listener.getsockname()[1]
     monkeypatch.setenv("APP_PORT", str(port))
     server = uvicorn.Server(uvicorn.Config(create_app(session_manager=manager), log_level="error"))
@@ -127,6 +126,8 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
             base = f"http://127.0.0.1:{port}"
             page.goto(manager.get_bootstrap_url(port))
             page.wait_for_function("sessionStorage.getItem('network-assessor-csrf') !== null")
+            expect(page.locator("#scanLaunchButton")).to_be_enabled()
+            page.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
             for width, height in SIZES:
                 page.set_viewport_size({"width": width, "height": height})
                 for route, selector in [
@@ -139,7 +140,19 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                 ]:
                     page.goto(base + route)
                     expect(page.locator(selector)).to_be_visible()
+                    if route == "/settings":
+                        expect(page.locator("#save-settings")).to_be_enabled()
+                    elif route == "/history":
+                        expect(page.locator("#history-list")).not_to_have_attribute(
+                            "aria-busy", "true"
+                        )
                     if route in ("/", "/light", "/deep"):
+                        expect(page.locator("#scanLaunchButton")).to_be_enabled()
+                        page.wait_for_function(
+                            "document.querySelector('#runningScans').dataset.snapshot"
+                        )
+                        if route == "/deep":
+                            expect(page.locator("#recentDeviceNote")).not_to_be_empty()
                         # Render progress without launching a scanner. Whole-page
                         # overflow checks alone miss a percentage wrapping in place.
                         for percentage in ("0%", "90%", "100%", "Running"):
@@ -255,6 +268,8 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                 )
                 touch.goto(manager.get_bootstrap_url(port))
                 touch.wait_for_function("sessionStorage.getItem('network-assessor-csrf') !== null")
+                expect(touch.locator("#scanLaunchButton")).to_be_enabled()
+                touch.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
                 touch.goto(base + f"/scans/{scan_id}")
                 expect(touch.locator("#first-action")).to_be_visible()
                 touch.locator("#runAgainButton").tap()

@@ -3,6 +3,25 @@
 For the current structure, read [Current architecture](architecture-current.md).
 The dated sections below are historical review evidence and may describe superseded behaviour.
 
+## Review fixes — 7 October 2026
+
+See [the current plan and execution record](development-plan-20261007.md). Nickname
+reads/recovery and edits share a cross-process lock; recovery validates the backup,
+quarantines bounded corrupt data and uses a persistent revision fence. Read/write
+failures have readable API boundaries and never hide available factual reports.
+Backup/restore includes the new recovery metadata; JSON remains the source of truth.
+
+The scan controller reads saved metadata once on connection, restores the immutable
+target, disables setup and promotes progress without scrolling on subsequent polls.
+Schema and standalone scope validation share the 254-address Light limit; Deep still
+requires exactly one authorised address. Optional enrichment records a typed, bounded
+earlier-observation view for compatible recent Light network scans. It excludes
+ambiguous identities and previous unfinished checks. It does not add findings, change
+severity or send device identifiers to Ollama. Reports without this field remain readable.
+
+Reader evaluation and the intermittent Windows reset remain separate open work;
+automated checks cannot establish actual user comprehension or prove that reset fixed.
+
 ## Latest live review — 2 October 2026
 
 The [live-check record](live-check-20261002.md) supersedes older test counts and

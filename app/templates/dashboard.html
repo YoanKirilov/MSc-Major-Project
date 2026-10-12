@@ -15,17 +15,10 @@
   </head>
   <body class="scan-home">
     <div class="page-shell">
-      <header class="topbar">
-        <a class="brand" href="#top" aria-label="NetGuard AI home">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 28 28" role="img"><path d="M14 2.7 23 6v6.8c0 6-3.6 10.5-9 12.5-5.4-2-9-6.5-9-12.5V6l9-3.3Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9.6 14.1 2.8 2.8 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </span>
-          <span>NetGuard <b>AI</b></span>
-        </a>
-        <div class="topbar-actions"><a href="/history">Saved reports</a><a href="/settings">Settings</a><span class="local-pill"><i></i> Local assessment</span></div>
-      </header>
+      {% set active_page = 'scan' %}
+      {% include "includes/shared-header.html" %}
 
-      <main id="top" class="scan-home-main">
+      <main id="main-content" class="scan-home-main" tabindex="-1">
         <section class="scan-landing" aria-labelledby="page-title">
           <p class="eyebrow">{% if scan_page | default('') %}{{ scan_page | capitalize }} scan{% else %}Private network security{% endif %}</p>
           {% if scan_page | default('') == 'deep' %}
@@ -37,14 +30,14 @@
           <nav class="scan-config" aria-label="Independent scan pages"><a href="/light" target="_blank" rel="noopener">Light scan page</a> · <a href="/deep" target="_blank" rel="noopener">Deep scan page</a></nav>
           {% if not scan_page | default('') %}
           <div class="scan-mode" role="group" aria-label="Scan depth">
-            <button class="mode-button active" type="button" data-profile="light" aria-pressed="true"><strong>Light</strong><span>12 TCP + 3 UDP checks</span></button>
-            <button class="mode-button" type="button" data-profile="deep-tcp-v1" aria-pressed="false"><strong>Deep</strong><span>All TCP + 25 UDP ports</span></button>
+            <button class="mode-button active" type="button" data-profile="light" aria-pressed="true"><strong>Light</strong><span>Find and check devices across your network</span></button>
+            <button class="mode-button" type="button" data-profile="deep-tcp-v1" aria-pressed="false"><strong>Deep</strong><span>Take a closer look at one device</span></button>
           </div>
           {% else %}
-          <p class="scan-config">{% if scan_page == 'deep' %}Deep checks one authorised device: all 65,535 TCP ports and 25 UDP ports.{% else %}Light checks your authorised local network: 12 TCP and 3 UDP ports.{% endif %} You can keep the other scan page open alongside this one. Neither scan checks every possible security problem.</p>
+          <p class="scan-config">{% if scan_page == 'deep' %}Take a closer look at one device you own or have permission to check.{% else %}Find and check devices across your authorised local network.{% endif %} You can keep the other scan page open alongside this one.</p>
           {% endif %}
           <div id="recentDevicePanel" hidden><label for="recentDeviceSelect">Choose from recent Light results</label><select id="recentDeviceSelect"></select><button id="refreshDeviceChoices" class="text-button" type="button">Refresh device choices</button><p id="recentDeviceNote" class="scan-config" role="status"></p></div>
-          <label class="deep-host-field" id="deepHostField" hidden for="deepHostInput">Deep scan host</label>
+          <label class="deep-host-field" id="deepHostField" hidden for="deepHostInput">Device address (IP) for the Deep scan</label>
           <input class="deep-host-field" id="deepHostInput" type="text" inputmode="decimal" placeholder="Example: 192.168.0.53" hidden />
           <p class="scan-config" id="scanSetupNote" hidden></p>
           <button class="text-button" id="clearSavedTargetsButton" type="button" hidden>Use the local network instead</button>
@@ -54,15 +47,18 @@
           </button>
           <p class="scan-notice" id="scan-notice">Only scan a private network you own or have permission to assess. Light checks the detected local network; Deep requires one explicit host and performs exhaustive service/version identification plus safe service checks. It does not use exploit or password-guessing checks.</p>
           <p class="scan-config">Light checks fewer features, but can still take several minutes on a network with many devices. Devices that respond slowly and local AI preparation can add time. Progress is saved as checks finish.</p>
+          <details class="scan-config"><summary>What does each scan check?</summary><p>Light checks 12 TCP and 3 UDP ports across the authorised network. Deep checks all 65,535 TCP ports and 25 selected UDP ports on one authorised device, with software identification and safe service checks. It can take substantially longer. Neither scan checks every possible security problem or proves a device is safe.</p></details>
           <p class="scan-config" id="scan-config" aria-live="polite">Checking local scanner configuration...</p>
           <div id="runningScans" class="scan-config" hidden aria-label="Other running scans"></div>
           <p id="runningScansNote" class="scan-config" role="status"></p>
           <p id="capacityNote" class="scan-config" role="status" hidden></p>
         </section>
 
-        <section class="scan-progress" id="scanProgress" hidden aria-live="polite" aria-label="Scan progress">
+        <p id="scan-progress-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+        <section class="scan-progress" id="scanProgress" hidden aria-label="Scan progress">
           <div class="curl-loader" aria-hidden="true"><span></span><span></span><span></span></div>
           <p class="eyebrow" id="progressPhase">Preparing local scan</p>
+          <p class="progress-note" id="progressTarget"></p>
           <ol class="scan-stage-list" aria-label="Scan stages">
             <li id="scanStageDiscovery">Find devices</li><li id="scanStageChecks">Check features</li>
             <li id="scanStageDetails">Gather details</li><li id="scanStageAnalysis">Explain results</li>
@@ -77,7 +73,7 @@
 
         <section class="scan-error" id="scanError" hidden role="alert"></section>
       </main>
-      <footer><p>NetGuard AI · MSc research prototype</p><p>Observations are not a security certification.</p></footer>
+      {% include "includes/shared-footer.html" %}
     </div>
     <script>
       // This guard must not depend on the module which might fail to load.
@@ -91,6 +87,6 @@
       }
       window.addEventListener('error', dashboardStartupFailed, true);
     </script>
-    <script type="module" src="/static/js/dashboard.js?v=20261006-experience" onerror="dashboardStartupFailed()"></script>
+    <script type="module" src="/static/js/dashboard.js?v=20261009-followups" onerror="dashboardStartupFailed()"></script>
   </body>
 </html>

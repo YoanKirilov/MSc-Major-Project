@@ -1,11 +1,72 @@
 # NetGuard AI (Network Assessor)
 
-Current development: [3 October implementation plan](docs/development-plan-20261003.md),
+Current development: [12 October beginner-reading fixes](docs/readability-fixes-20261012.md),
+[eight UI/UX follow-ups](docs/ui-ux-followups-20261009.md),
+[UI/UX fixes and verification](docs/ui-ux-implementation-20261009.md),
+[8 October home live review and fixes](docs/home-live-review-20261008.md),
 [current architecture](docs/architecture-current.md), and
 [private JSON backup/restore](docs/storage-backups.md). Dated test logs describe the
 version tested at that time; see [testing status](docs/testing.md) for verification.
 
-Latest implementation: [6 October fixes and improvements](docs/fixes-and-improvements-20261006.md).
+Latest presentation changes give devices a consistent summary and action area,
+place mobile explanations beside the selected review item, and separate device
+search from review-item search. The complete checklist exposes every saved action;
+technical evidence, name uncertainty and incomplete checks remain available.
+Settings, history and reports share navigation, labelled editors, inline errors
+and keyboard focus behaviour. These changes do not rescan or rewrite evidence.
+See the [28-item implementation record](docs/ui-ux-implementation-20261009.md)
+for automated verification and remaining physical-device/reader evaluation.
+
+The 12 October follow-up groups feature evidence once per device, shortens review
+headings and adds visible practical help, term explanations and safe web-page
+precautions. Explanatory report paragraphs are justified by default; Reading
+preferences offers left alignment and remembers the choice in this tab. Full device
+addresses search exactly, unchecked cards say “Not assessed”, and transient saved
+scan/progress read errors offer retry without starting a replacement scan. Approved
+AI wording now uses prompt 4.3.0; factual results and JSON storage are unchanged.
+
+The later same-day follow-up adds **Review items for** a selected device, saved
+checklist-status counts before expansion and clearer filtered-task availability.
+Technical tables keep readable columns on small screens; repeated unidentified
+connection replies are explained without merging findings or their action statuses.
+See the [repeat findings and execution record](docs/ui-ux-live-followups-20261012.md).
+
+Reports now keep bounded per-tab reading position, searches, filters and disclosures
+on refresh. Feature-specific titles match across devices/results/tasks; loading is
+distinct from zero findings. Compact section navigation, collapse-all tasks and visible
+practical setting/page help retain the existing look and saved facts. See the
+[follow-up record](docs/ui-ux-followups-20261009.md) for scope and verification.
+
+Earlier changes improve Windows connection verification without weakening the scan
+guard, finish aware-UTC report ordering/search/device choices, and explain uncertain
+dates without hiding reports. Pinned build tools now support an isolated offline
+package check using a prepared wheel cache. Actual concurrent home Light checked
+23 of 24 discovered devices (one remained unreachable); this-PC Deep completed.
+All 15 Ollama records and saved evidence passed validation. See the
+[results, verification and remaining limits](docs/home-live-review-20261008.md).
+Dependency audits now include runtime/build/client lockfiles and verify returned
+coverage; security-tool pins are checked separately from the application environment.
+
+Earlier same-day [offline organisation](docs/offline-code-review-20261008.md)
+separated pure fingerprint validation from online CVE lookup and added test-only
+live-work guards. No scan ran while the user was at work.
+
+Earlier live/UI implementation: [nickname and plain-language plan](docs/nickname-guidance-plan-20261007.md)
+and [live results and remaining work](docs/followup-live-20261007.md).
+Delayed nickname replies cannot replace newer names; naming instructions match their
+button. Common Windows/VMware features have conditional, reviewed help, Light explains
+whether the scan computer was checked, and duplicate mobile checklists are expandable.
+Those older reports preserve an unreachable Light device and a Deep connection-query
+timeout; their dated limitations remain intact despite the subsequent query fix.
+
+Earlier implementation: [7 October development plan and execution record](docs/development-plan-20261007.md).
+Nicknames now recover safely from a valid backup with an explicit notice and stale-edit
+protection. Deep refresh restores the fixed target and promotes progress on mobile;
+running scan setup is disabled. Light requests explicitly cap selected addresses at 254.
+Naming coverage and a separate, bounded earlier-device observation view clarify what
+was and was not recognised. Older reports remain readable and are not backfilled.
+
+Earlier implementation: [6 October fixes and improvements](docs/fixes-and-improvements-20261006.md).
 Report titles, checklists, later names and CVE notes now synchronise as one
 revision-aware snapshot, without replacing focused controls. Five-job admission
 includes saved-report AI retries. Device-specific checklist labels, **Your review
@@ -37,6 +98,18 @@ evaluation. See [future work](docs/evaluation.md#future-improvement-optional-pi-
 - A loopback-only web server with a bootstrap session URL, an HTTP-only session cookie, and Origin and CSRF checks for changes. The configured scan scope is checked on the server.
 
 ## Recent usability and concurrency updates
+
+Report device cards start collapsed at all screen sizes. Each shows its identity,
+name qualification, check status and counts in the same order. Expand a device
+to see all recorded answering features, identification clues and relevant earlier
+observations; supporting detail is not cropped to force equal card heights.
+Search and sort devices, or use **Show more devices** to reach the full report.
+
+Use **Review items** for explanations and priorities. On a narrow screen, the
+selected explanation appears immediately after its row. **Complete review checklist**
+contains every recommended action, with a separate status filter. Your saved
+**Checked** status is a personal note, not proof that a repair or safety check passed.
+Nickname and report-title edits use labelled dialogs and retain drafts after errors.
 
 Each finding now includes **CVE: published software problems** below its guidance
 and reference links. Choose **Check CVEs for this software** when Nmap has recorded
@@ -215,6 +288,11 @@ The `.vscode/tasks.json` tasks are shared in Git; other editor settings remain l
 Development installs include `requirements-testclient.lock` through the development
 lockfile. This pins Starlette's supported `httpx2` test client separately from the
 app's runtime HTTP clients; installed-wheel verification uses the same test pins.
+`requirements-build.lock` separately pins the build frontend/backend. Run
+`python scripts/check_package.py` for isolated build/install verification, or use
+`--offline --wheelhouse <local-directory>` after preparing all dependency wheels.
+The offline check refuses package-index access and does not alter the normal app
+environment. See [the tested cache and limits](docs/home-live-review-20261008.md).
 The manual **NetGuard: Start backend with Pi-hole** task prompts for an origin and a
 private password-file path. Stop the existing backend before using it. See the
 [Pi-hole setup guide](docs/pihole-setup.md); this task does not install or start Pi-hole.
@@ -400,6 +478,7 @@ On Windows, if pytest cannot use its default temporary directory, pass a short, 
 ```powershell
 node tests/dashboard_ui.test.mjs
 node tests/report_ui.test.mjs
+node tests/device_components_ui.test.mjs
 node tests/live_server_bridge.test.mjs
 ```
 

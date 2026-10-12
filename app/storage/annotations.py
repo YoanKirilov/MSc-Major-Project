@@ -9,6 +9,8 @@ from app.schemas.common import StrictModel, iso_z, utc_now
 from app.schemas.cve import CveLookup
 from pydantic import Field, field_validator
 
+from .recovery import reserve_recovery_revision
+
 
 class TitleUpdate(StrictModel):
     expected_revision: int = Field(ge=1)
@@ -63,32 +65,39 @@ class AnnotationStore:
     def _load_locked(self, scan_id):
         path = self.store._scan_dir(scan_id) / "annotations.json"
         backup = path.with_name("annotations.previous.json")
+        fence = path.with_name("annotations.recovery.json")
         if (
             not path.exists()
             and not path.is_symlink()
             and not backup.exists()
             and not backup.is_symlink()
+            and not fence.exists()
+            and not fence.is_symlink()
         ):
             return ReportAnnotations()
         try:
             return ReportAnnotations.model_validate(self.store._read_json(path))
         except (OSError, ValueError) as exc:
             saved = ReportAnnotations.model_validate(self.store._read_json(backup))
+            if path.is_symlink() or (path.exists() and not path.is_file()):
+                raise ValueError("Refusing to replace an unsafe annotations path") from exc
+            if path.exists() and path.stat().st_size > self.store.max_document_bytes:
+                raise ValueError("Oversized annotations require manual recovery") from exc
+            if path.exists() and len(list(path.parent.glob("annotations.corrupt-*.json"))) >= 5:
+                raise ValueError(
+                    "Notes quarantine limit reached; manual recovery required"
+                ) from exc
             # A normal primary is backup revision + 1. Skip it to invalidate stale tabs.
             recovered = saved.model_copy(
                 update={
-                    "revision": saved.revision + 2,
+                    "revision": reserve_recovery_revision(self.store, path, saved.revision),
                     "recovery_notice": (
                         "Report notes were recovered from the previous backup. The latest edits "
                         "may be missing; original scan evidence is unchanged."
                     ),
                 }
             )
-            if path.is_symlink() or (path.exists() and not path.is_file()):
-                raise ValueError("Refusing to replace an unsafe annotations path") from exc
             if path.exists():
-                if path.stat().st_size > self.store.max_document_bytes:
-                    raise ValueError("Oversized annotations require manual recovery") from exc
                 shutil.copy2(path, path.with_name(f"annotations.corrupt-{uuid4().hex}.json"))
             # Never back up corrupt primary bytes over the validated previous version.
             self.store._atomic_write(path, recovered.model_dump_json(indent=2))

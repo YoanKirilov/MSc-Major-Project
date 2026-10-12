@@ -17,7 +17,7 @@ async def enrich_details(
     detail_capacity,
     timeout_s=30,
 ):
-    from app.profiling.history import compare_history
+    from app.profiling.history import compare_history, earlier_observations
     from app.scanner.details import netbios_name, network_details
     from app.scanner.observations import detail, existing_details
 
@@ -102,6 +102,7 @@ async def enrich_details(
         device.profile = device.profile.model_validate(classify_device(device, services))
     comparison = document.model_copy(update={"devices": devices})
     history_warning = None
+    earlier = None
     try:
         async with asyncio.timeout(5):
             page = await store.list_scans(source="live", offset=0, limit=11)
@@ -113,6 +114,7 @@ async def enrich_details(
                     except (OSError, ValueError):
                         continue
             compare_history(comparison, previous[:10])
+            earlier = earlier_observations(comparison, previous[:10])
     except Exception:
         history_warning = {
             "code": "HISTORY_COMPARISON_UNAVAILABLE",
@@ -123,6 +125,7 @@ async def enrich_details(
         lambda current: current.model_copy(
             update={
                 "devices": devices,
+                "earlier_observations": earlier,
                 "warnings": [
                     *current.warnings,
                     *([history_warning] if history_warning else []),

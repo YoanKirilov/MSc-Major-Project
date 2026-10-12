@@ -207,7 +207,7 @@ async def title(request: Request, scan_id: str, body: TitleUpdate):
 async def nicknames(request: Request, scan_id: str, revision: int | None = Query(None, ge=1)):
     require_session(request)
     doc = await live_document(request, scan_id)
-    return await NicknameStore(request.app.state.store).snapshot(doc, revision)
+    return await note_operation(NicknameStore(request.app.state.store).snapshot(doc, revision))
 
 
 @router.put("/live-scans/{scan_id}/action-checks")

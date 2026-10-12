@@ -1,7 +1,6 @@
 """User-requested CVE references with synthetic NVD/Ollama; no device traffic."""
 
 import os
-import socket
 import threading
 import time
 from pathlib import Path
@@ -14,6 +13,7 @@ from app.scanner.cve import NvdClient
 from app.schemas.scan import ScanDocument
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
+from tests.fixtures.browser import browser_listener
 from tests.fixtures.fixtures import make_telnet_scan
 from tests.fixtures.provider import ReviewedProvider
 
@@ -69,8 +69,7 @@ def test_cve_lookup_links_and_saved_references_on_mobile(monkeypatch, tmp_path, 
 
     manager = SessionManager()
     app = create_app(session_manager=manager)
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", 0))
+    listener = browser_listener()
     port = listener.getsockname()[1]
     monkeypatch.setenv("APP_PORT", str(port))
     server = uvicorn.Server(uvicorn.Config(app, log_level="error"))
@@ -94,11 +93,14 @@ def test_cve_lookup_links_and_saved_references_on_mobile(monkeypatch, tmp_path, 
             expect(panel).to_be_visible()
             if not version_known:
                 expect(panel.get_by_role("button")).to_have_count(0)
-                expect(panel).to_contain_text("did not identify a precise software fingerprint")
+                expect(panel).to_contain_text(
+                    "a precise software fingerprint and version were not recorded"
+                )
                 assert not calls and not errors
                 browser.close()
                 return
             button = panel.get_by_role("button", name="Check CVEs for this software")
+            panel.locator("details > summary").first.click()
             expect(button).to_be_visible()
             assert not calls
             button.click()
@@ -110,6 +112,9 @@ def test_cve_lookup_links_and_saved_references_on_mobile(monkeypatch, tmp_path, 
             expect(panel).to_contain_text("Local Ollama selected")
             assert panel.locator("script").count() == 0
             page.reload()
+            # Reading state preserves this open disclosure across refresh.
+            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+            expect(panel.locator("details").first).to_have_attribute("open", "")
             expect(link).to_be_visible()
             assert len(calls) == 1
             panel.get_by_role("button", name="Check CVEs again").click()

@@ -3,151 +3,198 @@
   <head>
     <meta charset="UTF-8" />
     <script>
-      // A static template has no saved scan ID. Open the application's dashboard.
-      if ('{{ "backend" }}' !== 'backend') {
-        window.location.replace('http://127.0.0.1:8765/');
-      }
+      // Static previews cannot access the local saved report API.
+      if ('{{ "backend" }}' !== 'backend') window.location.replace('http://127.0.0.1:8765/');
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Observed local network scan results." />
-    <title>NetGuard AI - Scan Results</title>
+    <meta name="description" content="Plain-language results from your saved local network checks." />
+    <title>Scan report — NetGuard AI</title>
     <link rel="stylesheet" href="/static/css/app.css" />
   </head>
   <body class="scan-results-page">
     <div class="page-shell">
-      <header class="topbar">
-        <a class="brand" href="/" aria-label="NetGuard AI home">
-          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 28 28" role="img"><path d="M14 2.7 23 6v6.8c0 6-3.6 10.5-9 12.5-5.4-2-9-6.5-9-12.5V6l9-3.3Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9.6 14.1 2.8 2.8 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          <span>NetGuard <b>AI</b></span>
-        </a>
-        <span class="local-pill"><i></i> Live scan results</span>
-      </header>
-      <main id="top">
+      {% set active_page = 'report' %}{% include "includes/shared-header.html" %}
+      <main id="main-content" tabindex="-1">
         <dialog id="runAgainDialog" class="rescan-dialog" aria-labelledby="runAgainTitle" aria-describedby="runAgainDevice runAgainHelp">
           <h2 id="runAgainTitle">Set up another Deep scan</h2>
           <p id="runAgainDevice"></p>
-          <p id="runAgainHelp">Choose a device, then review it on the starting page. Nothing will run until you press Scan. This report stays saved.</p>
+          <p id="runAgainHelp">Choose a device, then review it on the starting page. Nothing runs until you press Scan. This report stays saved.</p>
           <div class="hero-actions">
-            <button class="primary-button" id="sameDeviceButton" type="button">Same device</button>
-            <button class="primary-button" id="anotherDeviceButton" type="button">Choose another device</button>
+            <button class="secondary-button" id="sameDeviceButton" type="button">Same device</button>
+            <button class="secondary-button" id="anotherDeviceButton" type="button">Choose another device</button>
             <button class="text-button" id="cancelRunAgainButton" type="button" autofocus>Cancel</button>
           </div>
         </dialog>
+        <dialog id="annotationEditorDialog" class="rescan-dialog annotation-editor" aria-labelledby="annotationEditorTitle" aria-describedby="annotationEditorHint">
+          <form id="annotationEditorForm" novalidate>
+            <h2 id="annotationEditorTitle">Edit your label</h2>
+            <div class="form-field">
+              <label id="annotationEditorLabel" for="annotationEditorInput">Your label</label>
+              <p id="annotationEditorHint" class="field-hint"></p>
+              <input id="annotationEditorInput" type="text" aria-describedby="annotationEditorHint annotationEditorStatus" />
+              <p id="annotationEditorStatus" class="field-error" role="status" hidden></p>
+            </div>
+            <div class="hero-actions">
+              <button id="annotationEditorSave" class="primary-button" type="submit">Save</button>
+              <button id="annotationEditorCancel" class="secondary-button" type="button">Cancel</button>
+            </div>
+          </form>
+        </dialog>
         <section class="hero result-hero" id="scan-summary" aria-labelledby="result-title">
           <div class="hero-copy">
-            <p class="eyebrow">Observed network report</p>
-            <h1 id="result-title">Loading scan results...</h1>
-            <p class="hero-lead" id="result-lead">Reading the locally saved scan document.</p>
-            <p class="simulation-note" id="result-status" role="status" aria-live="polite"></p>
-            <div class="simulation-note" id="scan-problems" role="status" hidden></div>
-            <p class="simulation-note" id="guidance-notice" role="status"></p>
-            <div id="guidance-archives"></div>
-            <p id="report-user-title"></p><button id="editReportTitle" class="text-button" type="button" disabled>Name this report</button>
-            <p id="annotation-notice" class="simulation-note" role="status" hidden></p>
+            <p class="eyebrow">Your saved scan</p>
+            <h1 id="result-title">Loading your report</h1>
+            <p id="report-meta" class="report-summary-meta"></p>
+            <p class="hero-lead" id="result-lead">Reading the results saved on this computer.</p>
+            <p id="result-status" class="status-message"></p>
+            <div id="scan-problems" class="status-message" hidden></div>
             <p id="self-check-notice" class="self-check-notice" hidden></p>
-            <details class="scan-technical"><summary>Technical scan details</summary><p id="result-technical"></p></details>
+            <p id="ai-report-notice" class="status-message" role="status" hidden></p>
+            <p id="annotation-notice" class="status-message" role="status" hidden></p>
+            <p id="report-user-title"></p>
             <div class="hero-actions">
               <button class="primary-button" id="runAgainButton" type="button" disabled>Run again</button>
-              <button class="text-button" id="simplifyButton" type="button" hidden>Simplify this saved report</button>
-              <button class="text-button" id="refreshGuidanceButton" type="button" hidden>Refresh saved guidance</button>
-              <button class="text-button" id="retryHostsButton" type="button" hidden>Retry unfinished device checks</button>
-              <a class="text-button" href="/settings">AI settings</a>
-              <a class="text-button" href="/history">Saved reports</a>
+              <button class="secondary-button" id="retryReportLoad" type="button" hidden>Reload saved report</button>
+              <button class="secondary-button" id="retryHostsButton" type="button" hidden>Retry unfinished device checks</button>
+              <button id="editReportTitle" class="text-button" type="button" disabled>Name this report</button>
+              <button class="text-button" id="simplifyButton" type="button" hidden>Retry plain-language explanation</button>
             </div>
           </div>
-          <div class="score-card result-summary-card">
-            <div class="review-count"><strong id="result-count">0</strong><span>items to review</span><p id="priority-breakdown"></p><small>A count of observations, not a security score.</small></div>
-            <div><span class="status-label"><i></i> <span id="result-state">Loading</span></span><p id="result-coverage">Coverage is being calculated from scan checkpoints.</p></div>
-          </div>
-          <div class="metrics" aria-label="Live scan summary">
-            <article class="metric-card"><div class="metric-icon cyan" aria-hidden="true">i</div><div><span>Review items</span><strong id="finding-metric">0</strong></div></article>
-            <article class="metric-card"><div class="metric-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 18v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div><div><span>Devices checked</span><strong id="device-metric">0</strong></div></article>
-            <article class="metric-card"><div class="metric-icon cyan" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8.5a12.5 12.5 0 0 1 16 0M7 12a8 8 0 0 1 10 0M10 15.5a3.5 3.5 0 0 1 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/></svg></div><div><span>Open services</span><strong id="service-metric">0</strong></div></article>
+          <div class="score-card result-summary-card" aria-label="Scan coverage and review counts">
+            <div>
+              <span class="status-label"><i aria-hidden="true"></i><span id="result-state">Loading</span></span>
+              <p id="result-coverage">Calculating which checks finished.</p>
+              <dl class="report-metrics">
+                <div><dt>Devices checked</dt><dd id="device-metric">—</dd></div>
+                <div><dt>Features answering</dt><dd id="service-metric">—</dd></div>
+                <div><dt>Items to review</dt><dd id="result-count">—</dd></div>
+              </dl>
+              <span id="finding-metric" class="sr-only">Not loaded</span>
+              <p id="priority-breakdown"></p>
+              <small>Review priorities are not a security score.</small>
+            </div>
           </div>
         </section>
-        <div id="report-content">
-        <nav class="report-jump-links" aria-label="Report sections">
-          <a href="#first-action">Start here</a><a href="#changes-title">Changes</a><a href="#findings-title">Review items</a><a href="#devices-title">Devices</a><a href="#next-title">Next steps</a>
-        </nav>
-        <section class="beginner-guide" aria-labelledby="guide-title">
-          <h2 id="guide-title">Understanding your results</h2>
-          <div class="beginner-cards">
-            <details class="guide-extra"><summary>Does this mean someone broke in?</summary><p>No such conclusion can be drawn from this scan. It checks how devices answer on your local network, not whether someone has used them without permission. No review items does not mean everything is safe. High, medium and low are priorities for review, not proof of danger; Review means no risk was assigned by that rule.</p></details>
-            <article id="first-action"><h3>What should I check first?</h3><p id="report-first-step"></p><button id="identifyFirstDevice" class="text-button" type="button" hidden>Recognise or name this device</button><p>High means review first; Medium means review next; Low means lower priority. Review items describe features whose safety this tool has not assessed. These labels are not proof of a break-in.</p></article>
-            <article><h3>What did the scan manage to check?</h3><p id="report-checks"></p><p>These results cover only the checks listed. If any checks could not finish, retrying them creates a new report and keeps this one.</p></article>
-          </div>
-          <details class="scan-technical"><summary>Explain the words in this report</summary>
-            <dl>
-              <dt>Service</dt><dd>A device feature that other devices can contact, such as file sharing or a web page. An open service is not automatically a security problem or an active connection.</dd>
-              <dt>IP address</dt><dd>A device's address on this network. It helps you match the result to your router's device list, but it can change.</dd>
-              <dt>Port</dt><dd>A numbered contact point for a device feature. TCP and UDP are two ways devices exchange information.</dd>
-              <dt>Encryption</dt><dd>Protection that scrambles information while it travels so it is not readable without the right key.</dd>
-              <dt>Confidence</dt><dd>How strongly the saved evidence supports a finding, not how safe the device is.</dd>
-              <dt>Unknown device</dt><dd>The scan did not obtain a usable name. This does not mean the device is an intruder. Check your router's device list or ask the person who set up the network.</dd>
-            </dl>
-          </details>
-        </section>
-        <section class="comparison-section" aria-labelledby="changes-title">
-          <h2 id="changes-title">Compared with earlier scans</h2>
-          <p id="comparison-summary" role="status"></p>
-          <p>Not observed in this scan does not mean removed or fixed. Only compatible, completed checks can be compared; matching addresses do not prove device identity.</p>
-          <details><summary>View comparison details</summary><div id="comparison-list" class="device-summaries"></div></details>
-        </section>
-        <section class="findings-section" aria-labelledby="findings-title">
-          <div class="section-heading">
-            <div><p class="eyebrow">Things to check, in priority order</p><h2 id="findings-title">What we found</h2><p id="resultsSummary">Loading actual observations...</p></div>
-            <label class="search-box">
-              <span class="sr-only">Search devices and results</span>
-              <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m12.5 12.5 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-              <input id="searchInput" type="search" placeholder="Search devices and results" autocomplete="off" />
-              <button id="clearSearchButton" class="text-button" type="button">Clear search</button>
-            </label>
-          </div>
-          <div class="filter-row" aria-label="Filter review items by priority">
-            <button class="filter-chip active" type="button" data-filter="all" aria-pressed="true">All <span id="count-all">0</span></button>
-            <button class="filter-chip" type="button" data-filter="high" aria-pressed="false">High <span id="count-high">0</span></button>
-            <button class="filter-chip" type="button" data-filter="medium" aria-pressed="false">Medium <span id="count-medium">0</span></button>
-            <button class="filter-chip" type="button" data-filter="low" aria-pressed="false">Low <span id="count-low">0</span></button>
-            <button class="filter-chip" type="button" data-filter="informational" aria-pressed="false">Review <span id="count-informational">0</span></button>
-          </div>
-          <div class="findings-layout"><div class="findings-list" id="findingsList" aria-live="polite"></div><aside class="detail-panel" id="detailPanel" aria-live="polite" aria-label="Review item details"></aside></div>
-        </section>
-        <section class="device-section" aria-labelledby="devices-title">
-          <div>
-            <p class="eyebrow">Saved device results</p>
-            <h2 id="devices-title">Which devices were checked?</h2>
-            <p class="hero-lead">Use your router's connected-device list to match each address to a device. These summaries use saved facts and reviewed guidance. Unnamed does not mean an intruder; no review items does not prove safety. Other devices and features may exist.</p>
-            <p>Your nicknames help you recognise devices. Use the naming button below each device; detected names and their sources stay available.</p>
-          </div>
-          <p id="device-search-count" role="status"></p>
-          <div id="device-summaries" class="device-summaries"></div>
-          <details id="technical-devices" class="scan-technical">
-          <summary>Technical device details — addresses, ports and check output</summary>
-          <p>The response column distinguishes a device that answered a check from one that only announced itself.</p>
-          <div class="device-table-wrap" tabindex="0" role="region" aria-label="Technical device details; scroll sideways on small screens">
-            <table class="device-table">
-              <caption class="sr-only">Saved devices and services accepting requests</caption>
-              <thead><tr><th scope="col">Name</th><th scope="col">Network address (IP)</th><th scope="col">Possible device type</th><th scope="col">Did it answer?</th><th scope="col">Features accepting requests</th><th scope="col">Additional checks</th><th scope="col">Items to review</th></tr></thead>
-              <tbody id="device-table-body"></tbody>
-            </table>
-          </div>
-          </details>
-        </section>
-        <section class="device-section" id="mdns-section" aria-labelledby="mdns-title" hidden><details><summary id="mdns-title">Device announcements — unverified names and features</summary><p>Advertisements are unverified claims, not proof of an open port or a security problem.</p><ul id="mdns-list"></ul></details></section>
-        <section class="next-steps" aria-labelledby="next-title">
-          <div><p class="eyebrow">A safer order of work</p><h2 id="next-title">What to do next</h2><p>Identify the device and check whether you use the feature before changing anything. If unsure, ask its owner or the device maker.</p><p>Your checklist records your own review. Marking an action checked does not confirm a fix or change the scan results.</p><p id="checklist-notice" role="status"></p>
-          <p id="checklist-progress" role="status"></p>
-          <label class="checklist-filter">Show checklist controls
-            <select id="checklist-filter"><option value="all">All statuses</option><option value="to_check">To check</option><option value="checked">Checked</option><option value="need_help">Need help</option></select>
-          </label>
-          <p>Counts include every action in this saved report, including those inside review items. Filtering hides checklist controls only; review items and their instructions remain available above. New reports start a fresh checklist.</p>
-          </div>
-          <ol class="steps-list" id="nextStepsList" aria-live="polite"></ol>
-        </section>
+        <p id="report-interaction-status" class="sr-only" role="status" aria-live="polite"></p>
+        <div id="report-content" hidden inert aria-busy="true">
+          <nav class="report-jump-links" aria-label="Report sections">
+            <a href="#first-action">Start here</a><a href="#devices-title">Devices</a><a href="#findings-title">Review items</a><a href="#next-title">Tasks</a><a href="#changes-title">Supporting info</a>
+          </nav>
+          <section class="beginner-guide" aria-labelledby="guide-title">
+            <h2 id="guide-title">Where to start</h2>
+            <article id="first-action"><h3>What should I check first?</h3><p id="report-first-step"></p>
+              <p id="first-action-precaution" class="first-action-precaution" hidden></p>
+              <button id="openFirstFinding" class="secondary-button" type="button" hidden>Read the first review item</button>
+              <button id="identifyFirstDevice" class="text-button" type="button" hidden>Recognise or name this device</button>
+            </article>
+            <details class="identification-guide"><summary>Help me recognise a device</summary>
+              <ol>
+                <li>Compare the address with the Wi-Fi or network details on a device you own. You can also ask the person who set up your Wi-Fi to show you the router's connected-device list.</li>
+                <li>Wake the device if it is asleep. “Try identifying this address again” asks for a reported name; it does not run another full scan or guarantee a name.</li>
+                <li>Once you recognise it, choose “Add your own nickname”, such as “Living-room TV”. This is your label, not a verified identity.</li>
+                <li>Read that device's review items. If you do not recognise it or are unsure what to change, ask its owner or maker for help. Do not disable features just to clear a result.</li>
+              </ol>
+            </details>
+            <details class="first-action-help"><summary>What was checked, and what do priorities mean?</summary>
+              <p id="report-checks"></p><p id="scan-computer-coverage" hidden></p>
+              <p>High means review first; Medium means review next; Low means lower priority. Review describes a feature whose safety this tool has not assessed. An answering service is not proof of a break-in; no flagged items is not proof of safety.</p>
+            </details>
+          </section>
+          <section class="device-section" aria-labelledby="devices-title">
+            <div><p class="eyebrow">Devices in this report</p><h2 id="devices-title">Your devices</h2>
+              <p>Use each address to match the device to your router's list. Reported names are clues, not verified identities; your own nickname does not change the scan facts.</p>
+            </div>
+            <div class="report-toolbar">
+              <div class="form-field"><label for="deviceSearchInput">Search devices</label><div class="search-box"><input id="deviceSearchInput" type="search" placeholder="Name, address or feature" autocomplete="off" /><button id="clearDeviceSearch" class="text-button" type="button">Clear</button></div></div>
+              <div class="form-field"><label for="deviceSort">Order devices by</label><select id="deviceSort"><option value="priority">Review priority</option><option value="name">Name</option><option value="address">Network address</option></select></div>
+            </div>
+            <p id="device-search-count" role="status"></p>
+            <details class="scan-technical"><summary>How many devices have a reported name?</summary><p id="naming-coverage"></p></details>
+            <div id="device-summaries" class="device-summaries"></div>
+            <button id="showMoreDevices" class="secondary-button" type="button" hidden>Show more devices</button>
+            <details id="technical-devices" class="scan-technical">
+              <summary>Technical device details — addresses, ports and check output</summary>
+              <p>An announcement is not the same as a response to a service check. Scroll this table sideways on small screens.</p>
+              <div class="device-table-wrap" tabindex="0" role="region" aria-label="Technical device details; scroll sideways on small screens">
+                <table class="device-table"><caption class="sr-only">Saved devices and services accepting requests</caption>
+                  <thead><tr><th scope="col">Name</th><th scope="col">Network address (IP)</th><th scope="col">Possible device type</th><th scope="col">Did it answer?</th><th scope="col">Features accepting requests</th><th scope="col">Additional checks</th><th scope="col">Items to review</th></tr></thead>
+                  <tbody id="device-table-body"></tbody>
+                </table>
+              </div>
+            </details>
+          </section>
+          <section class="findings-section" aria-labelledby="findings-title">
+            <div class="section-heading">
+              <div><p class="eyebrow">Things to check</p><h2 id="findings-title">What we found</h2><p id="resultsSummary">Loading review items.</p></div>
+              <div class="form-field"><label for="searchInput">Search review items</label>
+                <div class="search-box"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m12.5 12.5 4 4" stroke="currentColor" stroke-width="1.6"/></svg>
+                  <input id="searchInput" type="search" placeholder="Device, feature or explanation" autocomplete="off" />
+                  <button id="clearSearchButton" class="text-button" type="button">Clear search</button>
+                </div>
+              </div>
+            </div>
+            <div class="report-toolbar">
+              <div class="form-field"><label for="reviewDevice">Review items for</label>
+                <select id="reviewDevice" aria-describedby="review-filter-help"><option value="all">All devices</option></select>
+              </div>
+            </div>
+            <p class="field-hint" id="review-filter-help">Choose a device to read its results one at a time. These filters affect review items only; the device list and your review tasks remain available below.</p>
+            <div class="filter-row" aria-label="Filter review items by priority">
+              <button class="filter-chip active" type="button" data-filter="all" aria-pressed="true">All <span id="count-all">0</span></button>
+              <button class="filter-chip" type="button" data-filter="high" aria-pressed="false">High <span id="count-high">0</span></button>
+              <button class="filter-chip" type="button" data-filter="medium" aria-pressed="false">Medium <span id="count-medium">0</span></button>
+              <button class="filter-chip" type="button" data-filter="low" aria-pressed="false">Low <span id="count-low">0</span></button>
+              <button class="filter-chip" type="button" data-filter="informational" aria-pressed="false">Review <span id="count-informational">0</span></button>
+            </div>
+            <p id="repeated-replies-note" class="field-hint" hidden></p>
+            <div class="findings-layout"><div class="findings-list" id="findingsList"></div><aside class="detail-panel" id="detailPanel" aria-label="Review item details" tabindex="-1"></aside></div>
+          </section>
+          <section class="next-steps" aria-labelledby="next-title">
+            <div><p class="eyebrow">Your own checklist</p><h2 id="next-title">Your review tasks</h2>
+              <p>All suggested actions are listed here. Confirm the device and whether you use its feature before changing settings. Ask its owner or maker if unsure.</p>
+              <p>Marking Checked records your review, not a verified fix or a new security test.</p>
+              <p id="checklist-notice" role="status"></p><p id="checklist-progress" role="status"></p>
+              <label class="checklist-filter">Show review tasks<select id="checklist-filter"><option value="all">All statuses</option><option value="to_check">To check</option><option value="checked">Checked</option><option value="need_help">Need help</option></select></label>
+              <div class="form-actions"><button id="expandReviewTasks" class="text-button" type="button" disabled>Expand available checklists</button><button id="collapseReviewTasks" class="text-button" type="button" disabled>Collapse available checklists</button></div>
+              <p id="checklist-filter-count" role="status"></p><p id="checklist-empty" hidden>No tasks match this status. Choose All statuses to see every task.</p>
+            </div>
+            <ol class="steps-list" id="nextStepsList"></ol>
+          </section>
+          <section class="comparison-section" aria-labelledby="changes-title">
+            <h2 id="changes-title">Supporting information</h2>
+            <details id="report-comparisons"><summary>Compare with earlier scans</summary>
+              <p id="comparison-summary"></p><p>Not observed does not mean removed or fixed. Only compatible completed checks can be compared.</p>
+              <p>Matched comparisons are in each device's <strong>About this device</strong> details.</p><a href="#devices-title">Go to devices to view their comparisons</a>
+              <details id="earlier-devices"><summary>Seen earlier, not matched this time</summary><p id="earlier-devices-note"></p><ul id="earlier-devices-list"></ul></details>
+            </details>
+            <section id="mdns-section" aria-labelledby="mdns-title" hidden><details><summary id="mdns-title">Other recorded device announcements</summary><p>Matched announcements appear with their device. These unverified claims do not establish a service response or a security problem.</p><ul id="mdns-list"></ul></details></section>
+            <details class="scan-technical"><summary>Technical scan details</summary><p id="result-technical"></p></details>
+            <details id="explanation-about" class="explanation-about"><summary>About the plain-language explanation</summary>
+              <div id="overview-help"></div>
+              <p id="ai-report-source"></p><p id="ai-report-model"></p><p id="guidance-notice"></p><div id="guidance-archives"></div>
+              <button id="refreshGuidanceButton" class="text-button" type="button" hidden>Refresh saved guidance</button><a href="/settings">AI settings</a>
+            </details>
+            <details class="scan-technical" id="report-glossary"><summary>Explain the words in this report</summary>
+              <dl><dt>Service or feature</dt><dd>Something a device offers that other devices may contact, such as file sharing. Answering a check is not automatically a security problem or evidence of use.</dd>
+                <dt>IP address</dt><dd>A device's address on this network. It can change and does not verify its identity.</dd>
+                <dt>Port, TCP and UDP</dt><dd>A port is a numbered connection point for a device feature. TCP and UDP are ways devices exchange information. Seeing one does not, by itself, mean a security problem.</dd>
+                <dt>HTTP and HTTPS</dt><dd>Ways to open a web page. HTTP does not protect information while it travels. HTTPS protects the connection when its certificate is valid; it does not prove the whole device is safe.</dd>
+                <dt>Software fingerprint and CVE</dt><dd>A fingerprint is a scanner's clue about software and its version, not verified identity. A CVE is a published software problem; a possible match does not prove it affects this device.</dd>
+                <dt>Encryption</dt><dd>Protection that scrambles information while it travels.</dd>
+                <dt>Evidence strength</dt><dd>How strongly the recorded facts support an observation, not how safe a device is.</dd>
+                <dt>Device not identified</dt><dd>No usable name was found. This does not mean an intruder; check your router's list or ask the person who set up the network.</dd></dl>
+            </details>
+            <details class="reading-options"><summary>Reading preferences</summary>
+              <div class="form-field"><label for="textAlignment">Paragraph alignment</label>
+                <select id="textAlignment"><option value="justify">Justified</option><option value="left">Left aligned</option></select>
+                <p>Choose the layout you find easier to read. This affects this browser tab, not your scan results.</p>
+              </div>
+            </details>
+          </section>
         </div>
       </main>
-      <footer><p>NetGuard AI · Local JSON result</p><p>Observations are not a security certification.</p></footer>
+      {% include "includes/shared-footer.html" %}
     </div>
-    <script type="module" src="/static/js/scan.js?v=20261006-notes"></script>
+    <script type="module" src="/static/js/scan.js?v=20261012-followups"></script>
   </body>
 </html>

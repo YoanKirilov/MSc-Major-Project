@@ -1,4 +1,77 @@
 // Display-only helpers. Never turn annotations or optional observations into findings.
+export const IDENTIFY_DEVICE_LABEL = 'Try identifying this address again';
+
+export function recordedTimeLabel(value, unavailable = 'Time unavailable') {
+  // Do not invent a local timezone for uncertain legacy/imported metadata.
+  if (typeof value !== 'string') return unavailable;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):?(\d{2}))$/i.exec(value);
+  if (!parts) return unavailable;
+  const [year, month, day, hour, minute, second] = parts.slice(1, 7).map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  // Date() can silently roll February 30 or 24:00 into another day.
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]
+      || hour > 23 || minute > 59 || second > 59
+      || Number(parts[7] || 0) > 23 || Number(parts[8] || 0) > 59) return unavailable;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() < 1 || date.getUTCFullYear() > 9999) return unavailable;
+  return date.toLocaleString();
+}
+
+export function localFeatureHelp(device, service, data) {
+  if (!device || service?.state !== 'open' || !['tcp', 'udp'].includes(service.protocol)
+      || service.detection_method !== 'probed' || !(service.nmap_confidence >= 7)) return null;
+  if (service.protocol === 'udp' && !['domain', 'dns'].includes(service.name)) return null;
+  const self = recordedDeviceRole(device, data) === 'Computer that ran this scan';
+  const features = {
+    msrpc: {
+      meaning: 'This response is consistent with communication between Windows programs. It can support normal system features; it is not evidence that someone is remotely controlling the computer.',
+      check: 'On a Windows computer you own, open Windows Security, then Firewall & network protection, to review the current protection. Do not switch off the firewall or stop core Windows services to remove this result.',
+    },
+    'netbios-ssn': {
+      meaning: 'This response is consistent with an older Windows network-sharing feature. It does not show that a folder or printer is shared, or that anyone accessed your files.',
+      check: 'On a Windows computer you own, search Settings for Advanced sharing settings and review File and printer sharing. Check whether you intentionally share files or a printer. Leave settings unchanged if you are unsure.',
+    },
+    'microsoft-ds': {
+      meaning: 'This response is consistent with file or printer sharing. An answering connection does not reveal which files are shared or who can access them.',
+      check: 'On a Windows computer you own, review Advanced sharing settings and the Sharing tab of any folder you deliberately shared. Do not enable sharing to test this result or change permissions without understanding who needs access.',
+    },
+    'vmware-auth': {
+      meaning: 'The scanner identified a name associated with virtual-machine software, which runs another computer inside this one. This is a clue, not confirmation of the installed product or its security.',
+      check: 'If you own this computer, check your installed applications for VMware and ask whether the virtual machines are expected. Review the application documentation before changing any related service; do not stop it just because it answered a scan.',
+    },
+    rtsp: {
+      meaning: 'This reply is consistent with a feature for sending video or sound. Cameras and media devices sometimes use it; this does not identify the device or show that anyone watched a stream.',
+      check: 'Think about whether you use a camera, television or media app on this device. Check its manual or ask its owner whether streaming is expected. Leave settings unchanged if you are unsure.',
+    },
+    domain: {
+      meaning: 'A name-lookup feature helps devices find websites by name. This reply does not reveal which websites anyone visited or whether the settings are correct.',
+      check: 'If this is your router, ask its owner or the person who set up your Wi-Fi whether it provides name lookup. Do not switch this feature off just because it replied; it may be needed for normal internet use.',
+    },
+    tcpwrapped: {
+      meaning: 'The device accepted a connection, then closed it before the scanner could identify the feature. This does not reveal which program replied or why it closed the connection.',
+      check: 'Do not switch off protection or stop programs just to remove this result. On a Windows computer you own, you can review Windows Security for protection messages. Otherwise, ask the device owner or maker for help if you have a problem using it.',
+    },
+  };
+  const help = features[service.name === 'dns' ? 'domain' : service.name];
+  if (!help) return null;
+  const windowsFeature = ['msrpc', 'netbios-ssn', 'microsoft-ds'].includes(service.name);
+  return { ...help, limitation: self
+    ? 'This is a check from the computer to itself. It does not establish whether another device or someone on the internet can connect.'
+    : windowsFeature
+      ? 'The service name is a scanner observation, not verified operating-system identity. The Windows steps apply only if this is a Windows computer you own.'
+      : 'The scanner label is a clue, not proof of the device identity, installed software or safety.' };
+}
+
+export function scanComputerCoverage(data) {
+  const address = data.policy?.network_context?.address;
+  if (data.phase !== 'finished' || data.target?.mode !== 'discover' || !address) return '';
+  const target = data.coverage?.targets?.find(item => item.ip === address);
+  if (!target) return ''; // A subnet scan may intentionally exclude this address.
+  if (target.service_status === 'completed') return 'The computer running NetGuard was included in these selected checks. A self-check does not establish what another device can reach.';
+  if (target.discovery_status === 'observed') return 'The computer running NetGuard was discovered, but its selected device checks did not finish. Its remaining features were not assessed.';
+  return 'The computer running NetGuard was not discovered in this Light scan and was not included in its device checks. This is not a safety verdict. You can set up a separate Deep scan of this computer; it will not start automatically.';
+}
 export function recordedDeviceRole(device, data) {
   const context = data.policy?.network_context;
   if (!context || !device?.ip) return '';
@@ -8,8 +81,15 @@ export function recordedDeviceRole(device, data) {
     ? 'Network gateway — the connection used to reach other networks when this scan started (recorded route, not a verified device name)' : '';
 }
 
-export function matchesSearch(query, values) {
+export function matchesSearch(query, values, deviceAddress) {
   const normalise = value => String(value || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
+  const exact = String(query || '').trim();
+  const parts = exact.split('.');
+  if (parts.length === 4 && parts.every(part => /^(0|[1-9][0-9]{0,2})$/.test(part) && Number(part) <= 255)) {
+    // A complete address names one device, never a prefix or an older address
+    // mentioned in its notes. Other queries retain normal partial/text search.
+    return deviceAddress !== undefined ? deviceAddress === exact : values.some(value => value === exact);
+  }
   const haystack = normalise(values.filter(Boolean).join(' '));
   return normalise(query).split(/\s+/).filter(Boolean).every(word => haystack.includes(word));
 }
@@ -17,7 +97,7 @@ export function matchesSearch(query, values) {
 export function actionDeviceLabel(device, data) {
   const label = device ? `${deviceLabel(device)} (${device.ip})` : 'Observed device';
   const role = recordedDeviceRole(device, data);
-  return role ? `${label} — ${role}` : label;
+  return role ? `${label} — ${role.startsWith('Network gateway') ? 'Network gateway (recorded route, not a verified device name)' : role}` : label;
 }
 
 export function deviceSearchValues(device, services = []) {
@@ -36,13 +116,27 @@ export function featureLabel(service) {
     telnet: 'Older remote control (Telnet)', ftp: 'File transfer', mqtt: 'Smart-home messaging',
     snmp: 'Device monitoring', upnp: 'Device discovery', ssdp: 'Device discovery', ntp: 'Clock synchronisation',
     tcpwrapped: 'Connection closed before its feature could be identified' };
+  names['vmware-auth'] = 'Virtual computer software (VMware)';
   const name = service.name === 'http' && service.tunnel === 'ssl' ? 'https' : service.name;
-  return `${names[name] || 'Unidentified feature'}${service.detection_method === 'table' ? ' (type unconfirmed; inferred from its contact number)' : ''}`;
+  return `${names[name] || 'Unidentified feature'}${service.detection_method === 'table' ? ' (type unconfirmed; inferred from its port)' : ''}`;
 }
 
 export function confidenceLabel(value) {
   return ({ high: 'Strong supporting evidence', medium: 'Some supporting evidence',
     low: 'Limited supporting evidence' })[value] || 'Evidence strength not recorded';
+}
+
+// One display label for every route to a review item. Never change saved titles.
+export function reviewItemTitle(finding, service, title = finding?.title) {
+  const label = finding?.severity === 'informational' && service
+    ? service.name === 'tcpwrapped' ? 'Feature not identified' : featureLabel(service)
+    : (title || 'Review this item').replace(/ \((HTTP|FTP|Telnet|MQTT)\)$/, '');
+  return service?.port ? `${label} · port ${service.port}` : label;
+}
+
+export function firstActionPrecaution(device, service) {
+  if (!webPageInstructions(device, service)) return '';
+  return 'Before opening a device page, make sure it is yours or you have permission. Do not enter passwords or personal details on an HTTP page, and do not ignore certificate warnings.';
 }
 
 export function actionGuidance(step, check) {
@@ -69,6 +163,18 @@ export function deviceLabel(device) {
   if (!device) return 'Observed device';
   if (device.user_nickname) return `${device.user_nickname} (your nickname)`;
   return `${device.hostname || 'Unnamed device'}${device.hostname_source === 'saved_report' ? ' (previously reported)' : ''}`;
+}
+
+export function namingCoverage(devices = []) {
+  const own = devices.filter(device => device.user_nickname).length;
+  const previous = devices.filter(device => device.hostname && device.hostname_source === 'saved_report').length;
+  const current = devices.filter(device => device.hostname && device.hostname_source && device.hostname_source !== 'saved_report').length;
+  const unrecorded = devices.filter(device => device.hostname && !device.hostname_source).length;
+  const unnamed = devices.filter(device => !device.hostname).length;
+  return `${current} device${current === 1 ? '' : 's'} with names reported in this scan; ${previous} with earlier saved names; ${unnamed} without a detected name.`
+    + (unrecorded ? ` ${unrecorded} saved name${unrecorded === 1 ? ' has' : 's have'} no recorded source; when or how ${unrecorded === 1 ? 'it was' : 'they were'} obtained is uncertain.` : '')
+    + (own ? ` Your nicknames label ${own} device${own === 1 ? '' : 's'} separately.` : '')
+    + ` Names are clues, not verified identities. A missing name does not mean an intruder. For a better chance of finding a name, wake the device and use “${IDENTIFY_DEVICE_LABEL}”; no name is guaranteed.`;
 }
 
 export function pendingWording(data) {

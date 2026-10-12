@@ -5,6 +5,45 @@ Acceptance thresholds are in [quality-plan.md](quality-plan.md), not implied by 
 Current execution: [quality-evidence-20260928.md](quality-evidence-20260928.md).
 PASS/LIMITED/FAIL/PENDING apply to the stated test conditions, not a whole ISO standard.
 
+## Same-day repeat evidence — 12 October 2026
+
+[The repeat execution record](ui-ux-live-followups-20261012.md) adds Q03/Q06/Q11
+evidence for device-focused review, task-status visibility, accurate empty states,
+readable technical-table targets and three-engine regressions. Q04/Q09/Q13 are
+supported by raw/rule replay, source-bound AI validation, unchanged evidence hashes,
+no automatic provider requests and independent per-action user notes. Q12 also
+covers the fixed browser-port allocation harness. Q07 remains editorial only;
+real-reader, physical-device and assistive-technology results are still pending.
+Broader Windows cleanup limits are recorded without suppressing the callback or
+claiming standards certification.
+
+## Presentation follow-up — 9 October 2026
+
+The later [eight follow-ups](ui-ux-followups-20261009.md) add per-report reading-state
+recovery, consistent titles, non-obscuring navigation, concise progress announcements
+and visible practical help. New browser tasks pass in all three engines; isolated
+storage and announcement contracts are covered in `report_view_ui.test.mjs` and
+`dashboard_ui.test.mjs`. These add evidence for Q03/Q06/Q11/Q12 while retaining
+Q04/Q09/Q13 integrity and uncertainty safeguards. Manual Q07 evaluation remains open.
+
+The [UI/UX implementation record](ui-ux-implementation-20261009.md) maps all 28
+review findings to changes and verification. It adds evidence for:
+
+- Q03/Q06: stable keyboard selection, contextual editors, inline recovery, shared
+  navigation and independent Light/Deep tab workflows; `browser_test_ui_ux.py`,
+  `browser_test_settings_ui.py`, `browser_test_nicknames.py` and the existing workflow suite.
+- Q04/Q09/Q13: unchanged saved evidence, distinct failed/advertised/historical identity
+  states, readable facts without AI, and explicit rather than automatic CVE requests;
+  report/device component tests and guarded synthetic browser fixtures.
+- Q11/Q12: extracted display components, consolidated CSS, template/asset reachability
+  and an isolated offline installed-wheel check including shared template includes.
+- Q07: prepared revised-interface reader tasks in `evaluation-session.md`.
+  Comprehension targets remain unevaluated; automated tests and an assistant
+  walkthrough are not participant results or WCAG conformance certification.
+
+The dated table below remains the original baseline, not a claim that its historical
+counts or planned presentation work describe the current implementation.
+
 ## Follow-up evidence - 29 September 2026
 
 The table below preserves the 28 September baseline. Later evidence is recorded in

@@ -7,7 +7,8 @@ from fastapi import APIRouter, HTTPException, Request
 from app.api.dependencies import require_session
 from app.api.library import live_document, note_operation
 from app.explanations.cve import explain_cves
-from app.scanner.cve import NvdBusy, service_cpe
+from app.scanner.cpe import service_cpe
+from app.scanner.cve import NvdBusy
 from app.schemas.common import utc_now
 from app.storage.annotations import AnnotationStore
 

@@ -9,7 +9,9 @@ from urllib.parse import urlsplit
 
 def test_run_again_waits_for_loaded_report():
     template = Path(__file__).resolve().parents[2] / "app/templates/scan.html"
-    button = re.search(r'<button\b[^>]*id="runAgainButton"[^>]*>', template.read_text())
+    button = re.search(
+        r'<button\b[^>]*id="runAgainButton"[^>]*>', template.read_text(encoding="utf-8")
+    )
     assert button is not None
     assert re.search(r"\bdisabled\b", button.group())
 
@@ -61,6 +63,24 @@ def test_service_keeps_the_same_pure_validation_entry_point():
     from app.explanations.validation import validated_line
 
     assert ExplanationService._validated_line is validated_line
+
+
+def test_cpe_validation_is_pure_and_preserves_compatibility_imports():
+    from app.scanner import cpe, cve
+
+    assert cve.application_cpe is cpe.application_cpe
+    assert cve.service_cpe is cpe.service_cpe
+    root = Path(__file__).resolve().parents[2]
+    for name in ("cpe", "cpe_identity"):
+        tree = ast.parse((root / f"app/scanner/{name}.py").read_text(encoding="utf-8"))
+        imports = [node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+        assert "app.scanner.cve" not in imports and "cve" not in imports
+    pure = ast.parse((root / "app/scanner/cpe.py").read_text(encoding="utf-8"))
+    assert not any(
+        isinstance(node, ast.Import)
+        and any(alias.name in {"httpx", "socket", "subprocess"} for alias in node.names)
+        for node in ast.walk(pure)
+    )
 
 
 def test_shipped_templates_and_assets_are_reachable_from_pages():

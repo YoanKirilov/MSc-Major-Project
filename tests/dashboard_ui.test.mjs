@@ -2,10 +2,26 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { analysisProgressText, readScanSetup, ollamaStatusText } from '../app/static/js/report.mjs';
+import { analysisProgressText, readScanSetup, ollamaStatusText, progressAnnouncement } from '../app/static/js/report.mjs';
 
 const scanId = '11111111-1111-4111-8111-111111111111';
 const key = 'network-assessor-pending-scan';
+
+test('progress announcements use meaningful stage changes and bounded milestones, not elapsed ticks', () => {
+  const keys = new Set();
+  for (let completed = 0; completed <= 100; completed++) {
+    const data = { phase: 'service_scan', coverage: { discovered_count: 100, service_completed_count: completed } };
+    const speech = progressAnnouncement(data, false);
+    keys.add(speech.key);
+    assert.deepEqual(progressAnnouncement({ ...data, elapsed_s: 999999 }, false), speech);
+    assert.doesNotMatch(speech.message, /passed|secure/);
+  }
+  assert.equal(keys.size, 5);
+  assert.equal(progressAnnouncement({ phase: 'service_scan', coverage: { candidate_count: 1, service_completed_count: 1 } }, true).key, 'service_scan:0');
+  for (const completed of [-1, 101, NaN, 1.5]) assert.equal(progressAnnouncement({ phase: 'analysis', analysis_progress: { total: 100, completed } }).key, 'analysis:0');
+  assert.match(progressAnnouncement({ phase: 'analysis', analysis_progress: { state: 'waiting' } }).message, /Waiting for local AI/);
+  assert.match(progressAnnouncement({ phase: 'analysis', analysis_progress: { total: 4, completed: 2 } }).message, /2 of 4 wording items prepared/);
+});
 test('Deep uses stage activity during its device check and exact AI counts afterwards', async () => {
   let phase = 'service_scan';
   const app = setup(async path => path === '/api/status' ? { ...ready, active_scan_ids: [scanId] } : path === `/api/scans/${scanId}`
@@ -64,11 +80,15 @@ test('missing activity time and AI phase do not invent scanner timing', async ()
 function setup(request, saved = null, hash = '', pathname = '/') {
   const elements = new Map();
   class Element {
-    constructor() { this.events = {}; this.textContent = ''; this.style = {}; this.dataset = {}; this.classList = { toggle() {} }; }
+    constructor() { this.events = {}; this.textContent = ''; this.style = {}; this.dataset = {}; this.attributes = {}; this.classList = { toggle() {} }; }
+    setAttribute(name, value) { this.attributes[name] = String(value); }
+    removeAttribute(name) { delete this.attributes[name]; }
     addEventListener(name, fn) { this.events[name] = fn; }
     querySelector() { return this.label ||= new Element(); }
     replaceChildren() { this.children = []; }
     append(child) { (this.children ||= []).push(child); }
+    insertBefore(child, before) { this.inserted = { child, before }; }
+    scrollIntoView() { this.scrolls = (this.scrolls || 0) + 1; }
   }
   const storage = new Map(saved ? [[key, saved]] : []);
   const timers = [];
@@ -76,13 +96,63 @@ function setup(request, saved = null, hash = '', pathname = '/') {
     getItem(k) { return storage.get(k); }, setItem(k, v) { storage.set(k, v); }, removeItem(k) { storage.delete(k); },
   } };
   const document = { createElement() { return new Element(); }, querySelector(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, querySelectorAll() { return []; } };
-  const context = vm.createContext({ document, window, request, analysisProgressText, readScanSetup, ollamaStatusText, URLSearchParams, configurePicker() {}, startSetupTools() {} });
+  const context = vm.createContext({ document, window, request, analysisProgressText, progressAnnouncement, readScanSetup, ollamaStatusText, URLSearchParams, configurePicker() {}, startSetupTools() {} });
   const source = readFileSync(new URL('../app/static/js/dashboard.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\nloadStatus\(\);\s*$/, '');
   vm.runInContext(source, context);
   return { elements, storage, window, timers, context, load: () => vm.runInContext('loadStatus()', context) };
 }
 const ready = { ui_contract_version: 1, scanner_available: true, allowed_network: '192.168.0.0/24', storage_status: 'ok', ai_available: true };
+
+test('refresh restores immutable Deep target and promotes progress once, including general page', async () => {
+  for (const pathname of ['/deep', '/']) {
+    const calls = [];
+    const app = setup(async path => {
+      calls.push(path);
+      if (path === '/api/status') return ready;
+      if (path === `/api/scans/${scanId}`) return { policy: { profile: 'deep-tcp-v1' }, target: { hosts: ['192.168.0.216'] } };
+      return { state: 'running', phase: 'service_scan', coverage: { candidate_count: 1 } };
+    }, null, `#scan=${scanId}`, pathname);
+    await app.load();
+    assert.equal(app.elements.get('#deepHostInput').value, '192.168.0.216');
+    assert.equal(app.elements.get('#deepHostInput').disabled, true);
+    assert.equal(app.elements.get('#recentDeviceSelect').disabled, true);
+    assert.equal(app.elements.get('#refreshDeviceChoices').disabled, true);
+    assert.match(app.elements.get('#progressTarget').textContent, /192\.168\.0\.216.*fixed/);
+    const progress = app.elements.get('#scanProgress');
+    assert.equal(app.elements.get('.scan-home-main').inserted.child, progress);
+    assert.equal(progress.scrolls, 1);
+    await app.timers.shift()();
+    assert.equal(progress.scrolls, 1);
+    assert.ok(calls.every(path => path !== '/api/live-scans'));
+  }
+});
+
+test('metadata outage retains the pinned job and disabled setup while progress stays readable', async () => {
+  const app = setup(async path => {
+    if (path === '/api/status') return ready;
+    if (path === `/api/scans/${scanId}`) throw Object.assign(new Error('storage busy'), { status: 503 });
+    return { state: 'running', phase: 'analysis' };
+  }, null, `#scan=${scanId}`, '/deep');
+  await app.load();
+  assert.equal(app.elements.get('#scanLaunchButton').disabled, true);
+  assert.equal(app.elements.get('#deepHostInput').disabled, true);
+  assert.equal(app.window.location.hash, `#scan=${scanId}`);
+  assert.match(app.elements.get('#progressTarget').textContent, /saved target/);
+  assert.match(app.elements.get('#progressPhase').textContent, /easier to understand/);
+});
+
+test('missing pinned report returns usable setup instead of leaving the address disabled', async () => {
+  const app = setup(async path => {
+    if (path === '/api/status') return ready;
+    throw Object.assign(new Error('Not found'), { status: 404 });
+  }, null, `#scan=${scanId}`, '/deep');
+  await app.load();
+  assert.equal(app.elements.get('#deepHostInput').disabled, false);
+  assert.equal(app.elements.get('#recentDeviceSelect').disabled, false);
+  assert.equal(app.elements.get('#scanLaunchButton').disabled, false);
+  assert.match(app.elements.get('#scanError').textContent, /could not be found/);
+});
 
 test('network mismatch rechecks status without submitting a scan, then recovers', async () => {
   const calls = [];
@@ -152,7 +222,7 @@ test('version warning does not prevent recovery of an already running scan', asy
   }, scanId);
   await app.load();
   assert.equal(app.elements.get('#progressPhase').textContent, 'Making your results easier to understand.');
-  assert.deepEqual(calls, ['/api/status', `/api/live-scans/${scanId}/progress`]);
+  assert.deepEqual(calls, ['/api/status', `/api/scans/${scanId}`, `/api/live-scans/${scanId}/progress`]);
 });
 test('Scan stays disabled until scanner status is loaded', async () => {
   const app = setup(async () => ready);
@@ -179,7 +249,7 @@ test('refresh recovers saved AI progress without starting another scan', async (
   await app.load();
   assert.equal(app.elements.get('#progressPhase').textContent, 'Making your results easier to understand.');
   assert.equal(app.elements.get('#scanLaunchButton').disabled, true);
-  assert.deepEqual(calls, ['/api/status', `/api/live-scans/${scanId}/progress`]);
+  assert.deepEqual(calls, ['/api/status', `/api/scans/${scanId}`, `/api/live-scans/${scanId}/progress`]);
 });
 
 test('AI progress shows saved completed counts and distinguishes waiting', async () => {
@@ -208,7 +278,7 @@ test('refresh recovers device-details progress without starting another scan', a
   await app.load();
   assert.equal(app.elements.get('#progressPhase').textContent, 'Gathering device details');
   assert.equal(app.elements.get('#scanLaunchButton').disabled, true);
-  assert.deepEqual(calls, ['/api/status', `/api/live-scans/${scanId}/progress`]);
+  assert.deepEqual(calls, ['/api/status', `/api/scans/${scanId}`, `/api/live-scans/${scanId}/progress`]);
   assert.equal(app.window.location.href, undefined);
 });
 test('scan completed while tab was closed opens its saved report', async () => {
@@ -295,7 +365,7 @@ test('a pinned tab resumes its own scan even if storage points to another scan',
     return path === '/api/status' ? { ...ready, active_scan_ids: [scanId, second] } : { state: 'running', phase: 'service_scan' };
   }, scanId, `#scan=${second}`);
   await app.load();
-  assert.deepEqual(calls, ['/api/status', `/api/live-scans/${second}/progress`]);
+  assert.deepEqual(calls, ['/api/status', `/api/scans/${second}`, `/api/live-scans/${second}/progress`]);
   assert.equal(app.storage.get(key), second);
   await app.elements.get('#scanCancelButton').events.click();
   assert.equal(calls.at(-1), `/api/live-scans/${second}`);

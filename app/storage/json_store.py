@@ -7,11 +7,12 @@ import os
 import re
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 from uuid import UUID, uuid4
 
-from app.schemas.common import iso_z, utc_now
+from app.schemas.common import iso_z, observation_time, utc_now
 from app.schemas.projections import HistorySummary, ProgressSnapshot
 from app.schemas.scan import ScanDocument
 from app.schemas.settings import Settings, SettingsUpdate
@@ -402,7 +403,16 @@ class JsonStore:
                             "storage_status": "unreadable",
                         }
                     )
-        items.sort(key=lambda item: item["created_at"] or "", reverse=True)
+
+        def chronology(item):
+            observed = observation_time(item["created_at"])
+            return (
+                observed is not None,
+                observed or datetime.min.replace(tzinfo=timezone.utc),
+                item["scan_id"],
+            )
+
+        items.sort(key=chronology, reverse=True)
         return {
             "items": items[offset : offset + limit],
             "total": len(items),

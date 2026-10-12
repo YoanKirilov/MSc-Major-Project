@@ -1,11 +1,11 @@
 """Conservative NVD dictionary resolution, never generated aliases or port guesses."""
 
+from .cpe import application_cpe
+
 CPE_API = "https://services.nvd.nist.gov/rest/json/cpes/2.0"
 
 
 async def resolve_identity(query, fetch):
-    from app.scanner.cve import application_cpe
-
     fields = query.split(":")
 
     def compatible(name):

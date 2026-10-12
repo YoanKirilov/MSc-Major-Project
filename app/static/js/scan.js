@@ -1,8 +1,13 @@
 import { request } from './api.js?v=20261001-network-recovery';
+import { createTextEditor } from './editor.mjs?v=20261008-ui-ux';
+import { renderFindingList, findingDeviceOptions, repeatedUnknownReplies } from './finding-list.mjs?v=20261012-followups';
+import { createReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation } from './report-view.mjs?v=20261012-followups';
+import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from './devices.mjs?v=20261012-reading';
 import { createCvePanel } from './cves.mjs?v=20261002-cve';
-import { createNoteState, checkStatus, projectNotes } from './notes.mjs?v=20261006-notes';
-import { actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, featureLabel, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions } from './presentation.mjs?v=20261005-followup';
-import { partialScanTitle, prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261004-coverage';
+import { createNoteState, checkStatus, projectNotes } from './notes.mjs?v=20261012-followups';
+import { createNicknameState, projectNicknames } from './nicknames.mjs?v=20261007-followup';
+import { recordedTimeLabel, localFeatureHelp, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261012-reading';
+import { partialScanTitle, prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261007-clarity';
 
 const severityConfig = {
   high: { label: 'High', color: '#ff626d' },
@@ -37,6 +42,8 @@ const refreshGuidanceButton = document.querySelector('#refreshGuidanceButton');
 const guidanceNotice = document.querySelector('#guidance-notice');
 const scanProblems = document.querySelector('#scan-problems');
 const searchInput = document.querySelector('#searchInput');
+const reviewDevice = document.querySelector('#reviewDevice');
+let reviewDeviceSignature = '';
 const filterButtons = [...document.querySelectorAll('.filter-chip')];
 const nextStepsList = document.querySelector('#nextStepsList');
 const reportContent = document.querySelector('#report-content');
@@ -49,11 +56,148 @@ let currentData = null;
 let activeFilter = 'all';
 let searchTerm = '';
 let checklistSaving = false;
-const notes = createNoteState(snapshot => projectNotes(document, snapshot, {
-  disabled: checklistSaving || currentData?.phase !== 'finished', data: currentData,
-}));
+let revealFilteredTasks = false;
+const notes = createNoteState(snapshot => {
+  projectNotes(document, snapshot, {
+    disabled: checklistSaving || currentData?.phase !== 'finished', data: currentData,
+    expandFiltered: revealFilteredTasks,
+  });
+  revealFilteredTasks = false;
+});
 const expandedDevices = new Map();
+const expandedSteps = new Map();
+const editor = createTextEditor(document);
+const deviceSearchInput = document.querySelector('#deviceSearchInput');
+let deviceSearchTerm = '';
+let deviceLimit = 24;
+let detailSignature = '';
+let tasksSignature = '';
 let nicknamePollScheduled = false;
+const nicknameState = createNicknameState();
+let nicknameSaving = false;
+const retryReportLoad = document.querySelector('#retryReportLoad');
+retryReportLoad.addEventListener('click', () => { retryReportLoad.disabled = true; poll(); });
+const readingState = createReadingState(() => window.sessionStorage, scanId);
+const savedReading = readingState.load();
+const textAlignment = document.querySelector('#textAlignment');
+textAlignment.value = savedReading?.alignment || 'justify';
+document.body.dataset.textAlignment = textAlignment.value;
+textAlignment.addEventListener('change', () => {
+  document.body.dataset.textAlignment = textAlignment.value === 'left' ? 'left' : 'justify';
+  rememberReading();
+});
+document.addEventListener?.('click', event => {
+  if (!event.target?.closest?.('[data-glossary-link]')) return;
+  event.preventDefault();
+  const glossary = document.querySelector('#report-glossary');
+  glossary.open = true;
+  glossary.scrollIntoView({ block: 'start', behavior: 'instant' });
+  glossary.querySelector('summary').focus({ preventScroll: true });
+});
+let readingRestored = false;
+let restoringReading = Boolean(savedReading);
+if (savedReading) {
+  selectedFinding = savedReading.selected;
+  activeFilter = savedReading.filter;
+  searchInput.value = savedReading.search;
+  searchTerm = savedReading.search.trim().toLowerCase();
+  deviceSearchInput.value = savedReading.devices;
+  deviceSearchTerm = savedReading.devices.trim().toLowerCase();
+  deviceLimit = savedReading.limit;
+  document.querySelector('#deviceSort').value = savedReading.sort;
+  document.querySelector('#checklist-filter').value = savedReading.tasks;
+  filterButtons.forEach(button => {
+    const active = button.dataset.filter === activeFilter;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+bindReportNavigation(document, window);
+if (window.history && 'scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+
+function rememberReading() {
+  if (restoringReading || currentData?.phase !== 'finished') return;
+  readingState.save({ version: 1, selected: selectedFinding,
+    search: searchInput.value, devices: deviceSearchInput.value, filter: activeFilter,
+    tasks: document.querySelector('#checklist-filter').value,
+    sort: document.querySelector('#deviceSort').value, limit: deviceLimit,
+    alignment: document.body.dataset.textAlignment,
+    reviewDevice: reviewDevice.value,
+    open: openDisclosureKeys(document), y: window.scrollY || 0 });
+}
+for (const event of ['input', 'change', 'click', 'toggle']) {
+  document.addEventListener?.(event, () => window.setTimeout(rememberReading, 0), true);
+}
+window.addEventListener?.('pagehide', rememberReading);
+let readingScrollTimer;
+window.addEventListener?.('scroll', () => {
+  window.clearTimeout(readingScrollTimer);
+  readingScrollTimer = window.setTimeout(rememberReading, 150);
+}, { passive: true });
+
+function restoreReading() {
+  if (readingRestored) return;
+  readingRestored = true;
+  const apply = () => {
+    if (savedReading) {
+      restoreDisclosures(document, savedReading.open);
+      deviceSummaries.querySelectorAll('.device-summary-group').forEach(group => {
+        expandedDevices.set(group.dataset.deviceIp, group.querySelector('.device-summary').open);
+      });
+      nextStepsList.querySelectorAll('.next-step-checklist').forEach(detail => {
+        expandedSteps.set(detail.dataset.findingId, detail.open);
+      });
+      notes.refresh();
+    }
+    const scroll = () => {
+      const anchors = ['first-action', 'devices-title', 'findings-title', 'next-title', 'changes-title'];
+      const anchor = window.location.hash?.slice(1);
+      const navigation = window.performance?.getEntriesByType('navigation')[0]?.type;
+      const returning = savedReading && ['reload', 'back_forward'].includes(navigation);
+      if (!returning && anchors.includes(anchor)) document.querySelector(`#${anchor}`)?.scrollIntoView({ block: 'start' });
+      else if (savedReading) window.scrollTo({ top: savedReading.y, behavior: 'instant' });
+      restoringReading = false;
+      reportContent.inert = false;
+      reportContent.dataset.readingReady = 'true';
+    };
+    if (window.requestAnimationFrame) window.requestAnimationFrame(scroll);
+    else scroll();
+  };
+  // Native disclosure layout and the sticky-nav offset must settle before scrolling.
+  if (window.requestAnimationFrame) window.requestAnimationFrame(apply);
+  else apply();
+}
+
+function refreshNicknameProjection() {
+  if (!currentData || currentData.phase !== 'finished' || !Array.isArray(currentData.devices)) return;
+  const focused = document.activeElement;
+  const identity = focused?.dataset;
+  const inNextSteps = Boolean(focused?.closest?.('.next-step-checklist'));
+  projectNicknames(currentData, nicknameState);
+  renderFindings(currentData);
+  renderDevices(currentData);
+  renderNextSteps(currentData);
+  renderBeginnerGuide(currentData);
+  notes.refresh();
+  if (document.activeElement === document.body && identity) {
+    const controls = identity.nicknameDevice ? document.querySelectorAll('[data-nickname-device]')
+      : identity.findingId ? document.querySelectorAll(inNextSteps ? '#nextStepsList .action-check select' : '#detailPanel .action-check select') : [];
+    const replacement = [...controls].find(control => identity.nicknameDevice
+      ? control.dataset.nicknameDevice === identity.nicknameDevice
+      : control.dataset.findingId === identity.findingId && control.dataset.actionId === identity.actionId);
+    if (!replacement?.disabled) replacement?.focus({ preventScroll: true });
+  }
+}
+
+function adoptNicknameSnapshot(update) {
+  const previous = nicknameState.value;
+  if (!nicknameState.apply(update)) return false;
+  const notice = nicknameState.value.recovery_notice;
+  if (notice && notice !== previous?.recovery_notice) status.textContent += ` ${notice}`;
+  if (currentData) delete currentData.nickname_error;
+  refreshNicknameProjection();
+  return true;
+}
 
 function actionChecklist(finding, action) {
   const container = text('div', '', 'action-check');
@@ -63,7 +207,7 @@ function actionChecklist(finding, action) {
   const explanation = explanationFor(finding);
   const actionIndex = finding.actions.findIndex(item => item.action_id === action.action_id);
   const step = explanation.content.recommended_steps?.[actionIndex] || action.text;
-  label.append(text('span', `Your checklist — ${actionDeviceLabel(device, currentData)}${service ? `, ${formatServiceLabel(service)}` : ''}: ${step}`));
+  label.append(text('span', 'Your review status'), text('span', ` for ${actionDeviceLabel(device, currentData)}${service ? `, ${formatServiceLabel(service)}` : ''}: ${step}`, 'sr-only'));
   const select = document.createElement('select');
   select.dataset.findingId = finding.finding_id;
   select.dataset.actionId = action.action_id;
@@ -106,44 +250,87 @@ function actionChecklist(finding, action) {
     }
   });
   label.append(select);
-  container.append(label, feedback, text('small', 'Your own review status, not confirmation that the device is safe.', 'action-check-note'));
+  container.append(label, feedback);
   return container;
 }
 
-document.querySelector('#editReportTitle').addEventListener('click', async () => {
+document.querySelector('#editReportTitle').addEventListener('click', event => {
   if (!notes.value || checklistSaving) return;
-  const value = window.prompt('A title for this saved report (up to 100 characters). Leave empty to remove it.', notes.value.title || '');
-  if (value === null) return;
-  try {
-    notes.apply(await request(`/api/live-scans/${scanId}/title`, {
-      method: 'PUT', body: JSON.stringify({ title: value, expected_revision: notes.value.revision }),
-    }));
-  } catch (error) {
-    try { notes.apply(await request(`/api/live-scans/${scanId}/annotations`)); }
-    catch { notes.apply(null); }
-    status.textContent = `${error.message} Your title was not saved; review the latest notes before trying again.`;
-  }
+  let expectedRevision = notes.value.revision;
+  editor.open({
+    title: 'Name this saved report', label: 'Your report title', maxLength: 100,
+    value: notes.value.title || '', trigger: event.currentTarget,
+    resolveTrigger: () => document.querySelector('#editReportTitle'),
+    hint: 'Use up to 100 characters. Leave empty to remove your title. Scan observations are unchanged.',
+    onSave: async value => {
+      try {
+        notes.apply(await request(`/api/live-scans/${scanId}/title`, {
+          method: 'PUT', body: JSON.stringify({ title: value, expected_revision: expectedRevision }),
+        }));
+        updateDocumentTitle();
+      } catch (error) {
+        try { notes.apply(await request(`/api/live-scans/${scanId}/annotations`)); } catch { notes.apply(null); }
+        if (notes.value) expectedRevision = notes.value.revision;
+        throw new Error(`Your title was not saved. ${error.message} ${notes.value ? 'Latest saved title: ' + (notes.value.title || '(no title)') + '. Review your draft before saving again.' : 'Reconnect before trying again.'}`);
+      }
+    },
+  });
 });
 
-document.querySelector('#checklist-filter').addEventListener('change', () => notes.refresh());
+document.querySelector('#checklist-filter').addEventListener('change', () => {
+  revealFilteredTasks = true;
+  notes.refresh();
+});
+document.querySelector('#expandReviewTasks').addEventListener('click', () => {
+  document.querySelectorAll('.next-step-checklist').forEach(item => {
+    if (!item.closest('li')?.hidden) item.open = true;
+  });
+});
+document.querySelector('#collapseReviewTasks').addEventListener('click', () => {
+  document.querySelectorAll('.next-step-checklist').forEach(item => {
+    if (item.closest('li')?.hidden) return;
+    item.open = false;
+    expandedSteps.set(item.dataset.findingId, false);
+  });
+});
+deviceSearchInput.addEventListener('input', () => {
+  deviceSearchTerm = deviceSearchInput.value.trim().toLowerCase();
+  deviceLimit = 24;
+  if (currentData) renderDevices(currentData);
+});
+document.querySelector('#clearDeviceSearch').addEventListener('click', () => {
+  deviceSearchInput.value = '';
+  deviceSearchTerm = '';
+  deviceLimit = 24;
+  if (currentData) renderDevices(currentData);
+  deviceSearchInput.focus({ preventScroll: true });
+});
+document.querySelector('#deviceSort').addEventListener('change', () => {
+  deviceLimit = 24;
+  if (currentData) renderDevices(currentData);
+});
+document.querySelector('#showMoreDevices').addEventListener('click', () => {
+  deviceLimit += 24;
+  if (currentData) renderDevices(currentData);
+});
+const compactResults = window.matchMedia('(max-width: 880px)');
+compactResults.addEventListener('change', () => { if (currentData) renderFindings(currentData); });
+
+function updateDocumentTitle() {
+  const profile = currentData?.policy?.profile === 'deep-tcp-v1' ? 'Deep' : 'Light';
+  document.title = `${notes.value?.title || profile + ' scan report'} — ${recordedTimeLabel(currentData?.created_at, 'Date unavailable')} — NetGuard AI`;
+}
 
 function scheduleNicknameRefresh() {
   if (nicknamePollScheduled) return;
   nicknamePollScheduled = true;
   window.setTimeout(async () => {
     nicknamePollScheduled = false;
-    if (currentData?.phase === 'finished' && !document.hidden) {
+    if (currentData?.phase === 'finished' && !document.hidden && !nicknameSaving) {
       try {
-        const update = await request(`/api/live-scans/${scanId}/nicknames${Number.isInteger(currentData.nickname_revision) ? `?revision=${currentData.nickname_revision}` : ''}`);
-        if (update.changed) {
-          currentData.nickname_revision = update.revision;
-          currentData.user_nicknames = update.names;
-          currentData.devices = currentData.devices.map(device => ({ ...device, user_nickname: update.names[device.device_id] }));
-          renderFindings(currentData);
-          renderDevices(currentData);
-          renderNextSteps(currentData);
-          renderBeginnerGuide(currentData);
-        }
+        const update = await request(`/api/live-scans/${scanId}/nicknames${nicknameState.available ? `?revision=${nicknameState.value.revision}` : ''}`);
+        // Unchanged replies still carry recovery notices, but need no destructive redraw.
+        if (update.changed || (update.recovery_notice || '') !== (nicknameState.value?.recovery_notice || '')) adoptNicknameSnapshot(update);
       } catch { /* Preserve the readable report and retry on the next visible poll. */ }
     }
     scheduleNicknameRefresh();
@@ -166,12 +353,16 @@ retryHostsButton.addEventListener('click', async () => {
 
 searchInput.addEventListener('input', () => {
   searchTerm = searchInput.value.trim().toLowerCase();
-  if (currentData) { renderFindings(currentData); renderDevices(currentData); }
+  if (currentData) renderFindings(currentData);
+});
+reviewDevice.addEventListener('change', () => {
+  if (currentData) renderFindings(currentData);
 });
 document.querySelector('#clearSearchButton').addEventListener('click', () => {
   searchInput.value = '';
   searchTerm = '';
-  if (currentData) { renderFindings(currentData); renderDevices(currentData); }
+  if (currentData) renderFindings(currentData);
+  searchInput.focus({ preventScroll: true });
 });
 
 filterButtons.forEach((button) => button.addEventListener('click', () => {
@@ -274,26 +465,7 @@ function explanationFor(finding) {
   };
 }
 
-function visibleFindings(findings) {
-  return findings.filter((finding) => {
-    if (activeFilter !== 'all' && finding.severity !== activeFilter) return false;
-    if (!searchTerm) return true;
-    const device = currentData.devices.find((item) => item.device_id === finding.device_id);
-    const service = currentData.services.find((item) => item.service_id === finding.service_id);
-    const explanation = explanationFor(finding).content;
-    const searchable = [
-      explanationFor(finding).title,
-      explanation.meaning,
-      explanationFor(finding).limitations.join(' '),
-      device?.hostname,
-      device?.ip,
-      service?.name,
-      service?.port,
-      ...deviceSearchValues(device || {}, service ? [service] : []),
-    ];
-    return matchesSearch(searchTerm, searchable);
-  });
-}
+
 
 function renderFilterCounts(findings) {
   const severities = ['all', 'high', 'medium', 'low', 'informational'];
@@ -306,6 +478,13 @@ function renderFilterCounts(findings) {
 }
 
 function showDetail(finding) {
+  detailPanel.dataset.findingId = finding?.finding_id || '';
+  const device = currentData?.devices.find(item => item.device_id === finding?.device_id);
+  const service = currentData?.services.find(item => item.service_id === finding?.service_id);
+  const explanation = finding ? explanationFor(finding) : null;
+  const signature = JSON.stringify([finding, deviceLabel(device || {}), service, explanation, currentData?.guidance_history]);
+  if (signature === detailSignature) { notes.refresh(); return; }
+  detailSignature = signature;
   detailPanel.replaceChildren();
   if (!finding) {
     detailPanel.append(text('strong', 'No review item selected'), text('p', 'Select a review item to inspect what was observed and the suggested checks.'));
@@ -313,97 +492,97 @@ function showDetail(finding) {
   }
   const config = severityConfig[finding.severity] || severityConfig.informational;
   const top = text('div', '', 'detail-topline');
-  top.append(text('span', finding.severity === 'informational' ? 'Review item' : `${config.label} priority`, 'severity-badge'), text('span', `${confidenceLabel(finding.confidence)} — not a safety rating`, 'confidence'));
+  top.append(text('span', finding.severity === 'informational' ? 'Review item' : config.label + ' priority', 'severity-badge'),
+    text('span', confidenceLabel(finding.confidence) + ' — not a safety rating', 'confidence'));
   detailPanel.style.setProperty('--severity-color', config.color);
-  const device = currentData.devices.find((item) => item.device_id === finding.device_id);
-  const service = currentData.services.find((item) => item.service_id === finding.service_id);
-  const deviceDescription = device ? `${deviceLabel(device)} · ${device.ip}` : 'Observed device';
-  const serviceLabel = formatServiceLabel(service);
-  const explanation = explanationFor(finding);
-  detailPanel.append(top, text('h3', explanation.title), text('p', `${deviceDescription} · ${serviceLabel}`, 'detail-location'));
-  detailPanel.append(text(
-    'p',
-    explanation.aiAssisted
-      ? 'Local AI selected the validated wording shown here. Parts it could not simplify retain reviewed guidance; original wording is available below.'
-      : 'Reviewed plain-language guidance from the recorded observations, not a new AI conclusion. Original guidance is available below.',
-    `explanation-source${explanation.aiAssisted ? ' is-ai' : ''}`,
-  ));
+  const deviceDescription = device ? deviceLabel(device) + ' · ' + device.ip : 'Observed device';
+  detailPanel.append(top, text('h3', reviewItemTitle(finding, service, explanation.title)),
+    text('p', deviceDescription + ' · ' + formatServiceLabel(service), 'detail-location'));
   const block = (heading, value, className = 'detail-block') => {
     const section = text('div', '', className);
     section.append(text('h4', heading), text('p', value));
     return section;
   };
-  detailPanel.append(block('What we found', explanation.content.meaning), block('What this means for you', explanation.content.why_it_matters));
-  const savedCheck = savedCheckNote(device, service);
-  if (savedCheck) detailPanel.append(block('What this scan already checked', savedCheck));
-  const pageHelp = webPageInstructions(device, service);
-  if (pageHelp) detailPanel.append(block('How to open this page', pageHelp));
-  detailPanel.append(block('What we could not confirm', explanation.limitations.join(' ')));
-  if (Object.keys(explanation.rejectedFields).length) {
-    detailPanel.append(block('Why some wording remains rule-based', 'Some AI suggestions could not be accepted. Reviewed rule-based guidance is shown for: ' + wordingLabels(explanation.rejectedFields) + '. You can retry the remaining wording without scanning again.'));
-    const diagnostics = document.createElement('details');
-    diagnostics.append(text('summary', 'Technical wording checks'), text('p', JSON.stringify(explanation.rejectedFields)));
-    detailPanel.append(diagnostics);
+  detailPanel.append(block('What we found', explanation.content.meaning));
+  const featureHelp = localFeatureHelp(device, service, currentData);
+  if (featureHelp) {
+    const purpose = block(service.name === 'tcpwrapped' ? 'Why its purpose is unknown' : 'What this feature may do', featureHelp.meaning);
+    purpose.append(text('p', featureHelp.limitation, 'context-note'));
+    detailPanel.append(purpose);
   }
-  const previous = currentData.guidance_history?.[0]?.findings?.find((item) => item.finding_id === finding.finding_id);
-  if (previous) {
-    const saved = document.createElement('details');
-    saved.className = 'detail-block';
-    saved.append(text('summary', 'Guidance saved before the first refresh'));
-    saved.append(text('p', previous.title), text('p', previous.fixed_explanation.meaning), text('p', previous.fixed_explanation.why_it_matters));
-    previous.limitations.forEach((line) => saved.append(text('p', line)));
-    previous.actions.forEach((action) => saved.append(text('p', `${action.text} ${action.verification}`)));
-    detailPanel.append(saved);
-  }
-  if (explanation.aiAssisted || explanation.editorial) {
-    const original = document.createElement('details');
-    original.className = 'detail-block';
-    original.append(text('summary', 'Original rule-based explanation'));
-    original.append(text('p', finding.title));
-    original.append(text('p', finding.fixed_explanation.meaning));
-    original.append(text('p', finding.fixed_explanation.why_it_matters));
-    finding.limitations.forEach((item) => original.append(text('p', item)));
-    detailPanel.append(original);
-  }
-  const evidence = document.createElement('details');
-  evidence.className = 'detail-block';
-  evidence.append(text('summary', 'Technical evidence'));
-  finding.evidence.forEach((item) => evidence.append(text('p', `${item.field}: ${item.value}`)));
-  detailPanel.append(evidence);
-  if (service?.script_results?.length) {
-    const safeChecks = document.createElement('details');
-    safeChecks.className = 'detail-block';
-    safeChecks.append(text('summary', 'Technical service checks'));
-    service.script_results.forEach((item) => safeChecks.append(text('p', `${item.script_id}: ${item.output}`)));
-    detailPanel.append(safeChecks);
+  detailPanel.append(block('What this means for you', explanation.content.why_it_matters));
+  if (explanation.limitations.length) {
+    detailPanel.append(block('What we could not confirm', explanation.limitations.join(' ')));
   }
   const actions = text('div', '', 'detail-block recommendation');
-  actions.append(text('h4', 'What to do, and how to check it'));
+  actions.append(text('h4', 'What to do next'));
   const list = document.createElement('ol');
   list.className = 'remediation-list';
   finding.actions.forEach((action, index) => {
     const step = explanation.editorial || explanation.aiFields.includes('recommended_steps')
-      ? explanation.content.recommended_steps[index] || action.text
-      : action.text;
+      ? explanation.content.recommended_steps[index] || action.text : action.text;
     const check = explanation.editorial || explanation.aiFields.includes('how_to_check')
-      ? explanation.content.how_to_check[index] || action.verification
-      : action.verification;
+      ? explanation.content.how_to_check[index] || action.verification : action.verification;
     const item = document.createElement('li');
-    item.append(text('span', actionGuidance(step, check)));
-    item.append(actionChecklist(finding, action));
+    item.append(text('span', actionGuidance(step, check)), actionChecklist(finding, action));
     if (step !== action.text || check !== action.verification) {
       const original = document.createElement('details');
-      original.append(text('summary', 'Original rule-based step'));
-      original.append(text('p', `${action.text} ${action.verification}`));
+      original.append(text('summary', 'Original rule-based step'), text('p', action.text + ' ' + action.verification));
       item.append(original);
     }
     list.append(item);
   });
-  actions.append(list);
-  detailPanel.append(actions);
-  const references = text('div', '', 'detail-block');
+  if (list.childElementCount) { actions.append(list); detailPanel.append(actions); }
+  const pageHelp = webPageInstructions(device, service);
+  const savedCheck = savedCheckNote(device, service);
+  if (featureHelp?.check || pageHelp || savedCheck) {
+    const practical = text('div', '', 'detail-block practical-help');
+    practical.append(text('h4', 'Where to look and what to check'));
+    if (featureHelp?.check) practical.append(text('p', featureHelp.check));
+    if (pageHelp) practical.append(text('p', pageHelp));
+    if (savedCheck) practical.append(text('p', savedCheck));
+    detailPanel.append(practical);
+  }
+  const help = document.createElement('details');
+  help.className = 'detail-block supporting-details';
+  help.append(text('summary', 'Sources, explanation provenance and technical evidence'));
+  help.append(text('p', explanation.aiAssisted
+    ? 'Local AI contributed validated wording. Unaccepted fields keep reviewed rule-based guidance.'
+    : 'This wording uses reviewed rule-based guidance from the saved observations.', 'explanation-source'));
+  if (Object.keys(explanation.rejectedFields).length) {
+    help.append(block('Wording checks', 'AI wording was not accepted for: ' + wordingLabels(explanation.rejectedFields) + '. Reviewed rule-based guidance is used instead.'));
+    const diagnostics = document.createElement('details');
+    diagnostics.append(text('summary', 'Technical wording checks'), text('p', JSON.stringify(explanation.rejectedFields)));
+    help.append(diagnostics);
+  }
+  const previous = currentData.guidance_history?.[0]?.findings?.find(item => item.finding_id === finding.finding_id);
+  if (previous) {
+    const saved = document.createElement('details');
+    saved.append(text('summary', 'Guidance saved before the first refresh'),
+      text('p', previous.title), text('p', previous.fixed_explanation.meaning), text('p', previous.fixed_explanation.why_it_matters));
+    previous.limitations.forEach(line => saved.append(text('p', line)));
+    previous.actions.forEach(action => saved.append(text('p', action.text + ' ' + action.verification)));
+    help.append(saved);
+  }
+  if (explanation.aiAssisted || explanation.editorial) {
+    const original = document.createElement('details');
+    original.append(text('summary', 'Original rule-based explanation'), text('p', finding.title),
+      text('p', finding.fixed_explanation.meaning), text('p', finding.fixed_explanation.why_it_matters));
+    finding.limitations.forEach(item => original.append(text('p', item)));
+    help.append(original);
+  }
+  const evidence = document.createElement('details');
+  evidence.append(text('summary', 'Technical evidence'));
+  finding.evidence.forEach(item => evidence.append(text('p', item.field + ': ' + item.value)));
+  help.append(evidence);
+  if (service?.script_results?.length) {
+    const checks = document.createElement('details');
+    checks.append(text('summary', 'Technical service checks'));
+    service.script_results.forEach(item => checks.append(text('p', item.script_id + ': ' + item.output)));
+    help.append(checks);
+  }
   const referenceList = document.createElement('ul');
-  (finding.references || []).forEach((reference) => {
+  (finding.references || []).forEach(reference => {
     try {
       const url = new URL(reference.url);
       if (url.protocol !== 'https:') return;
@@ -413,17 +592,11 @@ function showDetail(finding) {
       link.textContent = reference.title || 'Read more';
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      item.append(link);
-      referenceList.append(item);
-    } catch {
-      // Invalid references are ignored instead of becoming clickable links.
-    }
+      item.append(link); referenceList.append(item);
+    } catch { /* Ignore unsafe or malformed source links. */ }
   });
-  if (referenceList.childElementCount) {
-    references.append(text('h4', 'Learn more'), referenceList);
-    detailPanel.append(references);
-  }
-  detailPanel.append(cvePanel(service));
+  if (referenceList.childElementCount) help.append(text('h4', 'Learn more'), referenceList);
+  detailPanel.append(help, cvePanel(service));
   notes.refresh();
 }
 
@@ -433,87 +606,133 @@ function cvePanel(service) {
     payload => payload.annotations ? notes.apply(payload.annotations) : true);
 }
 
-function renderFindings(data) {
+function renderFindings(data, { reveal = false, trigger = null } = {}) {
   currentData = data;
   const currentFindings = prioritise(data.findings, data.devices, data.services);
-  const visible = visibleFindings(currentFindings);
-  findingsList.replaceChildren();
-  const explanationNote = ` ${aiExplanationNote(data)}`;
+  const options = findingDeviceOptions(currentFindings, data.devices, deviceLabel);
+  const optionSignature = JSON.stringify(options);
+  if (reviewDeviceSignature !== optionSignature) {
+    const selected = reviewDeviceSignature ? reviewDevice.value : savedReading?.reviewDevice || 'all';
+    const all = text('option', `All devices (${currentFindings.length} items)`);
+    all.value = 'all';
+    reviewDevice.replaceChildren(all, ...options.map(item => {
+      const option = text('option', `${item.label} (${item.count} item${item.count === 1 ? '' : 's'})`);
+      option.value = item.id;
+      return option;
+    }));
+    reviewDevice.value = options.some(item => item.id === selected) ? selected : 'all';
+    reviewDevice.disabled = options.length === 0;
+    reviewDeviceSignature = optionSignature;
+  }
+  const searchMatches = currentFindings.filter(finding => (reviewDevice.value === 'all' || finding.device_id === reviewDevice.value) && findingMatchesSearch(finding, data));
+  renderFilterCounts(searchMatches);
+  const visible = searchMatches.filter(finding => activeFilter === 'all' || finding.severity === activeFilter);
   summary.textContent = currentFindings.length
-    ? ((visible.length === currentFindings.length
-      ? `Showing all ${currentFindings.length} review items.${explanationNote}`
-      : `Showing ${visible.length} of ${currentFindings.length} review items from this scan.${explanationNote}`))
-    : emptyFindingMessage(data) + explanationNote;
+    ? `Showing ${visible.length} of ${currentFindings.length} review items${reviewDevice.value === 'all' ? '' : ' for the selected device'}${searchTerm ? ' matching your search' : ''}${activeFilter !== 'all' ? ', ' + severityConfig[activeFilter].label + ' only' : ''}.`
+    : emptyFindingMessage(data);
+  const repeated = repeatedUnknownReplies(visible, data.services);
+  const repeatedNote = document.querySelector('#repeated-replies-note');
+  repeatedNote.hidden = repeated === 0;
+  repeatedNote.textContent = repeated ? `${repeated} items below record connection replies whose features could not be identified. Each numbered connection is listed separately; these are not confirmed software problems. The cause of the early closes is unknown. Do not disable protection just to clear these items.` : '';
   if (!visible.length) {
-    findingsList.append(text('div', currentFindings.length
-      ? 'No review items match the selected filter or search.'
+    if (detailPanel.parentElement !== findingsList.parentElement) findingsList.parentElement.append(detailPanel);
+    findingsList.replaceChildren(text('div', currentFindings.length
+      ? 'No review items match these filters. Clear the search or choose All to see more.'
       : emptyFindingMessage(data), 'empty-state'));
     showDetail(null);
     return;
   }
-  const selected = visible.find((finding) => finding.finding_id === selectedFinding) || visible[0];
+  const selected = visible.find(finding => finding.finding_id === selectedFinding) || visible[0];
   selectedFinding = selected.finding_id;
-  visible.forEach((finding) => {
-    const config = severityConfig[finding.severity] || severityConfig.informational;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `finding-card${selectedFinding === finding.finding_id ? ' selected' : ''}`;
-    button.setAttribute('aria-pressed', String(selectedFinding === finding.finding_id));
-    button.style.setProperty('--severity-color', config.color);
-    const bar = text('span', '', 'severity-bar');
-    const main = text('span', '', 'finding-main');
-    const meta = text('span', '', 'finding-meta');
-    const device = data.devices.find((item) => item.device_id === finding.device_id);
-    const service = data.services.find((item) => item.service_id === finding.service_id);
-    const deviceDescription = device ? `${deviceLabel(device)} · ${device.ip}` : 'Observed device';
-    const serviceLabel = formatServiceLabel(service);
-    const explanation = explanationFor(finding);
-    meta.append(text('span', config.label, 'severity-badge'), text('span', deviceDescription, 'device-name'));
-    main.append(meta, text('h3', explanation.title), text('p', `${serviceLabel} · ${explanation.content.meaning}`));
-    button.append(bar, main, text('span', '›', 'chevron'));
-    button.addEventListener('click', () => { selectedFinding = finding.finding_id; renderFindings(data); showDetail(finding); });
-    findingsList.append(button);
+  renderFindingList({
+    document, container: findingsList, layout: findingsList.parentElement, panel: detailPanel,
+    findings: visible, selectedId: selectedFinding, compact: compactResults.matches,
+    describe: finding => {
+      const config = severityConfig[finding.severity] || severityConfig.informational;
+      const device = data.devices.find(item => item.device_id === finding.device_id);
+      const service = data.services.find(item => item.service_id === finding.service_id);
+      const explanation = explanationFor(finding);
+      return { priority: config.label, color: config.color,
+        device: device ? `${deviceLabel(device)} · ${device.ip}` : 'Observed device',
+        title: reviewItemTitle(finding, service, explanation.title),
+        feature: formatServiceLabel(service) };
+    },
+    onSelect: (id, button) => { selectedFinding = id; renderFindings(currentData, { reveal: true, trigger: button }); },
   });
   showDetail(selected);
+  if (reveal) {
+    const selectedButton = [...findingsList.querySelectorAll('.finding-card')].find(button => button.dataset.findingId === selectedFinding);
+    (compactResults.matches ? selectedButton : detailPanel)?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    document.querySelector('#report-interaction-status').textContent = `Showing ${reviewItemTitle(selected, data.services.find(item => item.service_id === selected.service_id), explanationFor(selected).title)} for ${deviceLabel(data.devices.find(item => item.device_id === selected.device_id) || {})}.`;
+  }
+}
+
+function findingMatchesSearch(finding, data) {
+  if (!searchTerm) return true;
+  const device = data.devices.find(item => item.device_id === finding.device_id);
+  const service = data.services.find(item => item.service_id === finding.service_id);
+  const explanation = explanationFor(finding);
+  return matchesSearch(searchTerm, [explanation.title, explanation.content.meaning,
+    ...explanation.limitations, ...deviceSearchValues(device || {}, service ? [service] : [])], device?.ip);
+}
+
+function openReviewItem(findingId, trigger) {
+  activeFilter = 'all';
+  searchTerm = '';
+  searchInput.value = '';
+  reviewDevice.value = 'all';
+  filterButtons.forEach(button => {
+    const active = button.dataset.filter === 'all';
+    button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active));
+  });
+  selectedFinding = findingId;
+  renderFindings(currentData, { reveal: true });
+  detailPanel.focus({ preventScroll: true });
 }
 
 function renderNextSteps(data) {
+  const signature = JSON.stringify([data.findings, data.devices.map(device => [device.device_id, device.hostname, device.user_nickname]), data.services.map(service => [service.service_id, service.name, service.port]), data.explanations, data.plain_guidance, currentOverview(data), data.plain_overview, data.state, data.phase, data.coverage, data.analysis_status, data.guidance_status]);
+  if (signature === tasksSignature) { notes.refresh(); return; }
+  tasksSignature = signature;
   nextStepsList.replaceChildren();
-  const groups = new Map();
-  prioritise(data.findings, data.devices, data.services).forEach((finding) => {
-    const action = finding.actions?.[0];
-    if (!action) return;
-    const key = `${finding.rule_id || finding.title}:${action.text}`;
-    if (!groups.has(key)) groups.set(key, { finding, action, devices: [], entries: [] });
-    const device = data.devices.find((item) => item.device_id === finding.device_id);
-    const label = actionDeviceLabel(device, data);
-    if (!groups.get(key).devices.includes(label)) groups.get(key).devices.push(label);
-    groups.get(key).entries.push({ finding, action });
-  });
-  const steps = [...groups.values()].slice(0, 3);
-  if (!steps.length) {
+  const ordered = prioritise(data.findings, data.devices, data.services);
+  let index = 0;
+  for (const finding of ordered) {
+    if (!finding.actions?.length) continue;
+    const device = data.devices.find(item => item.device_id === finding.device_id);
+    const service = data.services.find(item => item.service_id === finding.service_id);
+    const explanation = explanationFor(finding);
+    const group = document.createElement('li');
+    const copy = document.createElement('div');
+    group.append(text('span', String(++index)), copy);
+    copy.append(text('strong', reviewItemTitle(finding, service, explanation.title)), text('p', `${actionDeviceLabel(device, data)} · ${formatServiceLabel(service)}`, 'review-task-context'));
+    const checklist = document.createElement('details');
+    checklist.className = 'next-step-checklist';
+    checklist.dataset.findingId = finding.finding_id;
+    checklist.open = expandedSteps.get(finding.finding_id) ?? false;
+    checklist.addEventListener('toggle', () => expandedSteps.set(finding.finding_id, checklist.open));
+    checklist.append(text('summary', `Record your review (${finding.actions.length} task${finding.actions.length === 1 ? '' : 's'})`));
+    finding.actions.forEach((action, actionIndex) => {
+      const task = text('div', '', 'review-task');
+      const step = explanation.content.recommended_steps?.[actionIndex] || action.text;
+      const check = explanation.content.how_to_check?.[actionIndex] || action.verification;
+      task.dataset.findingId = finding.finding_id;
+      task.dataset.actionId = action.action_id;
+      task.append(text('p', actionGuidance(step, check)), actionChecklist(finding, action));
+      checklist.append(task);
+    });
+    const open = text('button', 'Read the related review item', 'text-button');
+    open.type = 'button';
+    open.addEventListener('click', () => openReviewItem(finding.finding_id, open));
+    copy.append(checklist, open);
+    nextStepsList.append(group);
+  }
+  if (!index) {
     nextStepsList.append(text('li', emptyFindingMessage(data), 'empty-state'));
     const overview = currentOverview(data) || data.plain_overview;
-    (overview?.content.recommended_steps || []).forEach((step) => nextStepsList.append(text('li', step)));
-    return;
+    (overview?.content.recommended_steps || []).forEach(step => nextStepsList.append(text('li', step)));
   }
-  steps.forEach(({ finding, action, devices, entries }, index) => {
-    const item = document.createElement('li');
-    const copy = document.createElement('div');
-    const explanation = explanationFor(finding);
-    const actionIndex = finding.actions.findIndex((candidate) => candidate.action_id === action.action_id);
-    const step = explanation.editorial || explanation.aiFields.includes('recommended_steps')
-      ? explanation.content.recommended_steps[actionIndex] || action.text
-      : action.text;
-    const check = explanation.editorial || explanation.aiFields.includes('how_to_check')
-      ? explanation.content.how_to_check[actionIndex] || action.verification
-      : action.verification;
-    const guidance = actionGuidance(step, check);
-    item.append(text('span', String(index + 1)), copy);
-    copy.append(text('strong', explanation.title), text('p', `Applies to: ${devices.join('; ')}`), text('p', guidance));
-    entries.forEach(entry => copy.append(actionChecklist(entry.finding, entry.action)));
-    nextStepsList.append(item);
-  });
   notes.refresh();
 }
 
@@ -532,197 +751,177 @@ function currentOverview(data) {
 function renderBeginnerGuide(data) {
   const selfCheck = document.querySelector('#self-check-notice');
   selfCheck.hidden = !data.devices.some(device => recordedDeviceRole(device, data) === 'Computer that ran this scan');
-  selfCheck.textContent = 'This report includes a check on this computer itself. A program answering here does not show that another device, or someone on the internet, can reach it. Check firewall settings before drawing that conclusion.';
+  selfCheck.textContent = 'This report includes this computer. A program answering here does not prove that other devices or the internet can reach it; firewall access was not confirmed.';
   const overview = currentOverview(data) || data.plain_overview;
   const unfinished = (data.coverage?.service_failed_count || 0) > 0 || ['partial', 'failed', 'cancelled'].includes(data.state);
-  reportFirstStep.textContent = overview?.content.recommended_steps?.join(' ') || (unfinished
-    ? 'Review any listed items, then retry the unfinished device checks. Missing results cannot tell you whether those devices are safe.'
-    : data.findings.length ? 'Start with the first item below. Identify the device and follow the suggested checks before changing its settings.'
-      : 'Read what the scan managed to check. No listed items does not mean everything is safe.');
   const first = prioritise(data.findings, data.devices, data.services)[0];
+  const firstDevice = data.devices.find(item => item.device_id === first?.device_id);
+  const firstService = data.services.find(item => item.service_id === first?.service_id);
+  reportFirstStep.textContent = first
+    ? 'Start with ' + actionDeviceLabel(data.devices.find(item => item.device_id === first.device_id), data) + '. Confirm you recognise it before changing settings. ' + (explanationFor(first).content.recommended_steps?.[0] || first.actions?.[0]?.text || 'Open its review item below.')
+    : overview?.content.recommended_steps?.join(' ') || (unfinished
+      ? 'Retry the unfinished checks when those devices are available. Missing results cannot tell you whether a device is safe.'
+      : 'Check which devices and features were observed. No listed review items does not prove everything is safe.');
+  const precaution = document.querySelector('#first-action-precaution');
+  precaution.textContent = firstActionPrecaution(firstDevice, firstService);
+  precaution.hidden = !precaution.textContent;
+  const open = document.querySelector('#openFirstFinding');
+  open.hidden = !first;
+  open.onclick = () => { if (first) openReviewItem(first.finding_id, open); };
   const identify = document.querySelector('#identifyFirstDevice');
   identify.hidden = !first?.device_id;
   identify.onclick = () => {
     const device = data.devices.find(item => item.device_id === first?.device_id);
     if (!device) return;
-    searchInput.value = device.ip;
-    searchTerm = device.ip;
+    deviceSearchInput.value = device.ip;
+    deviceSearchTerm = device.ip;
+    deviceLimit = 24;
     expandedDevices.set(device.ip, true);
-    renderFindings(currentData);
     renderDevices(currentData);
-    const button = document.querySelector('#device-summaries .device-name-tools button');
-    button?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    button?.focus({ preventScroll: true });
+    // Recognition is an explicit request to reveal this device, unlike a
+    // background nickname refresh that must preserve collapsed disclosures.
+    const group = [...deviceSummaries.querySelectorAll('.device-summary-group')]
+      .find(item => item.dataset.deviceIp === device.ip);
+    const card = group?.querySelector('.device-summary');
+    if (card) card.open = true;
+    expandedDevices.set(device.ip, true);
+    const button = nicknameTrigger(device);
+    const target = button || document.querySelector('#device-summaries summary');
+    target?.scrollIntoView({ block: 'center', behavior: 'instant' });
+    target?.focus({ preventScroll: true });
   };
-  if (first) {
-    const device = data.devices.find((item) => item.device_id === first.device_id);
-    const action = explanationFor(first).content.recommended_steps?.[0] || first.actions?.[0]?.text;
-    reportFirstStep.textContent = `Device to check: ${actionDeviceLabel(device, data)}. Confirm that you recognise it before changing settings; use your router's device list or ask its owner if unsure. Then: ${action || 'open its review item below.'}`;
-  }
   reportChecks.textContent = completedCheckSummary(data);
+  const computerCoverage = document.querySelector('#scan-computer-coverage');
+  computerCoverage.textContent = scanComputerCoverage(data);
+  computerCoverage.hidden = !computerCoverage.textContent;
 }
 
 function deviceMatchesSearch(device, data) {
   const services = data.services.filter(item => item.device_id === device.device_id);
-  const findingWords = data.findings.filter(item => item.device_id === device.device_id)
-    .flatMap(item => [explanationFor(item).title, explanationFor(item).content.meaning]);
-  return matchesSearch(searchTerm, [...deviceSearchValues(device, services), ...findingWords]);
+  return matchesSearch(deviceSearchTerm, deviceSearchValues(device, services), device.ip);
 }
 
 function renderComparisons(data) {
-  const list = document.querySelector('#comparison-list');
-  list.replaceChildren();
+  const earlier = data.earlier_observations;
+  document.querySelector('#earlier-devices-note').textContent = earlier?.reason
+    || 'This saved report has no earlier-device comparison. Run a new Light network scan to record one; no conclusion about missing devices is available.';
+  const earlierList = document.querySelector('#earlier-devices-list');
+  earlierList.replaceChildren();
+  if (earlier?.status === 'available') {
+    for (const item of earlier.items || []) {
+      if (!matchesSearch(deviceSearchTerm, [item.reported_name, item.last_ip, item.name_source], item.last_ip)) continue;
+      earlierList.append(text('li', `${item.reported_name || 'No unambiguous name recorded'} (reported earlier). Last recorded address: ${item.last_ip}. Source: ${item.name_source || 'not recorded'}; observed ${recordedTimeLabel(item.observed_at)}.`));
+    }
+    if (!earlierList.childElementCount) earlierList.append(text('li', deviceSearchTerm
+      ? 'No earlier observations match this search.' : 'No unmatched earlier observations in the comparison available. This does not prove every device is present.'));
+    if (earlier.omitted_count) earlierList.append(text('li', `${earlier.omitted_count} additional earlier observations are not displayed because this view is limited to 50.`));
+    const source = text('a', 'Open the earlier source report');
+    if (/^[0-9a-f-]{36}$/i.test(earlier.source_scan_id || '')) {
+      source.href = `/scans/${earlier.source_scan_id}`;
+      const item = document.createElement('li'); item.append(source); earlierList.append(item);
+    }
+  }
   let comparable = 0;
   let unavailable = 0;
   for (const device of data.devices.filter(item => deviceMatchesSearch(item, data))) {
     const details = (device.details || []).filter(item => item.kind === 'history');
     if (details.some(item => item.label === 'Service comparison' && item.status === 'inferred')) comparable++;
     else unavailable++;
-    const card = text('article', '', 'device-summary');
-    card.append(text('h3', deviceLabel(device)));
-    card.append(text('p', `Network address: ${device.ip}`));
-    details.forEach(item => card.append(text('p', `${item.label}: ${item.value}`)));
-    if (!details.length) card.append(text('p', 'Comparison was not recorded in this saved report. It may predate comparison checks; no conclusion about changes is available.'));
-    list.append(card);
   }
-  if (!list.childElementCount) list.append(text('p', 'No saved comparison is available for these device results. This does not mean nothing changed.'));
   document.querySelector('#comparison-summary').textContent = comparable || unavailable
-    ? `For the displayed devices: ${comparable} service comparison${comparable === 1 ? ' is' : 's are'} available; ${unavailable} could not be compared reliably. Open the details for recorded differences.`
+    ? `For the matching devices: ${comparable} service comparison${comparable === 1 ? ' is' : 's are'} available; ${unavailable} could not be compared reliably. Open each device's About this device details for recorded differences.`
     : 'No saved comparison is available for these device results. A first scan or unmatched device can have no comparison; this does not mean nothing changed.';
 }
 
 function renderDeviceSummaries(data) {
-  deviceSummaries.replaceChildren();
-  const targets = data.coverage?.targets || [];
-  const entries = [...data.devices];
-  // A failed host may have no parsed Device, but must not disappear from this view.
-  for (const target of targets) {
-    if (['failed', 'timed_out', 'cancelled'].includes(target.service_status)
-        && !entries.some((device) => device.ip === target.ip)) entries.push({ ip: target.ip });
+  const rank = device => Math.min(4, ...data.findings.filter(item => item.device_id === device.device_id)
+    .map(item => ({high:0, medium:1, low:2, informational:3})[item.severity] ?? 4));
+  const mode = document.querySelector('#deviceSort').value;
+  const projected = renderDeviceComponents({
+    document, container: deviceSummaries, data, expandedDevices, matchesDevice: deviceMatchesSearch,
+    explanationFor, createCvePanel: cvePanel, notesSnapshot: notes.value,
+    nicknameAvailable: nicknameState.available, nicknameSaving, deviceLimit,
+    sortDevices: (a, b) => (mode === 'priority' ? rank(a) - rank(b) : 0)
+      || String(mode === 'name' ? deviceLabel(a) : a.ip).localeCompare(String(mode === 'name' ? deviceLabel(b) : b.ip), 'en', { numeric: true }),
+    onEditNickname: editNickname, onRefreshName: refreshDeviceName, onViewFinding: openReviewItem,
+  });
+  document.querySelector('#naming-coverage').textContent = projected.namingText;
+  document.querySelector('#device-search-count').textContent = projected.countText;
+  const more = document.querySelector('#showMoreDevices');
+  more.hidden = projected.visibleCount >= projected.matching.length;
+  more.textContent = `Show more devices (${Math.max(0, projected.matching.length - projected.visibleCount)} remaining)`;
+  document.querySelector('#devices-title').textContent = data.policy?.profile === 'deep-tcp-v1' && projected.entries.length === 1 ? 'This device' : 'Your devices';
+}
+
+function nicknameTrigger(device) {
+  return [...document.querySelectorAll('[data-nickname-device]')].find(button => button.dataset.nicknameDevice === device.device_id);
+}
+
+function nicknameFeedback(device, message) {
+  const group = [...deviceSummaries.querySelectorAll('.device-summary-group')].find(item => item.dataset.deviceId === device.device_id);
+  if (!group) return;
+  let feedback = group.querySelector('[data-nickname-status]');
+  if (!feedback) {
+    feedback = text('p', '', 'status-message'); feedback.dataset.nicknameStatus = 'true'; feedback.setAttribute('role', 'status');
+    group.querySelector('.device-name-tools').append(feedback);
   }
-  const matching = entries.filter(device => deviceMatchesSearch(device, data));
-  document.querySelector('#device-search-count').textContent = `Showing ${matching.length} of ${entries.length} device results. Devices without review items are included.`;
-  for (const device of matching) {
-    const target = targets.find((item) => item.ip === device.ip);
-    const findings = device.device_id ? data.findings.filter((item) => item.device_id === device.device_id) : [];
-    const services = device.device_id ? data.services.filter((item) => item.device_id === device.device_id && item.state === 'open') : [];
-    const card = document.createElement('details');
-    card.className = 'device-summary';
-    const group = text('div', '', 'device-summary-group');
-    const nameTools = text('div', '', 'device-name-tools');
-    const compact = window.matchMedia?.('(max-width: 640px)').matches ?? false;
-    card.open = expandedDevices.get(device.ip) ?? !compact;
-    card.addEventListener('toggle', () => expandedDevices.set(device.ip, card.open));
-    const heading = text('summary', deviceLabel(device));
-    const recordedRole = recordedDeviceRole(device, data);
-    if (recordedRole) heading.append(text('span', recordedRole, 'device-summary-preview'));
-    heading.append(text('span', ` — ${services.length} features, ${findings.length} review items. ${target?.service_status === 'completed' ? 'Selected checks finished; not a safety verdict.' : 'Checks incomplete.'}`, 'device-summary-preview'));
-    card.append(heading);
-    group.append(card, nameTools);
-    deviceSummaries.append(group);
-    const historical = device.hostname_source === 'saved_report';
-    card.append(text('p', `Network address: ${device.ip}`));
-    if (historical) card.append(text('p', 'This name came from a previous scan; it was not confirmed this time.'));
-    if (device.hostname_conflict) card.append(text('p', 'Different sources gave different names. Check the name details below before identifying this device.'));
-    const finished = target?.service_status === 'completed';
-    card.append(text('p', finished
-      ? 'Selected checks finished; not a full security assessment.'
-      : 'We could not confirm that all selected checks finished for this device. Missing results do not mean it is safe.'));
-    card.append(text('p', services.length
-      ? `${services.length} feature${services.length === 1 ? ' was' : 's were'} accepting requests. This does not show that anyone was using them.`
-      : 'No features accepting requests recorded in the selected checks.'));
-    if (services.length) {
-      const features = document.createElement('ul');
-      services.slice(0, 5).forEach((service) => features.append(text('li', featureLabel(service))));
-      card.append(features);
-      if (services.length > 5) card.append(text('p', `${services.length - 5} more features are listed in the device table below.`));
-    }
-    const eligibleServices = services.filter(service => service.cve_lookup_available);
-    if (eligibleServices.length) {
-      const references = document.createElement('details');
-      references.append(text('summary', 'Check published software problems (CVE references)'));
-      eligibleServices.forEach(service => {
-        references.append(text('h4', formatServiceLabel(service)), cvePanel(service));
-      });
-      card.append(references);
-    }
-    const first = prioritise(findings, data.devices, data.services)[0];
-    card.append(text('p', first
-      ? `${findings.length} item${findings.length === 1 ? '' : 's'} to review. Start with: ${explanationFor(first).title}. See the suggested checks above.`
-      : 'No review items recorded; this is not proof of safety.'));
-    if (!finished) card.append(text('p', 'Next: if this is your device, check it is switched on and connected, then retry its unfinished checks.'));
-    else if (!device.hostname) card.append(text('p', "Next: compare this address with your router's device list before changing any settings."));
-    if (device.device_id) {
-      const edit = text('button', device.user_nickname ? 'Edit or remove your nickname' : 'Add your own nickname', 'text-button');
-      edit.type = 'button';
-      edit.disabled = !Number.isInteger(data.nickname_revision);
-      edit.addEventListener('click', async () => {
-        const nickname = window.prompt('Your nickname for this device (not a detected name). Leave empty to remove it. Reuse across scans requires a recent, unambiguous adapter match.', device.user_nickname || '');
-        if (nickname === null) return;
-        if (nickname.length > 80 || /[\r\n\t]/.test(nickname)) {
-          status.textContent = 'Use a nickname of up to 80 characters on one line.';
-          return;
-        }
-        edit.disabled = true;
-        try {
-          await request(`/api/live-scans/${scanId}/devices/${device.device_id}/nickname`, {
-            method: 'PUT', body: JSON.stringify({ nickname, expected_revision: data.nickname_revision }),
-          });
-          render(await request(`/api/live-scans/${scanId}`));
-        } catch (error) { status.textContent = error.message; edit.disabled = false; }
-      });
-      edit.className = 'primary-button';
-      nameTools.append(edit);
-      if (data.phase === 'finished') {
-        const refresh = text('button', 'Try identifying this address again', 'text-button');
-        refresh.type = 'button';
-        const lookupStatus = text('p', '', 'identification-status');
-        lookupStatus.setAttribute('role', 'status');
-        lookupStatus.hidden = true;
-        refresh.addEventListener('click', async () => {
-          const hadFocus = document.activeElement === refresh;
-          if (!window.confirm(`Look up names for ${device.ip} on your authorised network? This address may now belong to a different device. Only DNS and enabled local announcements are checked; no port scan starts.`)) return;
-          refresh.disabled = true;
-          lookupStatus.hidden = false;
-          lookupStatus.textContent = 'Looking for a name. Your saved scan results will not change.';
-          try {
-            notes.apply(await request(`/api/live-scans/${scanId}/devices/${device.device_id}/refresh-name`, {
-              method: 'POST', body: JSON.stringify({ authorised: true }),
-            }));
-          } catch (error) { lookupStatus.textContent = `Name lookup could not finish. ${error.message}`; }
-          finally {
-            refresh.disabled = false;
-            if (hadFocus && document.activeElement === document.body) refresh.focus({ preventScroll: true });
-          }
+  feedback.textContent = message;
+}
+
+function editNickname(device, trigger) {
+  if (!nicknameState.available || nicknameSaving) return;
+  let expectedRevision = nicknameState.value.revision;
+  editor.open({
+    title: 'Your nickname for this device', label: 'Your nickname', maxLength: 80,
+    value: device.user_nickname || '', trigger, resolveTrigger: () => nicknameTrigger(device),
+    resolveFallback: () => deviceSearchInput,
+    hint: `Address: ${device.ip}. Use up to 80 characters; leave empty to remove. This is your label, not a detected or verified name. Reuse across scans requires a recent, unambiguous adapter match.`,
+    onSave: async nickname => {
+      if (!nicknameState.available) throw new Error('Reconnect to the saved names before editing. Your draft has not been saved.');
+      nicknameSaving = true;
+      document.querySelectorAll('[data-nickname-device]').forEach(button => { button.disabled = true; });
+      let committed = false;
+      try {
+        const receipt = await request(`/api/live-scans/${scanId}/devices/${device.device_id}/nickname`, {
+          method: 'PUT', body: JSON.stringify({ nickname, expected_revision: expectedRevision }),
         });
-        card.append(refresh, lookupStatus);
-        const laterDetails = text('div', '');
-        laterDetails.dataset.notePanel = 'name';
-        let shownNameNotes = '';
-        laterDetails.updateNotes = snapshot => {
-          const later = snapshot?.name_refreshes?.find(item => item.device_id === device.device_id);
-          const signature = later ? JSON.stringify(later) : '';
-          if (signature === shownNameNotes) return;
-          shownNameNotes = signature;
-          const wasOpen = laterDetails.querySelector?.('details')?.open || false;
-          laterDetails.replaceChildren();
-          if (!later) { lookupStatus.hidden = true; lookupStatus.textContent = ''; return; }
-          lookupStatus.hidden = false;
-          lookupStatus.textContent = later.names.length
-            ? `The last lookup returned ${later.names.length} reported name${later.names.length === 1 ? '' : 's'}: ${later.names.map(item => item.name).join(', ')}. These are unverified claims; your saved device name has not changed.`
-            : 'No new name found in the last lookup. Your saved device name has not changed; this does not mean the device is absent or safe.';
-          const extra = document.createElement('details');
-          extra.open = wasOpen;
-          extra.append(text('summary', `Later identification lookup — ${new Date(later.checked_at).toLocaleString()}`));
-          later.names.forEach(item => extra.append(text('p', `${item.name} — ${item.source}, ${item.observed_at}. Unverified name claim.`)));
-          later.notes.forEach(note => extra.append(text('p', note)));
-          laterDetails.append(extra);
-        };
-        laterDetails.updateNotes(notes.value);
-        card.append(laterDetails);
+        committed = true;
+        if (!nicknameState.confirmRevision(receipt.nickname_revision)) throw new Error('The saved nickname version could not be confirmed.');
+        render(await request(`/api/live-scans/${scanId}`));
+        nicknameFeedback(device, 'Your nickname was saved. Reported names and scan evidence are unchanged.');
+        status.textContent += ' Your nickname was saved; detected names and scan results are unchanged.';
+      } catch (error) {
+        let loaded = false;
+        try { loaded = adoptNicknameSnapshot(await request(`/api/live-scans/${scanId}/nicknames`)); }
+        catch { nicknameState.unavailable(); refreshNicknameProjection(); }
+        if (nicknameState.available) expectedRevision = nicknameState.value.revision;
+        const result = committed ? 'Your nickname was saved, but its latest display could not be loaded.'
+          : error.status === 409 ? 'Your nickname change was not saved.' : 'The nickname save could not be confirmed.';
+        const message = `${result} ${error.message}${loaded ? ' Latest nicknames loaded; review them before trying again.' : ' Reload to reconnect before editing.'}`;
+        status.textContent = message;
+        nicknameFeedback(device, message);
+        throw new Error(message);
+      } finally {
+        nicknameSaving = false;
+        document.querySelectorAll('[data-nickname-device]').forEach(button => { button.disabled = !nicknameState.available; });
       }
-    }
-    if (!device.device_id) nameTools.append(text('p', 'A name can be saved after this device returns a usable result.'));
+    },
+  });
+}
+
+async function refreshDeviceName(device, trigger, localStatus) {
+  if (!window.confirm(`Look up names for ${device.ip} on your authorised network? This address may now belong to a different device. Only DNS and enabled local announcements are checked; no port scan starts.`)) return;
+  const hadFocus = document.activeElement === trigger;
+  trigger.disabled = true; localStatus.hidden = false;
+  localStatus.textContent = 'Looking for a name. The original report will not change.';
+  try {
+    notes.apply(await request(`/api/live-scans/${scanId}/devices/${device.device_id}/refresh-name`, {
+      method: 'POST', body: JSON.stringify({ authorised: true }),
+    }));
+  } catch (error) { localStatus.textContent = `Name lookup could not finish. ${error.message}`; }
+  finally {
+    trigger.disabled = false;
+    if (hadFocus && document.activeElement === document.body && trigger.isConnected) trigger.focus({ preventScroll: true });
   }
 }
 
@@ -817,21 +1016,29 @@ function renderDevices(data) {
 }
 
 function renderAdvertisements(data) {
-  const observations = (data.observations || []).filter((item) => item.source === 'mdns');
+  const deviceAddresses = new Set(deviceResultEntries(data).map(device => device.ip));
+  const observations = (data.observations || []).filter(item => item.source === 'mdns' && !deviceAddresses.has(item.ip));
   mdnsSection.hidden = observations.length === 0;
   mdnsList.replaceChildren();
-  observations.forEach((item) => {
+  observations.forEach(item => {
     const features = { _http: 'a device web page', _https: 'an encrypted device web page',
       _ipp: 'printing', _ipps: 'encrypted printing', _printer: 'printing', _airplay: 'AirPlay media sharing',
       _raop: 'audio streaming', _googlecast: 'media casting', _hap: 'a smart-home accessory',
       _mqtt: 'smart-home messaging', _smb: 'file sharing', '_device-info': 'device information' };
     const feature = features[item.service_type.split('.')[0]] || 'a device feature';
-    mdnsList.append(text('li', `${item.advertised_name || 'Unnamed device'} (${item.ip}) advertised ${feature}${item.port ? ` on port ${item.port}` : ''}. This has not been verified as an open service.`));
+    mdnsList.append(text('li', (item.advertised_name || 'Name not identified') + ' (' + item.ip + ') advertised ' + feature + (item.port ? ' on port ' + item.port : '') + '. No matching checked device result was recorded; this advertisement does not verify an open service.'));
   });
 }
 
 function render(data) {
-  if (data.user_nicknames) data.devices = data.devices.map((device) => ({ ...device, user_nickname: data.user_nicknames[device.device_id] }));
+  retryReportLoad.hidden = true;
+  retryReportLoad.disabled = false;
+  const profileName = data.policy?.profile === 'deep-tcp-v1' ? 'Deep' : 'Light';
+  document.querySelector('#report-meta').textContent = `${profileName} scan · ${recordedTimeLabel(data.created_at, 'Date unavailable')}`;
+  if (data.nickname_error) nicknameState.unavailable();
+  else if (data.user_nicknames) nicknameState.apply({ revision: data.nickname_revision,
+    changed: true, names: data.user_nicknames, recovery_notice: data.nickname_recovery_notice });
+  projectNicknames(data, nicknameState);
   const openServices = (data.services || []).filter((service) => service.state === 'open').length;
   const stateLabels = {
     queued: 'Waiting to start', running: 'Scanning', completed: 'Completed',
@@ -840,6 +1047,8 @@ function render(data) {
   const preparing = ['queued', 'running'].includes(data.state) || data.phase === 'analysis';
   const analysisFailed = data.analysis_status === 'failed';
   reportContent.hidden = preparing;
+  reportContent.inert = preparing || !readingRestored;
+  reportContent.setAttribute('aria-busy', String(preparing));
   document.querySelector('#first-action').hidden = preparing;
   runAgainButton.disabled = preparing;
   retryHostsButton.hidden = preparing || !(data.coverage?.targets || []).some((target) => ['failed', 'timed_out', 'cancelled', 'pending', 'running'].includes(target.service_status) && (data.target?.mode === 'known_hosts' || target.discovery_status === 'observed'));
@@ -880,19 +1089,45 @@ function render(data) {
   count.textContent = data.findings.length;
   priorityBreakdown.textContent = ['high', 'medium', 'low', 'informational'].map((level) => `${data.findings.filter((item) => item.severity === level).length} ${level === 'informational' ? 'review only (no risk assigned)' : level + ' priority'}`).join(' · ');
   coverage.textContent = coverageSummary(data);
-  if (data.plain_overview || currentOverview(data)) {
-    const displayed = currentOverview(data) || data.plain_overview;
-    lead.textContent = displayed.content.meaning;
-    status.textContent = [displayed.content.why_it_matters, ...(displayed.limitations || displayed.display_limitations || [])].join(' ');
+  updateDocumentTitle();
+  const displayed = currentOverview(data) || data.plain_overview;
+  if (displayed?.content.meaning) lead.textContent = displayed.content.meaning;
+  const overviewHelp = document.querySelector('#overview-help');
+  overviewHelp.replaceChildren();
+  if (displayed) {
+    if (displayed.content.why_it_matters) overviewHelp.append(text('h3', 'About this overview'), text('p', displayed.content.why_it_matters));
+    (displayed.limitations || displayed.display_limitations || []).forEach(line => overviewHelp.append(text('p', line)));
+    const steps = displayed.content.recommended_steps || [];
+    if (steps.length) {
+      overviewHelp.append(text('h4', 'Report-wide guidance'));
+      const list = document.createElement('ul');
+      steps.forEach((step, index) => list.append(text('li', actionGuidance(step, displayed.content.how_to_check?.[index] || ''))));
+      overviewHelp.append(list);
+    }
   }
-  if (analysisFailed) {
-    status.textContent += pendingWording(data)
-      ? ' Some wording uses reviewed rule-based guidance. Retry the remaining AI wording without scanning again.'
-      : ' AI simplification unavailable—retry. Your factual results and reviewed rule-based guidance are shown below.';
-  }
-  if (data.nickname_error) status.textContent += ` ${data.nickname_error}`;
+  const aiNotice = document.querySelector('#ai-report-notice');
+  aiNotice.hidden = !analysisFailed;
+  aiNotice.textContent = pendingWording(data)
+    ? 'Some wording still uses reviewed rule-based guidance. Retry the remaining AI wording without scanning again.'
+    : 'AI simplification is unavailable. Your saved facts and reviewed rule-based guidance remain accessible; you can retry without scanning again.';
+  const overviewRecord = currentOverview(data);
+  const aiRecords = (data.explanations || []).filter(record => record.source === 'ai' && usableAiRecord(record, data));
+  document.querySelector('#ai-report-source').textContent = overviewRecord || aiRecords.length
+    ? 'Local AI contributed validated wording. Unaccepted fields retain reviewed rule-based guidance; the recorded evidence and priorities have not changed.'
+    : 'The report uses reviewed rule-based guidance. No new AI conclusion is being claimed.';
+  const records = [overviewRecord, ...aiRecords].filter(Boolean);
+  const models = [...new Set(records.map(record => record.model).filter(Boolean))];
+  const versions = [...new Set(records.map(record => record.prompt_version).filter(Boolean))];
+  document.querySelector('#ai-report-model').textContent = models.length
+    ? 'Recorded model: ' + models.join(', ') + (versions.length ? '. Prompt version: ' + versions.join(', ') + '.' : '.')
+    : 'No validated model output is recorded for the displayed wording.';
+  if (data.nickname_error) status.textContent += ' ' + data.nickname_error;
+  if (data.nickname_recovery_notice) status.textContent += ' ' + data.nickname_recovery_notice;
   scanProblems.replaceChildren();
-  const problems = [...(data.errors || []).filter((item) => !item.target_ip), ...(data.warnings || []).filter((item) => !(item.code === 'AI_PREFLIGHT_UNAVAILABLE' && data.analysis_status === 'ready'))];
+  const hasSelfCheck = data.devices.some(device => recordedDeviceRole(device, data) === 'Computer that ran this scan');
+  const problems = [...(data.errors || []).filter(item => !item.target_ip), ...(data.warnings || []).filter(item =>
+    !(item.code === 'AI_PREFLIGHT_UNAVAILABLE' && data.analysis_status === 'ready')
+    && !(item.code === 'SELF_SCAN_LOCAL_ROUTING' && hasSelfCheck))];
   (data.coverage?.targets || []).filter((target) => ['failed', 'timed_out', 'cancelled'].includes(target.service_status)).forEach((target) => {
     const reasons = { host_scan_timeout: 'timed out', host_result_invalid: 'returned an incomplete or invalid result',
       host_unreachable: 'could not reach the device for checking (it may be asleep, disconnected or not responding; the cause is unknown)',
@@ -935,7 +1170,6 @@ function render(data) {
   document.querySelector('#finding-metric').textContent = data.findings.length;
   document.querySelector('#device-metric').textContent = deviceCheckLabel(data);
   document.querySelector('#service-metric').textContent = openServices;
-  renderFilterCounts(data.findings);
   renderFindings(data);
   renderDevices(data);
   renderAdvertisements(data);
@@ -945,6 +1179,7 @@ function render(data) {
     || (data.analysis_status === 'ready' && !pendingWording(data) && !outdatedAi && currentOverview(data));
   simplifyButton.disabled = preparing;
   simplifyButton.textContent = pendingWording(data) ? 'Retry remaining wording' : analysisFailed ? 'Retry report preparation' : 'Prepare this saved report with Ollama';
+  restoreReading();
 }
 
 async function poll() {
@@ -968,8 +1203,16 @@ async function poll() {
       window.setTimeout(poll, 1000);
     }
   } catch (error) {
-    title.textContent = 'Scan results unavailable';
-    lead.textContent = error.message;
+    if (currentData?.phase === 'finished') {
+      status.textContent = `This saved report is still shown, but the latest information could not be loaded. ${error.message}`;
+    } else {
+      title.textContent = 'Scan results unavailable';
+      lead.textContent = error.message;
+      reportContent.hidden = true;
+    }
+    reportContent.setAttribute('aria-busy', 'false');
+    retryReportLoad.hidden = false;
+    retryReportLoad.disabled = false;
   }
 }
 

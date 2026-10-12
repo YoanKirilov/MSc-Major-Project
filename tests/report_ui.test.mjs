@@ -4,9 +4,39 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as presentation from '../app/static/js/presentation.mjs';
 import { createCvePanel } from '../app/static/js/cves.mjs';
+import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from '../app/static/js/devices.mjs';
+import * as reportView from '../app/static/js/report-view.mjs';
+import { renderFindingList, findingDeviceOptions, repeatedUnknownReplies } from '../app/static/js/finding-list.mjs';
+import { createTextEditor } from '../app/static/js/editor.mjs';
 import { createNoteState, checkStatus, projectNotes, reviewProgress } from '../app/static/js/notes.mjs';
+import { createNicknameState, projectNicknames } from '../app/static/js/nicknames.mjs';
 import { unfinishedDeviceCount, partialScanTitle } from '../app/static/js/report.mjs';
 import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from '../app/static/js/report.mjs';
+
+test('complete IPv4 search is exact identity, not prefixes or addresses in names and notes', () => {
+  for (const ip of ['192.168.0.1', '192.168.0.115', '192.168.0.154']) {
+    const device = { ip, hostname: '192.168.0.1', details: [{ value: 'Previously at 192.168.0.1' }] };
+    assert.equal(presentation.matchesSearch(' 192.168.0.1 ', presentation.deviceSearchValues(device), ip), ip === '192.168.0.1');
+    assert.equal(presentation.matchesSearch('192.168.0.1', [ip]), ip === '192.168.0.1');
+    assert.equal(presentation.matchesSearch('192.168.0.', [ip], ip), true);
+  }
+  assert.equal(presentation.matchesSearch('192.168.0.154', presentation.deviceSearchValues({ ip: '192.168.0.154' }), '192.168.0.154'), true);
+  assert.equal(presentation.matchesSearch('192.168.0.99', ['Router'], '192.168.0.1'), false);
+  assert.equal(presentation.matchesSearch('TV kitchen', ['Kitchen TV'], '192.168.0.1'), true);
+});
+
+test('saved dates display an unavailable label instead of guessing or Invalid Date', () => {
+  for (const value of [null, undefined, '', 'invalid', '2026-10-08T11:00:00', '9999-12-31T23:59:59-23:00',
+    '2026-10-08Z', '2026-02-30T00:00:00Z', '2026-02-29T00:00:00Z', '2026-10-08T24:00:00Z',
+    '2026-10-08T00:00:00+24:00', '0000-10-08T00:00:00Z']) {
+    assert.equal(presentation.recordedTimeLabel(value), 'Time unavailable');
+    assert.equal(presentation.recordedTimeLabel(value, 'Date unavailable'), 'Date unavailable');
+  }
+  const value = '2026-10-08T01:00:00+03:00';
+  assert.equal(presentation.recordedTimeLabel(value), new Date(value).toLocaleString());
+  assert.equal(presentation.recordedTimeLabel('2026-10-07T22:00:00Z'), new Date(value).toLocaleString());
+  assert.equal(presentation.recordedTimeLabel('2024-02-29T12:00:00Z'), new Date('2024-02-29T12:00:00Z').toLocaleString());
+});
 
 test('unfinished counts include cancelled and unstarted selected checks, not silent addresses', () => {
   for (const status of ['cancelled', 'pending', 'skipped', 'failed', 'timed_out']) {
@@ -18,6 +48,43 @@ test('unfinished counts include cancelled and unstarted selected checks, not sil
     assert.equal(unfinishedDeviceCount({ target: { mode: 'known_hosts' }, coverage: { candidate_count: 2, service_completed_count: 1 } }), 1);
   }
   assert.doesNotMatch(partialScanTitle({ coverage: { discovered_count: 0 } }), /0 devices/);
+});
+
+test('recognised local features get conditional help, never a diagnosis from a port', () => {
+  const device = { ip: '192.168.0.10' };
+  const data = { policy: { network_context: { address: device.ip } } };
+  const base = { name: 'msrpc', state: 'open', protocol: 'tcp', detection_method: 'probed', nmap_confidence: 9 };
+  const help = presentation.localFeatureHelp(device, base, data);
+  assert.match(help.meaning, /consistent with.*Windows/);
+  assert.match(help.check, /Windows Security.*Do not switch off/);
+  assert.match(help.limitation, /computer to itself.*does not establish/);
+  for (const changed of [{ detection_method: 'table' }, { nmap_confidence: 6 }, { state: 'open_filtered' }, { protocol: 'udp' }, { name: 'unknown' }]) {
+    assert.equal(presentation.localFeatureHelp(device, { ...base, ...changed }, data), null);
+  }
+  assert.match(presentation.localFeatureHelp(device, { ...base, name: 'netbios-ssn' }, {}).check, /Advanced sharing settings/);
+  assert.match(presentation.localFeatureHelp(device, { ...base, name: 'vmware-auth' }, {}).meaning, /not confirmation/);
+  assert.match(presentation.localFeatureHelp(device, { ...base, name: 'microsoft-ds' }, {}).check, /Do not enable sharing/);
+});
+
+test('Light self-coverage is read from saved ledger without changing counts', () => {
+  const data = { phase: 'finished', target: { mode: 'discover' }, policy: { network_context: { address: '192.168.0.10' } },
+    coverage: { service_completed_count: 2, targets: [{ ip: '192.168.0.10', discovery_status: 'not_seen', service_status: 'skipped' }] } };
+  const before = JSON.stringify(data);
+  assert.match(presentation.scanComputerCoverage(data), /not discovered.*not included.*not start automatically/);
+  assert.equal(JSON.stringify(data), before);
+  data.coverage.targets[0].discovery_status = 'observed';
+  assert.match(presentation.scanComputerCoverage(data), /did not finish/);
+  data.coverage.targets[0].service_status = 'completed';
+  assert.match(presentation.scanComputerCoverage(data), /included.*self-check/);
+  assert.equal(presentation.scanComputerCoverage({ ...data, target: { mode: 'known_hosts' } }), '');
+  assert.equal(presentation.scanComputerCoverage({ ...data, coverage: {} }), '');
+});
+
+test('identification guidance uses exactly the rendered control label and matching glossary', () => {
+  assert.ok(presentation.namingCoverage([]).includes(presentation.IDENTIFY_DEVICE_LABEL));
+  const source = readFileSync(new URL('../app/static/js/devices.mjs', import.meta.url), 'utf8');
+  assert.match(source, /text\('button', IDENTIFY_DEVICE_LABEL/);
+  assert.match(readFileSync(new URL('../app/templates/scan.html', import.meta.url), 'utf8'), /<dt>Device not identified<\/dt>/);
 });
 
 test('gateway role is sourced from the saved connection, never from a guessed address', () => {
@@ -43,11 +110,42 @@ test('action labels preserve nicknames and add only recorded roles', () => {
 });
 
 test('Windows feature labels are readable and retain service evidence provenance', () => {
-  for (const [name, port, plain] of [['msrpc', 135, 'Windows communication'], ['netbios-ssn', 139, 'Older Windows sharing']]) {
+  for (const [name, port, plain] of [['msrpc', 135, 'Windows communication'], ['netbios-ssn', 139, 'Older Windows sharing'], ['vmware-auth', 902, 'Virtual computer software']]) {
     assert.match(presentation.featureLabel({ name }), new RegExp(plain));
     assert.match(serviceLabel({ name, port, detection_method: 'table' }), new RegExp(plain));
     assert.match(serviceLabel({ name, port, detection_method: 'table' }), /name inferred from port/);
   }
+});
+
+test('feature decision aids require a strong observed identity and web precautions are adjacent-ready', () => {
+  const device = { ip: '192.168.0.1' };
+  const service = { state: 'open', protocol: 'tcp', detection_method: 'probed', nmap_confidence: 9, name: 'rtsp', port: 554 };
+  assert.match(presentation.localFeatureHelp(device, service, {}).meaning, /video or sound.*does not identify/);
+  assert.match(presentation.localFeatureHelp(device, service, {}).check, /Leave settings unchanged/);
+  for (const name of ['rtsp', 'domain', 'vmware-auth', 'tcpwrapped']) assert.doesNotMatch(presentation.localFeatureHelp(device, { ...service, name }, {}).limitation, /Windows steps/);
+  assert.match(presentation.localFeatureHelp(device, { ...service, protocol: 'udp', name: 'domain', port: 53 }, {}).check, /Do not switch.*off/);
+  for (const patch of [{ detection_method: 'table' }, { nmap_confidence: 2 }, { state: 'filtered' }]) assert.equal(presentation.localFeatureHelp(device, { ...service, ...patch }, {}), null);
+  assert.match(presentation.firstActionPrecaution(device, { ...service, name: 'http', port: 80 }), /Do not enter passwords.*HTTP.*certificate warnings/);
+  assert.equal(presentation.firstActionPrecaution(device, service), '');
+});
+
+test('closed-early connections explain unknown identity without guessing software from the port', () => {
+  const service = { state: 'open', name: 'tcpwrapped', protocol: 'tcp', port: 135, detection_method: 'probed', nmap_confidence: 8 };
+  const help = presentation.localFeatureHelp({ ip: '192.168.0.10' }, service, {});
+  assert.match(help.meaning, /closed it before.*identify.*does not reveal/);
+  assert.doesNotMatch(help.meaning, /RPC|VMware|identified Windows|vulnerable/);
+  assert.match(help.check, /Do not switch off protection/);
+  assert.equal(presentation.reviewItemTitle({ severity: 'informational' }, service), 'Feature not identified · port 135');
+});
+
+test('naming coverage separates saved, current, missing and user-assigned names', () => {
+  const devices = [{ hostname: 'PC', hostname_source: 'reverse_dns' },
+    { hostname: 'TV', hostname_source: 'saved_report' }, { user_nickname: 'Camera' }];
+  const message = presentation.namingCoverage(devices);
+  assert.match(message, /1 device with names reported in this scan; 1 with earlier saved names; 1 without a detected name/);
+  assert.match(message, /nicknames label 1 device separately/);
+  assert.match(message, /not verified identities.*does not mean an intruder/);
+  assert.match(message, /no name is guaranteed/);
 });
 
 test('equal priorities use rule, numeric address and service instead of completion order or scan IDs', () => {
@@ -169,32 +267,113 @@ test('rescan links only prefill bounded setup data and never include authorisati
 
 test('report renderer exposes failures, sorts recommendations and hides older AI wording', () => {
   // Exercise the actual page code with a minimal DOM; no browser dependency.
+  const walk = node => node.children.flatMap(child => [child, ...walk(child)]);
+  const matches = (node, selector) => {
+    const parts = selector.trim().split(/\s+/);
+    const compound = (element, part) => {
+      const tag = /^[a-z][\w-]*/i.exec(part)?.[0];
+      if (tag && element.tagName !== tag.toUpperCase()) return false;
+      for (const match of part.matchAll(/([.#])([\w-]+)/g)) {
+        if (match[1] === '#' ? element.id !== match[2] : !element.className.split(/\s+/).includes(match[2])) return false;
+      }
+      for (const match of part.matchAll(/\[([^\]=]+)(?:="([^"]*)")?\]/g)) {
+        const key = match[1].startsWith('data-') ? match[1].slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()) : null;
+        const value = key ? element.dataset[key] : element.attributes[match[1]];
+        if (value === undefined || (match[2] !== undefined && value !== match[2])) return false;
+      }
+      return true;
+    };
+    if (!compound(node, parts.pop())) return false;
+    while (parts.length) {
+      let part = parts.pop();
+      if (part === '>') {
+        part = parts.pop(); node = node.parentElement;
+        if (!node || !compound(node, part)) return false;
+        continue;
+      }
+      let ancestor = node.parentElement;
+      while (ancestor && !compound(ancestor, part)) ancestor = ancestor.parentElement;
+      if (!ancestor) return false;
+      node = ancestor;
+    }
+    return true;
+  };
   class Element {
-    constructor() {
-      this.children = []; this.textContent = ''; this.dataset = {}; this.events = {};
-      this.style = { setProperty() {} }; this.classList = { toggle() {} };
+    constructor(tag = 'div') {
+      this.tagName = tag.toUpperCase(); this.children = []; this._text = ''; this.dataset = {}; this.events = {};
+      this.attributes = {}; this.className = ''; this.value = ''; this.open = false;
+      this.style = { setProperty() {} };
+      this.classList = { toggle: (name, force) => {
+        const classes = new Set(this.className.split(/\s+/).filter(Boolean));
+        if (force ?? !classes.has(name)) classes.add(name); else classes.delete(name);
+        this.className = [...classes].join(' ');
+      } };
     }
     addEventListener(name, fn) { this.events[name] = fn; }
-    setAttribute() {}
-    append(...items) { this.children.push(...items); }
-    replaceChildren(...items) { this.children = items; this.textContent = ''; }
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+      if (name === 'id') this.id = String(value);
+      if (name.startsWith('data-')) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = String(value);
+    }
+    removeAttribute(name) { delete this.attributes[name]; }
+    append(...items) { items.forEach(item => this.insertBefore(item, null)); }
+    insertBefore(item, reference) {
+      item.remove();
+      const index = reference ? this.children.indexOf(reference) : this.children.length;
+      this.children.splice(index, 0, item); item.parentElement = this;
+    }
+    remove() {
+      if (!this.parentElement) return;
+      if (this === document.activeElement || walk(this).includes(document.activeElement)) document.activeElement = document.body;
+      const siblings = this.parentElement.children;
+      siblings.splice(siblings.indexOf(this), 1); this.parentElement = null;
+    }
+    replaceChildren(...items) { [...this.children].forEach(child => child.remove()); this._text = ''; this.append(...items); }
+    get textContent() { return [this._text, ...this.children.map(child => child.textContent)].filter(Boolean).join(' '); }
+    set textContent(value) { this.replaceChildren(); this._text = String(value); }
+    querySelectorAll(selector) { return walk(this).filter(node => matches(node, selector)); }
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+    closest(selector) {
+      for (let node = this; node; node = node.parentElement) if (matches(node, selector)) return node;
+      return null;
+    }
+    focus() { document.activeElement = this; }
+    select() {}
+    scrollIntoView() {}
+    get isConnected() { return this === document.body || Boolean(this.parentElement?.isConnected); }
     showModal() { this.open = true; }
-    close() { this.open = false; }
+    close() { this.open = false; this.events.close?.(); }
     get childElementCount() { return this.children.length; }
   }
   const template = readFileSync(new URL('../app/templates/scan.html', import.meta.url), 'utf8');
   const elements = new Map();
   const document = {
+    body: new Element('body'),
     querySelector(id) {
+      if (!/^#[\w-]+$/.test(id)) return this.body.querySelector(id);
       assert.ok(template.includes(`id="${id.slice(1)}"`), `missing template hook ${id}`);
-      if (!elements.has(id)) elements.set(id, new Element());
+      if (!elements.has(id)) {
+        const tag = new RegExp(`<([\\w-]+)\\b[^>]*id="${id.slice(1)}"`).exec(template)?.[1];
+        const element = new Element(tag); element.id = id.slice(1);
+        elements.set(id, element); this.body.append(element);
+      }
       return elements.get(id);
     },
-    querySelectorAll() { return []; },
-    createElement() { return new Element(); },
+    querySelectorAll(selector) { return this.body.querySelectorAll(selector); },
+    createElement(tag) { return new Element(tag); },
   };
-  const context = vm.createContext({ document, window: { location: { pathname: '/scans/test' } }, URL,
-    ...presentation, createNoteState, checkStatus, projectNotes, partialScanTitle, createCvePanel, prioritise, formatServiceLabel: serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
+  document.activeElement = document.body;
+  const layout = new Element(); layout.className = 'findings-layout'; document.body.append(layout);
+  layout.append(document.querySelector('#findingsList'), document.querySelector('#detailPanel'));
+  for (const filter of ['all', 'high', 'medium', 'low', 'informational']) {
+    const button = new Element('button'); button.className = 'filter-chip'; button.dataset.filter = filter;
+    document.body.append(button);
+  }
+  const context = vm.createContext({ document, window: { location: { pathname: '/scans/test' },
+    matchMedia: () => ({ matches: false, addEventListener() {} }) }, URL,
+    ...presentation, ...reportView, deviceResultEntries, renderDeviceComponents, renderFindingList,
+    findingDeviceOptions, repeatedUnknownReplies, createTextEditor,
+    createNicknameState, projectNicknames, createNoteState, checkStatus, projectNotes, partialScanTitle, createCvePanel, prioritise, formatServiceLabel: serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
   const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\npoll\(\);\s*$/, '');
   vm.runInContext(source, context);
@@ -214,13 +393,41 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     errors: [{ message: 'One device check timed out.' }], warnings: [],
   };
   vm.runInContext('render(data)', context);
-  const text = (element) => [element.textContent, ...element.children.map(text)].join(' ');
+  const text = element => element.textContent;
   assert.match(text(elements.get('#scan-problems')), /One device check timed out/);
   assert.equal(elements.get('#scan-problems').hidden, false);
   assert.match(text(elements.get('#nextStepsList').children[0]), /high finding/);
   assert.doesNotMatch(text(elements.get('#findingsList')), /OLD AI CLAIM/);
   assert.match(text(elements.get('#device-table-body')), /HTTPS/);
   assert.match(text(elements.get('#device-table-body')), /Recorded certificate details/);
+  // Exercise real stable-node selection, including the mobile in-place panel.
+  const cards = elements.get('#findingsList').querySelectorAll('.finding-card');
+  const highCard = cards.find(card => card.dataset.findingId === 'high');
+  const mediumCard = cards.find(card => card.dataset.findingId === 'medium');
+  mediumCard.focus(); mediumCard.events.click();
+  assert.equal(document.activeElement, mediumCard);
+  assert.equal(mediumCard.attributes['aria-pressed'], 'true');
+  assert.equal(elements.get('#findingsList').querySelectorAll('.finding-card').find(card => card.dataset.findingId === 'medium'), mediumCard);
+  highCard.focus(); highCard.events.click();
+  vm.runInContext('compactResults.matches = true; renderFindings(data)', context);
+  const mobileNodes = elements.get('#findingsList').children;
+  assert.equal(mobileNodes[mobileNodes.indexOf(highCard) + 1], elements.get('#detailPanel'));
+  assert.equal(document.activeElement, highCard);
+  vm.runInContext('compactResults.matches = false; renderFindings(data)', context);
+  assert.equal(elements.get('#detailPanel').parentElement, layout);
+  context.data.earlier_observations = { status: 'available', reason: 'Not matched; not proof of removal.',
+    source_scan_id: '11111111-1111-4111-8111-111111111111', omitted_count: 2,
+    items: [{ reported_name: '<script>Earlier TV</script>', last_ip: '192.168.0.20', name_source: 'mdns', observed_at: '2026-10-06T12:00:00Z' }] };
+  vm.runInContext('render(data)', context);
+  assert.match(text(elements.get('#earlier-devices-list')), /Earlier TV.*reported earlier/);
+  assert.match(text(elements.get('#earlier-devices-list')), /2 additional earlier observations/);
+  assert.match(elements.get('#earlier-devices-note').textContent, /not proof/);
+  assert.match(elements.get('#naming-coverage').textContent, /without a detected name/);
+  context.data.policy = { network_context: { address: '192.168.0.10' } };
+  vm.runInContext('render(data)', context);
+  assert.match(elements.get('#report-first-step').textContent, /Computer that ran this scan.*Confirm you recognise it before changing settings/);
+  assert.doesNotMatch(elements.get('#report-first-step').textContent, /router's device list/);
+  context.data.policy = {};
   context.data.devices[0].hostname = 'Room TV';
   context.data.devices[0].hostname_source = 'saved_report';
   context.data.devices[0].name_candidates = [{ name: 'Room TV', source: 'saved_report', observed_at: '2026-09-25T21:00:00Z' }];
@@ -241,8 +448,8 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   });
   assert.match(text(elements.get('#device-summaries')), /Room TV \(previously reported\)/);
   assert.match(text(elements.get('#device-summaries')), /192.168.0.53/);
-  assert.match(text(elements.get('#device-summaries')), /Missing results do not mean it is safe/);
-  assert.match(text(elements.get('#device-summaries')), /does not show that anyone was using/);
+  assert.match(text(elements.get('#device-summaries')), /Missing checks do not mean the device is safe/);
+  assert.match(text(elements.get('#device-summaries')), /does not show that anyone used.*vulnerability/);
   assert.match(elements.get('#priority-breakdown').textContent, /1 high priority/);
   assert.equal(elements.has('#result-ring'), false);
   context.data.analysis_status = 'ready';
@@ -270,7 +477,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   context.data.services[0].cve_lookup_available = true;
   vm.runInContext('render(data)', context);
   assert.match(text(elements.get('#device-summaries')), /Check CVEs for this software/);
-  assert.match(text(elements.get('#report-first-step')), /retry the unfinished/);
+  assert.match(text(elements.get('#report-first-step')), /Retry the unfinished.*Missing results cannot tell you whether a device is safe/);
   context.data.state = 'completed';
   context.data.analysis_status = 'ready';
   context.data.report_explanation = { status: 'ready', source: 'ai', ai_fields: ['meaning', 'why_it_matters', 'recommended_steps', 'how_to_check', 'limitations'], prompt_version: '3.0.0', content: {

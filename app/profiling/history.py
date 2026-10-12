@@ -1,9 +1,85 @@
 """Conservative comparisons against a bounded set of previous local reports."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from app.scanner.names import add_name, normalise_mac
 from app.scanner.observations import detail
+from app.schemas.common import observation_time
+from app.schemas.scan import EarlierDevice, EarlierObservations
+
+
+def earlier_observations(current, previous):
+    """Earlier observations, not an absence verdict or an identity match by IP."""
+    unavailable = EarlierObservations(
+        reason="This view needs two recent Light network-discovery scans of the same range "
+        "with matching checks and finished discovery."
+    )
+    if (
+        current.source != "live"
+        or current.policy.get("profile") != "light"
+        or current.target.get("mode") != "discover"
+        or not current.target.get("cidr")
+        or not current.policy.get("allowed_network")
+        or not current.coverage.discovery_complete
+        or current.policy.get("profile_id") is None
+        or any(not isinstance(current.policy.get(key), list) for key in ("tcp_ports", "udp_ports"))
+    ):
+        return unavailable
+    now = observation_time(current.created_at)
+    if now is None:
+        return unavailable
+    candidates = [
+        (observed, doc)
+        for doc in previous
+        if doc.source == "live"
+        and doc.phase == "finished"
+        and doc.scan_id != current.scan_id
+        and doc.target == current.target
+        and doc.coverage.discovery_complete
+        and all(
+            doc.policy.get(key) == current.policy.get(key)
+            for key in ("allowed_network", "profile", "profile_id", "tcp_ports", "udp_ports")
+        )
+        and (observed := observation_time(doc.created_at)) is not None
+        and timedelta(0) <= now - observed <= timedelta(days=7)
+    ]
+    if not candidates:
+        return unavailable
+    _, last = max(candidates, key=lambda entry: (entry[0], entry[1].scan_id))
+    current_macs = {normalise_mac(device.mac) for device in current.devices}
+    observed_ips = {device.ip for device in current.devices} | {
+        target.ip for target in current.coverage.targets if target.discovery_status == "observed"
+    }
+    items = []
+    for device in last.devices:
+        mac = normalise_mac(device.mac)
+        if (
+            not mac
+            or mac == "00:00:00:00:00:00"
+            or mac in current_macs
+            or device.ip in observed_ips
+            or not complete(last, device.ip)
+            or sum(normalise_mac(other.mac) == mac for other in last.devices) != 1
+        ):
+            continue
+        items.append(
+            EarlierDevice(
+                last_ip=device.ip,
+                reported_name=None if device.hostname_conflict else device.hostname,
+                name_source=device.hostname_source,
+                observed_at=device.observed_at or last.created_at,
+            )
+        )
+    items.sort(key=lambda item: tuple(map(int, item.last_ip.split("."))))
+    return EarlierObservations(
+        status="available",
+        source_scan_id=last.scan_id,
+        items=items[:50],
+        omitted_count=max(0, len(items) - 50),
+        reason="These earlier completed device observations were not matched this time. "
+        "Devices may be asleep, disconnected, or using changed addresses. This is not "
+        "proof they were removed, repaired or unsafe; older unfinished checks are excluded.",
+    )
 
 
 def complete(doc, ip):
@@ -29,9 +105,8 @@ def restore_previous_name(device, matches, created_at):
     """Display a recent direct observation as historical, never a current reply."""
     if device.hostname:
         return
-    try:
-        now = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-    except ValueError:
+    now = observation_time(created_at)
+    if now is None:
         return
     for report, old in matches:
         if not old.hostname or old.hostname_source not in {
@@ -46,10 +121,10 @@ def restore_previous_name(device, matches, created_at):
         }:
             continue  # Do not repeatedly extend the lifetime of a historical name.
         observed = old.hostname_observed_at or old.observed_at or report.created_at
-        try:
-            age = now - datetime.fromisoformat(observed.replace("Z", "+00:00"))
-        except (ValueError, TypeError):
+        instant = observation_time(observed)
+        if instant is None:
             continue
+        age = now - instant
         if not timedelta(0) <= age <= timedelta(days=7):
             continue
         add_name(
@@ -77,20 +152,24 @@ def restore_previous_name(device, matches, created_at):
 
 
 def compare_history(current, previous):
+    now = observation_time(current.created_at)
     previous = sorted(
         [
-            p
+            (observed, p)
             for p in previous
             if p.source == "live"
             and current.policy.get("allowed_network")
             and p.scan_id != current.scan_id
-            and p.created_at < current.created_at
+            and now is not None
+            and (observed := observation_time(p.created_at)) is not None
+            and observed < now
             and p.policy.get("allowed_network") == current.policy.get("allowed_network")
             and p.phase == "finished"
         ],
-        key=lambda p: p.created_at,
+        key=lambda entry: (entry[0], entry[1].scan_id),
         reverse=True,
     )
+    previous = [doc for _, doc in previous]
     for device in current.devices:
         mac = normalise_mac(device.mac)
         matches = [

@@ -1,4 +1,5 @@
 import { request } from './api.js?v=20261001-network-recovery';
+import { recordedTimeLabel } from './presentation.mjs?v=20261008-dates';
 
 let pickerLoaded = false;
 let pickerBusy = false;
@@ -20,7 +21,7 @@ export async function configurePicker(deep, refresh = false) {
     for (const item of data.items) {
       const option = document.createElement('option');
       option.value = item.ip;
-      option.textContent = `${item.name} — ${item.ip} — ${item.last_check || 'Check status not recorded'} — saved ${new Date(item.observed_at).toLocaleString()}`;
+      option.textContent = `${item.name} — ${item.ip} — ${item.last_check || 'Check status not recorded'} — saved ${recordedTimeLabel(item.observed_at)}`;
       select.append(option);
     }
     note.textContent = data.items.length
@@ -43,6 +44,7 @@ export function startSetupTools() {
     select.value = Array.from(select.options).some(option => option.value === target) ? target : '';
   });
   document.querySelector('#recentDeviceSelect').addEventListener('change', event => {
+    if (document.querySelector('#deepHostInput').disabled) return;
     document.querySelector('#deepHostInput').value = event.target.value;
   });
   document.querySelector('#refreshDeviceChoices').addEventListener('click', () => configurePicker(true, true));
@@ -68,7 +70,7 @@ export function startSetupTools() {
               ? 'Waiting for local AI' : 'Making results easier to understand', finished: 'Finished',
             unavailable: 'Saved progress temporarily unavailable' })[item.phase] || item.phase;
           const text = document.createElement('p');
-          text.textContent = `${label}: ${target}. ${phase}. ${item.completed ?? 0} of ${item.total ?? 0} device checks finished. Started ${item.started_at ? new Date(item.started_at).toLocaleString() : 'time unavailable'}.`;
+          text.textContent = `${label}: ${target}. ${phase}. ${item.completed ?? 0} of ${item.total ?? 0} device checks finished. Started ${recordedTimeLabel(item.started_at)}.`;
           const link = document.createElement('a');
           link.href = `/#scan=${encodeURIComponent(item.scan_id)}`;
           link.target = '_blank'; link.rel = 'noopener'; link.textContent = `Open ${label} progress`;

@@ -11,11 +11,80 @@ const mdnsStatus = document.querySelector('#mdns-status');
 const piholeEnabled = document.querySelector('#pihole-enabled');
 const piholeStatus = document.querySelector('#pihole-status');
 const aiStatus = document.querySelector('#ai-status');
+const saveButton = document.querySelector('#save-settings');
+const pageStatus = document.querySelector('#settings-status');
+const errorSummary = document.querySelector('#settings-errors');
+const errorMessage = document.querySelector('#settings-error-message');
+const errorList = document.querySelector('#settings-error-list');
+const reloadButton = document.querySelector('#reload-settings');
+const fieldErrors = { 'allowed-network': 'allowed-network-error', 'interface-select': 'interface-error',
+  'mdns-enabled': 'mdns-error', 'pihole-enabled': 'pihole-error' };
 let revision = null;
+let generation = 0;
+let saving = false;
+
+function clearErrors() {
+  errorSummary.hidden = true;
+  errorList.replaceChildren();
+  reloadButton.hidden = true;
+  for (const [id, errorId] of Object.entries(fieldErrors)) {
+    document.querySelector(`#${id}`).removeAttribute('aria-invalid');
+    const output = document.querySelector(`#${errorId}`);
+    output.textContent = '';
+    output.hidden = true;
+  }
+}
+
+function showError(message, { field, reload = false, loading = false } = {}) {
+  clearErrors();
+  errorSummary.querySelector('h2').textContent = loading ? 'Settings could not be loaded' : 'Settings could not be saved';
+  errorMessage.textContent = message;
+  reloadButton.hidden = !reload;
+  if (field && fieldErrors[field]) {
+    const input = document.querySelector(`#${field}`);
+    const output = document.querySelector(`#${fieldErrors[field]}`);
+    input.setAttribute('aria-invalid', 'true');
+    output.textContent = message;
+    output.hidden = false;
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = `#${field}`;
+    link.textContent = input.labels?.[0]?.textContent.trim() || 'Check this setting';
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      const disclosure = input.closest('details');
+      if (disclosure) disclosure.open = true;
+      input.focus();
+    });
+    item.append(link);
+    errorList.append(item);
+  }
+  errorSummary.hidden = false;
+  errorSummary.focus();
+}
+
+function networkError(value) {
+  const match = value.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+  if (!match) return 'Enter a private IPv4 network in CIDR format, such as an address followed by /24.';
+  const octets = match.slice(1, 5).map(Number);
+  const prefix = Number(match[5]);
+  if (octets.some((part, index) => part > 255 || String(part) !== match[index + 1]) || prefix < 24 || prefix > 32) {
+    return 'Use a valid IPv4 network with a /24 or smaller scope (a prefix from /24 to /32).';
+  }
+  const privateAddress = octets[0] === 10 || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+    || (octets[0] === 192 && octets[1] === 168);
+  if (!privateAddress) return 'Use a private network range that you are authorised to scan.';
+  const numericAddress = octets.reduce((total, part) => total * 256 + part, 0);
+  if (numericAddress % (2 ** (32 - prefix))) return 'Enter the network address for this range, not a device address.';
+  return null;
+}
 
 function showScopeMode() {
-  allowedNetwork.disabled = scopeMode.value === 'automatic';
-  allowedNetwork.required = scopeMode.value === 'manual';
+  const automatic = scopeMode.value === 'automatic';
+  allowedNetwork.disabled = automatic;
+  allowedNetwork.required = !automatic;
+  document.querySelector('#manual-network-field').hidden = automatic;
+  clearErrors();
 }
 scopeMode.addEventListener('change', showScopeMode);
 document.querySelector('#check-ai').addEventListener('click', async (event) => {
@@ -26,24 +95,35 @@ document.querySelector('#check-ai').addEventListener('click', async (event) => {
 });
 
 async function loadSettings() {
+  const current = ++generation;
+  saveButton.disabled = true;
+  clearErrors();
+  pageStatus.textContent = 'Loading your saved settings…';
   try {
-    const [settings, status] = await Promise.all([
+    const responses = await Promise.allSettled([
       request('/api/settings'),
       request('/api/status'),
     ]);
+    if (current !== generation) return;
+    if (responses[0].status !== 'fulfilled') throw responses[0].reason;
+    const settings = responses[0].value;
+    const status = responses[1].status === 'fulfilled' ? responses[1].value : {};
     revision = settings.revision;
     allowedNetwork.value = settings.allowed_network || '';
     scopeMode.value = settings.allowed_network ? 'manual' : 'automatic';
     showScopeMode();
-    allowedNetwork.placeholder = status.automatic_network ? `Current automatic range: ${status.automatic_network}` : 'Enter your authorised network range';
+    allowedNetwork.placeholder = '';
     const source = { manual: 'Saved manual range', server: 'Range fixed by the backend configuration', automatic: 'Automatically detected range' }[status.scope_source] || 'Effective range';
-    document.querySelector('#network-status').textContent = [status.detected_network ? `Active connection: ${status.detected_network}.` : '', `${source}: ${status.allowed_network || 'unavailable'}.`, status.network_warning || 'Confirm that you are authorised to scan this range.'].join(' ');
+    document.querySelector('#network-status').textContent = responses[1].status === 'fulfilled'
+      ? [status.detected_network ? `Active connection: ${status.detected_network}.` : '', `${source}: ${status.allowed_network || 'unavailable'}.`, status.network_warning || 'Confirm that you are authorised to scan this range.'].join(' ')
+      : 'The current connection could not be checked. Your saved settings are shown; confirm the effective range before scanning.';
     interfaceSelect.replaceChildren();
     const automaticOption = document.createElement('option');
     automaticOption.value = '';
     automaticOption.textContent = 'Automatic';
     interfaceSelect.append(automaticOption);
-    (status.interface_choices || []).forEach((name) => {
+    const choices = status.interface_choices || (settings.interface ? [settings.interface] : []);
+    choices.forEach((name) => {
       const option = document.createElement('option');
       option.value = name;
       option.textContent = name;
@@ -52,30 +132,47 @@ async function loadSettings() {
     });
     retainRawXml.checked = settings.retain_raw_xml;
     mdnsEnabled.checked = settings.mdns_enabled;
-    mdnsEnabled.disabled = !status.mdns_available && !settings.mdns_enabled;
-    mdnsStatus.textContent = status.mdns_available
+    mdnsEnabled.disabled = responses[1].status === 'fulfilled' && !status.mdns_available && !settings.mdns_enabled;
+    mdnsStatus.textContent = responses[1].status !== 'fulfilled'
+      ? 'Device-announcement availability could not be checked. Your saved choice is unchanged.'
+      : status.mdns_available
       ? 'Optional local device announcements are available. They are unverified and may add up to eight device checks.'
       : settings.mdns_enabled
         ? 'Local device announcements are unavailable. Turn this option off before saving settings.'
         : 'Optional local device announcements are unavailable in this installation.';
     piholeEnabled.checked = settings.pihole_enabled;
-    piholeEnabled.disabled = !status.pihole_configured && !settings.pihole_enabled;
-    piholeStatus.textContent = status.pihole_configuration_error
+    piholeEnabled.disabled = responses[1].status === 'fulfilled' && !status.pihole_configured && !settings.pihole_enabled;
+    piholeStatus.textContent = responses[1].status !== 'fulfilled'
+      ? 'Pi-hole configuration availability could not be checked. Your saved choice is unchanged; this page makes no Pi-hole connection.'
+      : status.pihole_configuration_error
       ? `Pi-hole setup needs attention: ${status.pihole_configuration_error}`
       : status.pihole_configured
         ? 'Pi-hole details are configured; this page does not check the connection. When enabled, names are requested during an authorised scan. Missing names are possible and do not mean a device is absent.'
         : 'Pi-hole is not configured. Set APP_PIHOLE_URL and APP_PIHOLE_PASSWORD_FILE (or APP_PIHOLE_PASSWORD) on the server, then restart the app. No Pi-hole connection is made by this page.';
-    aiStatus.textContent = ollamaStatusText(status);
+    aiStatus.textContent = responses[1].status === 'fulfilled' ? ollamaStatusText(status) : 'Ollama availability could not be checked. Use Check Ollama again to retry.';
+    saveButton.disabled = false;
+    pageStatus.textContent = responses[1].status === 'fulfilled' ? 'Settings loaded. Changes are applied only when you save.' : 'Settings loaded, but scanner availability could not be checked.';
   } catch (error) {
-    window.alert(error.message);
+    if (current !== generation) return;
+    revision = null;
+    pageStatus.textContent = 'Settings are unavailable. No changes have been saved.';
+    showError(error.message, { reload: true, loading: true });
   }
 }
 
+reloadButton.addEventListener('click', loadSettings);
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (saving) return;
+  clearErrors();
   if (revision === null) {
-    window.alert('Settings have not loaded yet.');
+    showError('Settings have not loaded yet. Reload the saved settings before making changes.', { reload: true, loading: true });
     return;
+  }
+  if (scopeMode.value === 'manual') {
+    const message = networkError(allowedNetwork.value.trim());
+    if (message) { showError(message, { field: 'allowed-network' }); return; }
   }
   const payload = {
     expected_revision: revision,
@@ -87,11 +184,28 @@ form.addEventListener('submit', async (event) => {
     pihole_enabled: piholeEnabled.checked,
   };
 
+  saving = true;
+  saveButton.disabled = true;
+  reloadButton.disabled = true;
+  form.setAttribute('aria-busy', 'true');
+  pageStatus.textContent = 'Saving your settings…';
   try {
     await request('/api/settings', { method: 'PATCH', body: JSON.stringify(payload) });
+    pageStatus.textContent = 'Settings saved. Returning to the scan page…';
     window.location.href = '/';
   } catch (error) {
-    window.alert(error.message);
+    pageStatus.textContent = 'Your changes have not been saved. The input you entered is still here.';
+    const message = error.message.toLowerCase();
+    const field = /network range|allowed.network|ipv4|cidr/.test(message) ? 'allowed-network'
+      : /interface|adapter/.test(message) ? 'interface-select'
+        : /mdns/.test(message) ? 'mdns-enabled' : /pi-hole|pihole/.test(message) ? 'pihole-enabled' : null;
+    showError(error.status === 409 ? `${error.message}. Your input is unchanged. Reload saved settings to use the latest version; reloading replaces unsaved changes.` : error.message,
+      { field, reload: error.status === 409 });
+  } finally {
+    saving = false;
+    saveButton.disabled = revision === null;
+    reloadButton.disabled = false;
+    form.removeAttribute('aria-busy');
   }
 });
 

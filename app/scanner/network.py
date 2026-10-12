@@ -6,6 +6,7 @@ import os
 import subprocess
 import threading
 from copy import deepcopy
+from ipaddress import IPv4Address
 from time import monotonic
 
 
@@ -49,13 +50,27 @@ def windows_connections(*, strict=False):
 
 def _query_windows_connections():
     """Read once or raise a diagnostic; the public wrapper owns fallback policy."""
-    # Property names remain invariant when Windows display labels are translated.
+    # Avoid Get-NetIPConfiguration's expensive all-family aggregate. Read only
+    # the IPv4/profile/default-route facts the guard uses, in one bounded process.
+    # Stop on any cmdlet error: a partial snapshot must never authorise probing.
     command = (
-        "@(Get-NetIPConfiguration | ForEach-Object { "
-        "[pscustomobject]@{ Index=$_.InterfaceIndex; "
-        "Profile=$_.NetProfile.Name; "
-        "Addresses=@($_.IPv4Address | Select-Object IPAddress,PrefixLength); "
-        "Gateways=@($_.IPv4DefaultGateway.NextHop) } }) | ConvertTo-Json -Depth 5 -Compress"
+        "$ErrorActionPreference='Stop'; "
+        "$taskConnected=@(Get-NetIPInterface -AddressFamily IPv4 "
+        "-ConnectionState Connected | Select-Object -ExpandProperty InterfaceIndex); "
+        "$taskAddresses=@(Get-NetIPAddress -AddressFamily IPv4); "
+        "$taskRoutes=@(Get-NetRoute -AddressFamily IPv4 | "
+        "Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' }); "
+        "$taskProfiles=@(Get-NetConnectionProfile); "
+        "@($taskAddresses | Where-Object { $taskConnected -contains $_.InterfaceIndex } | "
+        "Group-Object InterfaceIndex | ForEach-Object { "
+        "$taskIndex=[int]$_.Name; "
+        "$taskProfile=@($taskProfiles | Where-Object { $_.InterfaceIndex -eq $taskIndex }); "
+        "if ($taskProfile.Count -gt 1) { throw 'Ambiguous connection profile' }; "
+        "[pscustomobject]@{ Index=$taskIndex; "
+        "Profile=if ($taskProfile.Count -eq 1) { $taskProfile[0].Name } else { $null }; "
+        "Addresses=@($_.Group | Select-Object IPAddress,PrefixLength); "
+        "Gateways=@($taskRoutes | Where-Object { $_.InterfaceIndex -eq $taskIndex } | "
+        "Select-Object -ExpandProperty NextHop) } }) | ConvertTo-Json -Depth 5 -Compress"
     )
     try:
         result = subprocess.run(
@@ -69,17 +84,62 @@ def _query_windows_connections():
             raise SnapshotUnavailable("adapter_query_failed")
         if len(result.stdout) > 100_000:
             raise SnapshotUnavailable("adapter_output_invalid")
-        rows = json.loads(result.stdout)
-        rows = [rows] if isinstance(rows, dict) else rows
-        if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
-            raise SnapshotUnavailable("adapter_output_invalid")
-        return rows
+        return _connection_rows(json.loads(result.stdout))
     except subprocess.TimeoutExpired as exc:
         raise SnapshotUnavailable("adapter_query_timeout") from exc
     except ValueError as exc:
         raise SnapshotUnavailable("adapter_output_invalid") from exc
     except (OSError, subprocess.SubprocessError) as exc:
         raise SnapshotUnavailable("adapter_query_failed") from exc
+
+
+def _connection_rows(value):
+    """Validate and order adapter facts so enumeration order is not a change."""
+    rows = [value] if isinstance(value, dict) else value
+    if not isinstance(rows, list) or len(rows) > 256:
+        raise SnapshotUnavailable("adapter_output_invalid")
+    result, indices = [], set()
+    try:
+        for row in rows:
+            if not isinstance(row, dict) or set(row) != {
+                "Index",
+                "Profile",
+                "Addresses",
+                "Gateways",
+            }:
+                raise ValueError("invalid connection fields")
+            index, profile = row["Index"], row["Profile"]
+            if type(index) is not int or index < 1 or index in indices:
+                raise ValueError("invalid or duplicate interface index")
+            if profile is not None and (not isinstance(profile, str) or len(profile) > 1024):
+                raise ValueError("invalid connection profile")
+            if not isinstance(row["Addresses"], list) or not isinstance(row["Gateways"], list):
+                raise ValueError("invalid connection arrays")
+            addresses = []
+            for address in row["Addresses"]:
+                if not isinstance(address, dict) or set(address) != {"IPAddress", "PrefixLength"}:
+                    raise ValueError("invalid address fields")
+                ip, prefix = address["IPAddress"], address["PrefixLength"]
+                if not isinstance(ip, str) or type(prefix) is not int or not 0 <= prefix <= 32:
+                    raise ValueError("invalid address or prefix")
+                addresses.append({"IPAddress": str(IPv4Address(ip)), "PrefixLength": prefix})
+            gateways = row["Gateways"]
+            if not all(isinstance(gateway, str) for gateway in gateways):
+                raise ValueError("invalid gateway")
+            result.append(
+                {
+                    "Index": index,
+                    "Profile": profile,
+                    "Addresses": sorted(
+                        addresses, key=lambda a: (a["IPAddress"], a["PrefixLength"])
+                    ),
+                    "Gateways": sorted({str(IPv4Address(gateway)) for gateway in gateways}),
+                }
+            )
+            indices.add(index)
+    except (ValueError, TypeError) as exc:
+        raise SnapshotUnavailable("adapter_output_invalid") from exc
+    return sorted(result, key=lambda row: row["Index"])
 
 
 def connection_snapshot(config, scope, interface=None, *, strict=False):

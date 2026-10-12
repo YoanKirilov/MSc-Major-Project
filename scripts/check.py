@@ -35,6 +35,7 @@ def main():
     # Explicit opt-ins override any flags left in the parent shell.
     env["RUN_BROWSER_TESTS"] = "1" if args.browser else "0"
     env["RESPONSIVE_BROWSERS"] = args.browser_engines
+    env["UI_UX_BROWSERS"] = args.browser_engines
     env["RUN_LIVE_OLLAMA"] = "1" if args.ollama else "0"
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["RUFF_CACHE_DIR"] = str(run / "ruff-cache")
@@ -61,7 +62,10 @@ def main():
         ["node", "tests/api_ui.test.mjs"],
         ["node", "tests/dashboard_ui.test.mjs"],
         ["node", "tests/report_ui.test.mjs"],
+        ["node", "tests/report_view_ui.test.mjs"],
         ["node", "tests/notes_ui.test.mjs"],
+        ["node", "tests/nicknames_ui.test.mjs"],
+        ["node", "tests/device_components_ui.test.mjs"],
         ["node", "tests/live_server_bridge.test.mjs"],
         *[
             ["node", "--check", str(path)]

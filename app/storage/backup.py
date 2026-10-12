@@ -12,7 +12,8 @@ from filelock import FileLock
 MAX_BACKUP_BYTES = 1024 * 1024 * 1024
 MAX_FILES = 20000
 ALLOWED = re.compile(
-    r"(?:settings|nicknames)(?:\.previous)?\.json|"
+    r"(?:settings|nicknames)(?:\.previous)?\.json|nicknames\.recovery\.json|"
+    r"nicknames\.corrupt-[0-9a-f]{32}\.json|"
     r"scans/[0-9a-f-]{36}/(?:[a-z.]+\.json|annotations\.corrupt-[0-9a-f]{32}\.json|"
     r"raw/[a-zA-Z0-9.-]+\.xml|guidance/guidance-[0-9a-f-]{36}\.json)"
 )
@@ -31,7 +32,8 @@ def files_to_backup(root):
             "settings.previous.json",
             "nicknames.json",
             "nicknames.previous.json",
-        }:
+            "nicknames.recovery.json",
+        } or re.fullmatch(r"nicknames\.corrupt-[0-9a-f]{32}\.json", path.name):
             candidates = [path]
         else:
             continue

@@ -37,7 +37,7 @@ export function reviewProgress(data, notes) {
   return counts;
 }
 
-export function projectNotes(document, notes, { disabled = false, data = null } = {}) {
+export function projectNotes(document, notes, { disabled = false, data = null, expandFiltered = true } = {}) {
   document.querySelector('#report-user-title').textContent = notes?.title || '';
   document.querySelector('#editReportTitle').disabled = !notes || disabled;
   const notice = document.querySelector('#annotation-notice');
@@ -51,8 +51,43 @@ export function projectNotes(document, notes, { disabled = false, data = null } 
     const row = control.closest('.action-check');
     // Never hide a focused control as its status changes; the filter applies on
     // the user's next filter change or subsequent rendering, not mid-edit.
-    row.hidden = filter !== 'all' && control.value !== filter && document.activeElement !== control && row.dataset.editing !== 'true';
+    const task = control.closest('.review-task');
+    // The global task filter is scoped to the complete task list. A selected
+    // review item's recommendations always remain available in its detail panel.
+    row.hidden = false;
+    if (task) task.hidden = filter !== 'all' && control.value !== filter
+      && document.activeElement !== control && row.dataset.editing !== 'true';
   });
+  const tasks = [...document.querySelectorAll('#nextStepsList .review-task')];
+  const visibleTasks = tasks.filter(task => !task.hidden).length;
+  document.querySelectorAll('#nextStepsList > li').forEach(group => {
+    const rows = [...group.querySelectorAll('.review-task')];
+    group.hidden = rows.length > 0 && rows.every(row => row.hidden);
+    if (expandFiltered && filter !== 'all' && !group.hidden) {
+      const disclosure = group.querySelector('.next-step-checklist');
+      if (disclosure) disclosure.open = true;
+    }
+    const disclosure = group.querySelector('.next-step-checklist');
+    const summary = disclosure?.querySelector?.('summary');
+    if (summary) {
+      const counts = reviewProgress({ findings: [{ finding_id: disclosure.dataset.findingId,
+        actions: rows.map(row => ({ action_id: row.dataset.actionId })) }] }, notes);
+      const statuses = notes
+        ? [[counts.to_check, 'to check'], [counts.checked, 'Checked'], [counts.need_help, 'need help']]
+          .filter(([count]) => count).map(([count, label]) => `${count} ${label}`).join(' · ')
+        : 'saved status unavailable';
+      const available = rows.filter(row => !row.hidden).length;
+      summary.textContent = `Review tasks (${counts.total}) · ${statuses}${filter === 'all' ? '' : ` · ${available} available in this filter`}`;
+    }
+  });
+  const filteredCount = document.querySelector('#checklist-filter-count');
+  if (filteredCount) filteredCount.textContent = `${visibleTasks} of ${tasks.length} review tasks available${filter === 'all' ? '' : ' in this status filter'}. Open a Review tasks heading to read and record an action.`;
+  for (const id of ['#expandReviewTasks', '#collapseReviewTasks']) {
+    const button = document.querySelector(id);
+    if (button) button.disabled = visibleTasks === 0;
+  }
+  const empty = document.querySelector('#checklist-empty');
+  if (empty) empty.hidden = visibleTasks > 0 || filter === 'all';
   document.querySelectorAll('[data-note-panel]').forEach(panel => panel.updateNotes?.(notes));
   const progress = document.querySelector('#checklist-progress');
   if (progress) {

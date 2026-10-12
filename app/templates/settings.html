@@ -1,38 +1,87 @@
 {% extends "base.html" %}
+{% set active_page = 'settings' %}
+{% block title %}Settings · NetGuard AI{% endblock %}
 {% block content %}
-<section class="card">
-  <h2>Settings</h2>
-  <form id="settings-form">
-    <label for="scope-mode">Network range</label>
-    <select id="scope-mode">
-      <option value="automatic">Automatic — use my current connection</option>
-      <option value="manual">Manual — use a saved range</option>
-    </select>
-    <label for="allowed-network">Authorised network range</label>
-    <input id="allowed-network" type="text" placeholder="Automatically detect my home network" />
-    <p id="network-status" role="status"></p>
-    <p>Automatic uses your current private connection when its range is /24 or smaller. Confirm permission when scanning a new network. Manual keeps your chosen range when you move between networks.</p>
-    <label for="interface-select">Interface</label>
-    <select id="interface-select">
-      <option value="">Loading available interfaces...</option>
-    </select>
-    <label><input type="checkbox" id="retain-raw-xml" /> Retain raw XML</label>
-    <label><input type="checkbox" id="mdns-enabled" /> Also look for local device announcements (mDNS)</label>
-    <p id="mdns-status"></p>
-    <p>Announcements are available for Light and Deep scans. Deep and known-host scans keep announcements only for the selected devices. Both profiles also collect bounded extra device details and compare recent saved reports where identity can be matched.</p>
-    <h3>Plain-language results with Ollama</h3>
-    <p>Every new scan includes local AI report preparation. The results open when that step finishes. If Ollama stops, you can retry the explanation using the saved scan.</p>
-    <p id="ai-status" role="status"></p>
-    <button type="button" id="check-ai">Check Ollama again</button>
-    <h3>Device names from Pi-hole (optional)</h3>
-    <p>Pi-hole is a separate service on your own network. It can help recognise devices using names it already knows. Installing it alone does not identify every device.</p>
-    <label><input type="checkbox" id="pihole-enabled" /> Use names from my Pi-hole</label>
-    <p id="pihole-status" role="status"></p>
-    <p>For setup, follow <code>docs/pihole-setup.md</code> in the project. Keep this off on networks you are not authorised to assess. Imported names are extra context, not proof that a device is online or safe.</p>
-    <button type="submit">Save settings</button>
+<header class="page-heading">
+  <p class="eyebrow">Your local app</p>
+  <h1>Settings</h1>
+  <p>Choose how your authorised network is checked. These settings do not start a scan.</p>
+</header>
+<section class="card settings-card" aria-label="App settings">
+  <div id="settings-errors" class="error-summary" role="alert" tabindex="-1" hidden>
+    <h2>Settings could not be saved</h2>
+    <p id="settings-error-message"></p>
+    <ul id="settings-error-list"></ul>
+    <button class="secondary-button" id="reload-settings" type="button" hidden>Reload saved settings</button>
+  </div>
+  <p id="settings-status" class="status-message" role="status">Loading your settings…</p>
+  <form id="settings-form" novalidate>
+    <fieldset class="form-section">
+      <legend>Network to check</legend>
+      <p class="field-hint">Only scan networks and devices you own or have permission to assess.</p>
+      <div class="form-field">
+        <label for="scope-mode">How to choose the network range</label>
+        <select id="scope-mode" aria-describedby="scope-mode-hint">
+          <option value="automatic">Automatic — current network</option>
+          <option value="manual">Manual — saved range</option>
+        </select>
+        <p class="field-hint" id="scope-mode-hint">Automatic follows your current private connection when its range is /24 or smaller. Manual keeps a specific range when you change networks.</p>
+      </div>
+      <div class="form-field" id="manual-network-field" hidden>
+        <label for="allowed-network">Authorised network range</label>
+        <input id="allowed-network" type="text" spellcheck="false" autocomplete="off" maxlength="18" aria-describedby="allowed-network-hint allowed-network-error" />
+        <p class="field-hint" id="allowed-network-hint">Enter a private IPv4 network in CIDR format, /24 or smaller. The backend checks that this is a valid, bounded network.</p>
+        <p class="field-error" id="allowed-network-error" hidden></p>
+      </div>
+      <div class="read-only-field">
+        <strong>Current effective network</strong>
+        <p id="network-status" role="status">Checking your connection…</p>
+        <p class="field-hint">This is a read-only observation, not a field to edit. A range fixed by backend configuration takes priority over these saved settings.</p>
+      </div>
+    </fieldset>
+    <fieldset class="form-section">
+      <legend>Plain-language results</legend>
+      <p>Every scan includes local Ollama preparation. If it is unavailable, the saved facts stay readable and the explanation can be retried.</p>
+      <p id="ai-status" class="status-message" role="status"></p>
+      <button class="secondary-button" type="button" id="check-ai">Check Ollama again</button>
+    </fieldset>
+    <details class="settings-advanced">
+      <summary>Advanced and optional settings</summary>
+      <fieldset class="form-section">
+        <legend>Scanner and evidence</legend>
+        <div class="form-field">
+          <label for="interface-select">Network adapter</label>
+          <select id="interface-select" aria-describedby="interface-hint interface-error"><option value="">Loading available adapters…</option></select>
+          <p class="field-hint" id="interface-hint">Automatic is recommended. Select an adapter only when you know which connection is authorised.</p>
+          <p class="field-error" id="interface-error" hidden></p>
+        </div>
+        <div class="form-field checkbox-field">
+          <label for="retain-raw-xml"><input type="checkbox" id="retain-raw-xml" /> Keep technical scanner output (XML)</label>
+          <p class="field-hint">Useful for technical investigation. These files can contain private network details.</p>
+        </div>
+        <div class="form-field checkbox-field">
+          <label for="mdns-enabled"><input type="checkbox" id="mdns-enabled" aria-describedby="mdns-status mdns-error" /> Look for local device announcements (mDNS)</label>
+          <p id="mdns-status" class="field-hint"></p>
+          <p class="field-hint">Light and Deep can use these unverified announcements. Selected-device scans keep only relevant announcements; an advertisement is not a completed service check.</p>
+          <p class="field-error" id="mdns-error" hidden></p>
+        </div>
+      </fieldset>
+      <fieldset class="form-section">
+        <legend>Names from Pi-hole (optional)</legend>
+        <p>Pi-hole is a separate service on your own network. It can supply names it already knows, but cannot identify every device.</p>
+        <div class="form-field checkbox-field">
+          <label for="pihole-enabled"><input type="checkbox" id="pihole-enabled" aria-describedby="pihole-status pihole-error" /> Use names from my Pi-hole</label>
+          <p id="pihole-status" class="field-hint" role="status"></p>
+          <p class="field-error" id="pihole-error" hidden></p>
+        </div>
+        <p class="field-hint">For configuration, see <code>docs/pihole-setup.md</code>. Imported names are context, not proof that a device is online or safe. This page does not contact Pi-hole.</p>
+      </fieldset>
+    </details>
+    <div class="form-actions">
+      <button class="primary-button" type="submit" id="save-settings" disabled>Save settings</button>
+      <a class="text-button" href="/">Cancel and return to scan</a>
+    </div>
   </form>
 </section>
 {% endblock %}
-{% block scripts %}
-<script type="module" src="/static/js/settings.js?v=20261001-network-recovery"></script>
-{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/settings.js?v=20261008-ui"></script>{% endblock %}

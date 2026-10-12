@@ -1,0 +1,14 @@
+<a class="skip-link" href="#main-content" tabindex="0">Skip to main content</a>
+<header class="topbar">
+  <a class="brand" href="/" aria-label="NetGuard AI home">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 28 28"><path d="M14 2.7 23 6v6.8c0 6-3.6 10.5-9 12.5-5.4-2-9-6.5-9-12.5V6l9-3.3Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9.6 14.1 2.8 2.8 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+    <span>NetGuard <b>AI</b></span>
+  </a>
+  <nav class="topbar-actions" aria-label="Main navigation">
+    <a href="/"{% if active_page | default('') == 'scan' %} aria-current="page"{% endif %}>Scan</a>
+    <a href="/history"{% if active_page | default('') == 'history' %} aria-current="page"{% endif %}>Saved reports</a>
+    <a href="/settings"{% if active_page | default('') == 'settings' %} aria-current="page"{% endif %}>Settings</a>
+  </nav>
+</header>

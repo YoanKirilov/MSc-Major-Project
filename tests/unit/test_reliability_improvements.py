@@ -51,6 +51,19 @@ def test_both_annotation_copies_invalid_are_not_reset(tmp_path):
     assert (folder / "annotations.json").read_text() == "broken"
 
 
+def test_repeated_annotation_recovery_invalidates_previous_recovery_editor(tmp_path):
+    store, doc, notes, folder = prepare_notes(tmp_path)
+    store._atomic_write(folder / "annotations.json", "first interruption")
+    first = notes._load(doc.scan_id)
+    store._atomic_write(folder / "annotations.json", "second interruption before editing")
+    second = notes._load(doc.scan_id)
+    assert second.revision > first.revision
+    with pytest.raises(ValueError, match="changed"):
+        notes._update(
+            doc.scan_id, title=TitleUpdate(expected_revision=first.revision, title="Stale")
+        )
+
+
 def test_missing_annotations_primary_recovers_backup(tmp_path):
     _, doc, notes, folder = prepare_notes(tmp_path)
     (folder / "annotations.json").unlink()

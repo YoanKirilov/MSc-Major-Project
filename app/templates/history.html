@@ -1,26 +1,56 @@
 {% extends "base.html" %}
+{% set active_page = 'history' %}
+{% block title %}Saved reports · NetGuard AI{% endblock %}
 {% block content %}
-<section class="card">
-  <h2>Saved reports</h2>
-  <p>Reopen results saved on this computer. Opening a report does not start a new scan.</p>
-  <details><summary>Backups and storage</summary>
-    <button type="button" id="storageUsageButton">Check saved data size</button>
-    <p id="storageUsage" role="status"></p>
-    <p>Back up before removing old reports. Stop the app, then use its storage export command to copy live reports, names and settings into a new private folder. Restore into a new folder, never over existing evidence. See docs/storage-backups.md for exact commands. Backups contain private network details; do not publish them.</p>
-  </details>
-  <form id="history-filters">
-    <label for="history-query">Search all reports by title, nickname, device or address</label><input id="history-query" type="search" maxlength="120" />
-    <label for="history-profile">Scan type</label><select id="history-profile"><option value="">All types</option><option value="light">Light</option><option value="deep-tcp-v1">Deep</option></select>
-    <label for="history-state">Completion</label><select id="history-state"><option value="">All states</option><option value="completed">Finished</option><option value="partial">Some checks unfinished</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option><option value="running">In progress</option><option value="queued">Waiting</option></select>
-    <label for="history-after">From date (UTC)</label><input id="history-after" type="date" />
-    <label for="history-before">To date (UTC)</label><input id="history-before" type="date" />
-    <button type="submit">Search reports</button><button type="reset">Clear filters</button>
+<header class="page-heading">
+  <p class="eyebrow">Your local records</p>
+  <h1>Saved reports</h1>
+  <p>Reopen results saved on this computer. Opening a report does not start a scan.</p>
+</header>
+<section class="card" aria-label="Find a saved report">
+  <div id="history-filter-error" class="error-summary" role="alert" tabindex="-1" hidden><h2>Check the report filters</h2><p id="history-filter-error-message"></p></div>
+  <form id="history-filters" class="history-filters">
+    <div class="form-field history-query-field">
+      <label for="history-query">Search saved reports</label>
+      <input id="history-query" type="search" maxlength="120" aria-describedby="history-query-hint" />
+      <p id="history-query-hint" class="field-hint">Search by saved title, nickname, device or address.</p>
+    </div>
+    <div class="form-field">
+      <label for="history-profile">Scan type</label>
+      <select id="history-profile"><option value="">All types</option><option value="light">Light</option><option value="deep-tcp-v1">Deep</option></select>
+    </div>
+    <div class="form-field">
+      <label for="history-state">Scan completion</label>
+      <select id="history-state"><option value="">All states</option><option value="completed">Finished</option><option value="partial">Some checks unfinished</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option><option value="running">In progress</option><option value="queued">Waiting</option></select>
+    </div>
+    <div class="form-field">
+      <label for="history-after">From date (UTC)</label><input id="history-after" type="date" />
+    </div>
+    <div class="form-field">
+      <label for="history-before">To date (UTC)</label><input id="history-before" type="date" aria-describedby="history-before-error" />
+      <p id="history-before-error" class="field-error" hidden></p>
+    </div>
+    <div class="form-actions history-query-field">
+      <button class="primary-button" type="submit">Search reports</button>
+      <button class="secondary-button" type="reset">Clear filters</button>
+    </div>
   </form>
-  <p id="history-status" role="status"></p>
-  <p id="history-warnings" role="status" hidden></p>
-  <ul id="history-list"></ul>
-  <button type="button" id="history-previous" disabled>Previous</button>
-  <button type="button" id="history-next" disabled>Next</button>
 </section>
+<section class="history-results" aria-labelledby="history-results-title">
+  <h2 id="history-results-title">Reports</h2>
+  <p id="history-status" class="status-message" role="status">Loading saved reports…</p>
+  <p id="history-warnings" class="status-message status-warning" role="status" hidden></p>
+  <div id="history-empty" class="empty-state" hidden><h3>No saved reports yet</h3><p>After an authorised scan finishes, its report is saved here.</p><a class="secondary-button" href="/">Set up a scan</a></div>
+  <ul id="history-list" class="history-list"></ul>
+  <nav class="form-actions" aria-label="Saved report pages">
+    <button class="secondary-button" type="button" id="history-previous" disabled>Previous</button>
+    <button class="secondary-button" type="button" id="history-next" disabled>Next</button>
+  </nav>
+</section>
+<details class="card storage-details"><summary>Backups and storage</summary>
+  <button class="secondary-button" type="button" id="storageUsageButton">Check saved data size</button>
+  <p id="storageUsage" class="status-message" role="status"></p>
+  <p>Back up before removing old reports. Stop the app, then use its storage export command to copy reports, names and settings into a new private folder. Restore into a new folder, never over existing evidence. See <code>docs/storage-backups.md</code> for commands. Backups contain private network details; do not publish them.</p>
+</details>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/history.js?v=20261001-network-recovery"></script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/history.js?v=20261008-ui"></script>{% endblock %}

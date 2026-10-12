@@ -62,6 +62,9 @@ def nvd_data():
         "cpe:/a:apache:http_server:~packed",
         "https://example.com",
         "cpe:/a:apache:http_server:latest",
+        None,
+        123,
+        {},
     ],
 )
 def test_imprecise_or_unsupported_cpes_are_not_guessed(value):

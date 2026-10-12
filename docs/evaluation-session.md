@@ -79,6 +79,28 @@ For each task record success, help requested, time, mistaken target selection an
 participant's explanation. Keep these results separate from the existing 0–4 AI
 comprehension score. No participant results have been collected by this change.
 
+## Recovery, progress and earlier-observation tasks (7 October 2026)
+
+Use synthetic reports and a held synthetic scan, never participant networks. Ask:
+
+- After refreshing a running Deep page on a narrow screen, what is being checked?
+  Can its target be changed now? Success: find progress and the fixed target without
+  attempting a second scan. Record time, scrolling and requested help.
+- A nickname recovery notice says the latest edits may be missing. What is affected?
+  Success: distinguish labels from unchanged scan evidence; reload before editing.
+- One device has a current name, one an earlier saved name and one no detected name.
+  Which identities are proven? Success: none; names are clues and unnamed is not
+  automatically suspicious. A user nickname is not a detected name.
+- Explain “Seen earlier, not matched this time” separately from an unfinished device
+  check. Success: absence is uncertain; an unfinished check remains unassessed. Do
+  not call either a verified repair or a new vulnerability.
+- This report checks the computer running NetGuard. Does an answering feature prove
+  an internet user can reach it? Success: no; review the recorded limits and firewall.
+
+Record each task separately from AI-only scores. A facilitator walkthrough or passing
+browser tests is not participant evidence. Recruitment, ethics approval, controlled
+original/AI views and independent scoring are still required before claiming results.
+
 ## Physical-device and platform checklist
 
 Still pending: actual Android Chrome, iOS Safari, keyboard/screen-reader sessions and
@@ -94,6 +116,36 @@ On Ubuntu, install the pinned runtime/dev dependencies in a new virtual environm
 run `python scripts/check.py --browser --browser-engines chromium,firefox,webkit` and
 `python scripts/check_package.py`, and record exact results. A live Nmap check needs
 separate authorisation of the connected network. No Ubuntu execution is claimed here.
+
+## Revised interface tasks — 9 October 2026
+
+These evaluate the combined interface from the [UI/UX implementation](ui-ux-implementation-20261009.md),
+not Ollama in isolation. Use synthetic saved facts with rich/sparse device cards,
+an unfinished target, an uncertain name and more than five answering features.
+Do not coach the participant before their first answer or perform a live lookup.
+
+- Find the device you would review first, then locate its explanation on a narrow
+  screen. Record wrong-device selections, scrolling, assistance and time.
+- Open **About this device** and explain why its name is shown. Success distinguishes
+  a device claim, earlier name or personal nickname from a verified identity.
+- Find a feature beyond the first five. Explain what answered and what remains
+  unknown; answering does not establish that anyone used it or that it is vulnerable.
+- Search devices without changing review-item search, then clear each search.
+  Record whether scope/count labels prevent confusing no match with no findings.
+- Find every remaining checklist action, mark one **Checked**, filter **Need help**,
+  and explain that these are personal notes, not a new security test or verified repair.
+- Rename a synthetic device, cancel a second edit and recover from a simulated save
+  conflict. Success preserves the draft and makes the affected device unambiguous.
+- Find the unfinished device and distinguish it from an AI wording outage. Neither
+  can be interpreted as a completed check or a safe-device verdict.
+- Find the published-software research disclosure and explain why a port alone is
+  insufficient for a CVE match. Do not submit a real lookup during the session.
+
+For each task record success, interpretation errors, help and completion time separately
+from the original 0–4 AI score. Agree acceptance targets with the supervisor before
+recruitment. No participant measurements or comprehension success rates are supplied
+by this implementation. Include keyboard-only, physical-phone and screen-reader
+sessions in the remaining accessibility work rather than treating emulation as a pass.
 
 ## New report-note tasks — 6 October 2026
 

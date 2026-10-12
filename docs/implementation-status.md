@@ -1,5 +1,184 @@
 # Implementation brief status
 
+Read the newest sections first. Older dated sections preserve what was pending at
+that time; they are not the current outstanding-work list.
+
+## Same-day UI/UX repeat follow-up — 12 October 2026
+
+[The repeat execution record](ui-ux-live-followups-20261012.md) records findings
+before edits and maps them to readable technical-table controls, honest task
+availability/empty-filter feedback, visible saved task status, a refresh-safe review
+device filter and shared context for repeated unidentified replies. All findings
+and independent actions remain available; JSON evidence and scanner rules are unchanged.
+New Light and this-PC Deep checks completed without scan errors, and evidence/AI
+replay plus actual-report cross-browser checks passed. Full regression status and
+remaining runtime/manual-evaluation limits are tracked in that record.
+
+A new verification-only fault was also fixed: browser fixtures now reserve a safe
+high-ephemeral loopback port rather than occasionally receiving a browser-blocked
+low port. This changes test setup, not the application's port or scan architecture.
+
+The final full three-engine gate passed 726 Python/browser and 110 JavaScript tests;
+offline installed-package verification passed, with all 91 packaged app files
+matching source. The earlier test setup error is retained separately. The five UI
+changes and test-harness fix are complete; the runtime/manual-evaluation limits
+listed in the execution record are not marked resolved.
+
+## Beginner-reading follow-up implemented — 12 October 2026
+
+[The execution record](readability-fixes-20261012.md) maps the findings-file addendum
+to implemented scan/progress read recovery, exact-address search, unknown-result
+previews, grouped device evidence and the requested compact/justified novice reading.
+Visible purpose explanations, identification/term help and web-page precautions keep
+facts and uncertainty separate from advice. Approved Ollama wording is version 4.3.0.
+
+The complete three-engine synthetic gate passed before two additional display-text
+clarifications; the final source then passed fresh offline and saved-live-report
+three-engine checks. New authorised Light and this-PC Deep scans completed without
+scan errors, and evidence/AI replay passed. No original reports were rewritten.
+The intermittent upstream Windows cleanup warning has been investigated but is not
+marked fixed. Real-reader, physical-device, Ubuntu and actual provider evaluation
+remain separate work; Pi-hole remains deferred.
+
+## Repeat live review — 9 October 2026
+
+[The repeat review](live-ui-repeat-20261009.md) saved new isolated Light and this-PC
+Deep reports. Light retained one unreachable device after two attempts (9/10 checks
+finished); Deep completed without scan errors. Evidence/AI replay, automatic report
+opening, refresh, history/Run again, three-engine responsive checks and the fresh
+offline gate passed. No application-code fixes, upgrades or removals were made.
+
+Storage-read recovery and exact-IP search remain pending. The new failed-device
+case also supports replacing a zero-feature preview with explicit “Not assessed”
+wording. The earlier Windows close issue was not seen this time but is not marked
+fixed. Contextual help, shorter mobile headings and guided novice actions/identification
+remain recommendations, with real-reader/physical-device evaluation still required.
+Normal reports/backend were preserved; Pi-hole and real CVE lookups remain deferred.
+
+## Live review after UI follow-ups — 9 October 2026
+
+The authorised Light and this-PC Deep runs completed with zero scan errors and no
+unfinished device checks. Evidence replay, AI validation, refresh/history/Run again,
+three-engine responsive report checks and a fresh offline gate passed. See
+[the dated review](live-ui-review-20261009.md) for exact counts, isolated report locations,
+intermediate harness failures and verification limits.
+
+New pending work: helpful recovery for generic scan/progress storage-read I/O errors,
+exact full-IP search/recognition, investigation of the reproduced Windows socket-close
+diagnostic, and the proposed contextual-help/device-focused UI refinements. These are
+not implemented by this review. Nontechnical-reader and physical-device testing remain
+open; Pi-hole remains deferred and no real CVE lookup was performed.
+
+## Eight UI/UX follow-ups implemented — 9 October 2026
+
+The [follow-up record](ui-ux-followups-20261009.md) maps all eight changes and their
+verification. Reports recover per-tab reading state, use consistent feature-specific
+review titles, separate missing facts from zero observations, and keep comparisons/
+announcements with their device. Concise progress status, sized section navigation,
+persistent task collapse, visible practical directions and purpose-first scan choices
+retain the current visual identity, JSON evidence and revision-safe notes.
+
+Focused browser/workflow and final installed-wheel checks passed. The final complete
+offline three-engine gate passed **688 Python/browser and 102 JavaScript tests**, with
+lint/format and all 15 module syntax checks. Normal reports/backend and earlier unrelated
+runtime/live-provider/Pi-hole limitations are unchanged. Manual phone, screen-reader,
+reader-study and Ubuntu verification remain open.
+
+## UI/UX brief implemented — 9 October 2026
+
+The [28-item UI/UX brief](ui-ux-review-20261008.md) now has a
+[finding-by-finding implementation record](ui-ux-implementation-20261009.md).
+Device anatomy, mobile detail placement, search/checklist scope, shared navigation,
+forms, modal editing, focus and supporting-information placement are implemented.
+Separate display components and organised CSS retain revision-safe writes and
+unchanged evidence. Final three-engine regression passed **664 Python/browser and
+93 JavaScript tests**, lint/format and 14 module syntax checks. Fresh installed-wheel
+verification and copied-report read-only audits passed. No new live scans or real
+provider requests ran; normal reports and the running backend were preserved.
+
+Physical devices, real zoom/screen-reader evaluation, Ubuntu and nontechnical-reader
+measurements remain unperformed. Prepared reader tasks are in `evaluation-session.md`;
+do not claim human comprehension or accessibility certification from these tests.
+Earlier unrelated Windows runtime/Pi-hole/live NVD follow-ups are not marked fixed
+by UI verification.
+
+## Home reliability and date/package follow-ups — 8 October 2026
+
+Implemented the measured Windows connection-query improvement, complete shared
+UTC summary/search/device-picker policy, readable uncertain-time labels, and pinned
+isolated build tools with offline-cache verification. Fixed dependency-audit includes
+and added returned-coverage checks across independently validated environments.
+Final offline gate passed 582 Python/74 JavaScript cases; the separate three-engine
+gate passed before this tooling-only follow-up. The safety guard, saved facts,
+rule severities, existing layout and JSON-only storage remain intact.
+
+Authorised concurrent Light completed 23/24 discovered-device checks; one unreachable
+device is still disclosed. This-PC Deep completed with no scan errors. Saved evidence,
+all 15 Ollama records, mobile/refresh/navigation, regression, installed-package and
+security checks passed. New live reports use isolated JSON; normal data was preserved.
+See [the implementation and verification record](home-live-review-20261008.md).
+Physical-phone/accessibility/reader/Ubuntu work and the unreproduced Windows shutdown
+reset remain separate limits. Pi-hole and real NVD provider checks remain deferred.
+
+## Offline organisation and saved-date fixes — 8 October 2026
+
+Extracted pure CPE/fingerprint validation from NVD HTTP orchestration with compatible
+old imports. Shared aware-UTC parsing corrects report-comparison ordering and prevents
+bad dates from hiding usable previous observations or qualifying cross-report nickname
+reuse. Added test-only live-work guards and removed two tests' hardware dependencies.
+Final offline verification passed 545 Python/73 JavaScript tests, lint/format and 11
+syntax checks; all source/assets remain referenced and no source file was deleted.
+
+No live scan/discovery or real model generation ran; normal storage/backend and UI
+layout were left alone. New installed-wheel verification was not completed because
+offline build tools were absent. Summary/search date consistency and build reproducibility
+are follow-ups, alongside the prior adapter timeout and real-user/device evaluation.
+See [the execution record and recommendations](offline-code-review-20261008.md).
+
+## Nickname and plain-language follow-ups implemented — 7 October 2026
+
+The two confirmed frontend follow-ups from the earlier review are fixed: delayed
+nickname snapshots cannot regress the displayed version, and naming help uses the
+actual button label. Added reviewed Windows/VMware feature help, factual Light
+scan-computer coverage and expandable duplicate mobile checklists. Nickname adoption
+is a separate tested module. Final regression passed 518 Python/73 JavaScript tests,
+three browsers, installed-package and security gates.
+
+New live Light/Windows-PC Deep saved replayable evidence and validated wording;
+Light had one unreachable host and Deep hit a Windows connection-query timeout
+before optional enrichment. These limitations are preserved, not concealed. All
+13 accepted AI records, four live widths, navigation/refresh and data integrity
+passed; one Light item kept reviewed wording instead of a non-simpler rewrite.
+See [the implemented plan](nickname-guidance-plan-20261007.md) and
+[results, reliability follow-up and evaluation limits](followup-live-20261007.md).
+The normal backend was not stopped and normal reports were not changed. No claim
+of completed participant/physical-phone/Ubuntu evaluation or repaired Windows reset
+is made. Earlier dated sections below describe their previous version.
+
+## Post-restart verification — 7 October 2026
+
+The new home Light/Windows-PC Deep verification passed scanning, evidence/AI replay,
+refresh/history/navigation and responsive checks. Fresh regression passed 515 Python
+and 65 JavaScript tests with three browser engines. Prior reports and the normal app
+were preserved; new live reports are in isolated test storage, not normal history.
+Two follow-ups remain: delayed nickname replies can regress the frontend snapshot,
+and naming guidance refers to a differently labelled lookup button. No new source
+fix was made in this review. See [the review and recommended next steps](postfix-live-review-20261007.md).
+
+## Review fixes implemented — 7 October 2026
+
+Implemented the nickname storage error boundary and locked backup recovery, Deep
+refresh/active-progress fixes, explicit request bounds and clearer feature/name/action
+wording. Recent compatible Light network scans can now retain a separate bounded
+earlier-observation view. Original evidence, finding severity, model input privacy and
+JSON storage are preserved. Added fault/concurrency, comparison and responsive tests.
+See [the executable plan and verification record](development-plan-20261007.md).
+Final verification passed 515 Python/65 JavaScript tests, three browser engines,
+installed-wheel/security gates and real local Ollama on synthetic facts. No new
+Nmap scan ran in this implementation turn; post-restart live verification is next.
+The Windows reset still needs a reproduction; participant/physical-phone/Ubuntu
+evaluation remains pending. Earlier dated sections below are historical evidence.
+
 ## Review fixes implemented — 6 October 2026
 
 Implemented the four confirmed application gaps from the latest review, followed by

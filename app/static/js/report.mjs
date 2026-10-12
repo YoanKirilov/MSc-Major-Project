@@ -69,6 +69,7 @@ export function serviceLabel(service, fallback = 'Selected service') {
     snmp: 'Device monitoring (SNMP)', rtsp: 'Media streaming (RTSP)',
     upnp: 'Device discovery (UPnP)', ssdp: 'Device discovery (SSDP)',
     ntp: 'Clock synchronisation (NTP)',
+    'vmware-auth': 'Virtual computer software (VMware)',
     tcpwrapped: 'Connection closed before its feature could be identified (tcpwrapped)',
   };
   const name = service.name === 'http' && service.tunnel === 'ssl' ? 'https' : service.name;
@@ -164,6 +165,25 @@ export function aiExplanationNote(data) {
   return records.length
     ? 'No reviewed alternative wording was accepted. Rule-based guidance is shown.'
     : 'AI has not been used for this report. Rule-based guidance is shown.';
+}
+
+export function progressAnnouncement(data, deep = data.policy?.profile === 'deep-tcp-v1') {
+  const phase = data.phase;
+  const stages = { queued: 'Your scan is waiting to start.', discovery: 'Looking for devices on the authorised network.',
+    service_scan: 'Checking the selected device features. The time remaining is unknown.',
+    enrichment: 'Gathering device names and details.', analysis: 'Making your results easier to understand.',
+    finished: 'Scan processing finished. Read the report for completed and unfinished checks.' };
+  if (phase === 'analysis' && data.analysis_progress?.state === 'waiting') {
+    return { key: 'analysis:waiting', message: 'Scan observations are saved. Waiting for local AI to explain them.' };
+  }
+  const complete = phase === 'analysis' ? data.analysis_progress?.completed : data.coverage?.service_completed_count;
+  const total = phase === 'analysis' ? data.analysis_progress?.total : data.coverage?.discovered_count || data.coverage?.candidate_count;
+  const boundedCounts = Number.isInteger(complete) && Number.isInteger(total) && total > 0 && complete >= 0 && complete <= total;
+  const counted = phase === 'analysis' || (phase === 'service_scan' && !deep);
+  const milestone = counted && boundedCounts ? Math.min(4, Math.floor(complete / total * 4)) : 0;
+  return { key: `${phase}:${milestone}`, message: milestone > 0
+    ? `${stages[phase]} ${complete} of ${total} ${phase === 'analysis' ? 'wording items prepared' : 'device checks finished'}.`
+    : stages[phase] || 'Preparing the selected scan.' };
 }
 
 export function analysisProgressText(data) {

@@ -3,7 +3,7 @@ from __future__ import annotations
 import ipaddress
 from dataclasses import dataclass
 
-from app.scanner.commands import PROFILE_ID
+from app.scanner.commands import MAX_KNOWN_HOSTS, PROFILE_ID
 
 PRIVATE_NETWORKS = tuple(
     ipaddress.ip_network(value) for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
@@ -65,8 +65,12 @@ def validate_target(request: dict, settings: dict) -> ValidatedTarget:
         raw_hosts = request.get("hosts")
         if not isinstance(raw_hosts, list) or not raw_hosts:
             raise ValueError("known_hosts mode requires hosts")
+        if len(raw_hosts) > MAX_KNOWN_HOSTS:
+            raise ValueError(f"Select at most {MAX_KNOWN_HOSTS} hosts for one scan")
         parsed = []
         for raw in raw_hosts:
+            if not isinstance(raw, str) or not 1 <= len(raw) <= 15:
+                raise ValueError("hosts must be canonical IPv4 addresses")
             try:
                 address = ipaddress.ip_address(raw)
             except ValueError as exc:

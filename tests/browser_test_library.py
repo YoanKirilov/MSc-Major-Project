@@ -1,7 +1,6 @@
 """Synthetic end-to-end library tools; no device traffic or live model calls."""
 
 import os
-import socket
 import threading
 import time
 from pathlib import Path
@@ -16,12 +15,24 @@ from app.schemas.scan import Device, DeviceDetail, ScanDocument
 from app.security.session import SessionManager
 from app.storage.annotations import NameRefresh
 from app.storage.json_store import JsonStore
+from tests.fixtures.browser import browser_listener
 from tests.fixtures.fixtures import make_telnet_scan
 
 pytestmark = [
     pytest.mark.browser,
     pytest.mark.skipif(os.getenv("RUN_BROWSER_TESTS") != "1", reason="Opt-in synthetic browser"),
 ]
+
+
+def edit_label(page, trigger, value):
+    """Save through the contextual editor rather than a native browser prompt."""
+    from playwright.sync_api import expect
+
+    trigger.click()
+    expect(page.locator("#annotationEditorDialog")).to_be_visible()
+    page.locator("#annotationEditorInput").fill(value)
+    page.locator("#annotationEditorSave").click()
+    expect(page.locator("#annotationEditorDialog")).not_to_be_visible()
 
 
 def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_path):
@@ -112,8 +123,7 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
     primary = store._scan_dir(scan_id) / "scan.json"
     evidence = primary.read_bytes()
     manager = SessionManager()
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", 0))
+    listener = browser_listener()
     port = listener.getsockname()[1]
     monkeypatch.setenv("APP_PORT", str(port))
     server = uvicorn.Server(uvicorn.Config(create_app(session_manager=manager), log_level="error"))
@@ -152,18 +162,31 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
                 assert (
                     card_bounds["x"] <= tools_bounds["x"] < card_bounds["x"] + card_bounds["width"]
                 )
-            expect(page.get_by_role("searchbox", name="Search devices and results")).to_be_visible()
+            expect(page.get_by_role("searchbox", name="Search devices", exact=True)).to_be_visible()
+            expect(page.get_by_role("searchbox", name="Search review items")).to_be_visible()
+            page.locator("#report-comparisons > summary").click()
             expect(page.locator("#comparison-summary")).to_contain_text("could not be compared")
-            page.get_by_text("View comparison details", exact=True).click()
-            expect(page.locator("#comparison-list article").first).to_contain_text("192.168.0.10")
-            expect(page.locator("#comparison-list article").nth(1)).to_contain_text("192.168.0.11")
-            page.locator("#searchInput").fill("display bedroom")
+            expect(page.locator("#comparison-list")).to_have_count(0)
+            page.get_by_role("link", name="Go to devices to view their comparisons").click()
+            for group in page.locator("#device-summaries .device-summary-group").all():
+                group.locator(".device-summary > summary").click()
+                group.get_by_text("About this device", exact=True).click()
+                group.get_by_text("Comparison with earlier observations", exact=True).click()
+                expect(group).to_contain_text("No verified identity match.")
+            page.locator("#deviceSearchInput").fill("display bedroom")
             expect(
                 page.locator("#device-summaries .device-summary-group > .device-summary")
             ).to_have_count(1)
-            expect(page.locator("#device-search-count")).to_contain_text("1 of 2")
+            expect(page.locator("#device-search-count")).to_contain_text("1 of 1 matching device")
+            expect(page.locator("#device-search-count")).to_contain_text("2 recorded in total")
+            # Device and review-item search have explicit independent scopes.
+            expect(page.locator("#findingsList .finding-card")).to_have_count(1)
+            page.locator("#searchInput").fill("display bedroom")
             expect(page.locator("#findingsList")).to_contain_text("No review items match")
             page.locator("#clearSearchButton").click()
+            expect(page.locator("#findingsList .finding-card")).to_have_count(1)
+            expect(page.locator("#deviceSearchInput")).to_have_value("display bedroom")
+            page.locator("#clearDeviceSearch").click()
             expect(
                 page.locator("#device-summaries .device-summary-group > .device-summary")
             ).to_have_count(2)
@@ -197,33 +220,40 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             )
             page.set_viewport_size({"width": 390, "height": 844})
             page.reload()
+            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
             expect(
                 page.locator("#device-summaries .device-summary-group > details[open]")
-            ).to_have_count(0)
+            ).to_have_count(2)
             expect(page.locator(".device-name-tools button").first).to_be_visible()
             page.locator("#identifyFirstDevice").click()
-            expect(page.locator("#searchInput")).to_have_value("192.168.0.10")
+            expect(page.locator("#deviceSearchInput")).to_have_value("192.168.0.10")
+            expect(page.locator("#searchInput")).to_have_value("")
             expect(
                 page.locator("#device-summaries .device-summary-group > details").first
             ).to_have_attribute("open", "")
             expect(page.locator(".device-name-tools button").first).to_be_focused()
             assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
             page.set_viewport_size({"width": 1280, "height": 900})
-            page.locator("#clearSearchButton").click()
+            page.locator("#clearDeviceSearch").click()
             other.locator("#searchInput").fill("192.168.0.10")
-            page.once("dialog", lambda dialog: dialog.accept("Kitchen TV"))
-            page.get_by_role("button", name="Add your own nickname", exact=True).first.click()
+            other.locator("#deviceSearchInput").fill("192.168.0.10")
+            edit_label(
+                page,
+                page.get_by_role("button", name="Add your own nickname", exact=True).first,
+                "Kitchen TV",
+            )
             expect(page.locator("#device-summaries")).to_contain_text("Kitchen TV")
             other.bring_to_front()
             expect(other.locator("#device-summaries")).to_contain_text("Kitchen TV", timeout=15000)
             expect(other.locator("#searchInput")).to_have_value("192.168.0.10")
+            expect(other.locator("#deviceSearchInput")).to_have_value("192.168.0.10")
             expect(other.locator("#findingsList .finding-card")).to_have_count(1)
             page.locator("#searchInput").fill("TV kitchen")
+            page.locator("#deviceSearchInput").fill("TV kitchen")
             expect(
                 page.locator("#device-summaries .device-summary-group > .device-summary")
             ).to_have_count(1)
-            page.once("dialog", lambda dialog: dialog.accept("After router update"))
-            page.locator("#editReportTitle").click()
+            edit_label(page, page.locator("#editReportTitle"), "After router update")
             expect(page.locator("#report-user-title")).to_have_text("After router update")
             page.once("dialog", lambda dialog: dialog.accept())
             page.get_by_role("button", name="Try identifying this address again").click()
@@ -251,15 +281,16 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             )
             expect(refresh_button).to_be_focused()
             expect(page.locator("#searchInput")).to_have_value("TV kitchen")
+            expect(page.locator("#deviceSearchInput")).to_have_value("TV kitchen")
             expect(page.locator("#checklist-progress")).to_contain_text("1 of 2")
             expect(page.locator('[data-filter="high"]')).to_have_attribute("aria-pressed", "true")
             second_status.select_option("need_help")
             expect(other.locator("#checklist-notice")).to_contain_text("not saved")
             second_status.select_option("need_help")
             expect(other.locator("#checklist-notice")).to_contain_text("Checklist saved")
-            other.once("dialog", lambda dialog: dialog.accept("Title from second tab"))
-            other.locator("#editReportTitle").click()
+            edit_label(other, other.locator("#editReportTitle"), "Title from second tab")
             expect(other.locator("#report-user-title")).to_have_text("Title from second tab")
+            page.locator("#detailPanel .cve-research > summary").click()
             cve = page.locator("#detailPanel .cve-references button")
             cve.focus()
             cve.click()
@@ -300,8 +331,7 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             expect(page.locator("#nextStepsList .action-check").first).to_be_visible()
             page.locator("#checklist-filter").select_option("all")
             # Restore the title used by the later search checks with the current revision.
-            page.once("dialog", lambda dialog: dialog.accept("After router update"))
-            page.locator("#editReportTitle").click()
+            edit_label(page, page.locator("#editReportTitle"), "After router update")
             expect(page.locator("#report-user-title")).to_have_text("After router update")
             page.route("**/refresh-name", lambda route: route.fulfill(status=503, body="{}"))
             page.once("dialog", lambda dialog: dialog.accept())
@@ -361,8 +391,34 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             page.get_by_role("button", name="Search reports", exact=True).click()
             expect(page.locator("#history-warnings")).to_contain_text("1 saved report(s)")
             expect(page.locator("#history-list li")).to_have_count(0)
+            uncertain = ScanDocument(
+                scan_id=str(uuid4()),
+                created_at="date-uncertain",
+                state="completed",
+                phase="finished",
+                policy={"profile": "light"},
+                target={"mode": "known_hosts", "hosts": ["192.168.0.99"]},
+            )
+            store._create_scan(uncertain)
+            uncertain_path = store._scan_dir(uncertain.scan_id) / "scan.json"
+            uncertain_evidence = uncertain_path.read_bytes()
+            page.locator("#history-profile").select_option("")
+            page.locator("#history-query").fill(uncertain.scan_id)
+            page.get_by_role("button", name="Search reports", exact=True).click()
+            expect(page.locator("#history-list a")).to_have_count(1)
+            expect(page.locator("#history-list a")).to_contain_text("Date unavailable")
+            expect(page.locator("#history-warnings")).to_contain_text("dates could not be verified")
+            page.locator("#history-after").fill(utc_now().date().isoformat())
+            page.get_by_role("button", name="Search reports", exact=True).click()
+            expect(page.locator("#history-list a")).to_have_count(0)
+            assert uncertain_path.read_bytes() == uncertain_evidence
             page.route("**/annotations", lambda route: route.fulfill(status=503, body="{}"))
             page.goto(base + f"/scans/{scan_id}")
+            # Returning from history retains the prior reading filter even when
+            # annotations are unavailable; clearing it still exposes all facts.
+            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+            expect(page.locator("#deviceSearchInput")).to_have_value("TV kitchen")
+            page.locator("#clearDeviceSearch").click()
             expect(
                 page.locator("#device-summaries .device-summary-group > .device-summary")
             ).to_have_count(2)

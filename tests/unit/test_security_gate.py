@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -17,14 +18,18 @@ from scripts import check_security
 )
 def test_security_gate_fails_closed(tmp_path, monkeypatch, audit_code, severity, secrets, expected):
     monkeypatch.setattr(check_security, "__file__", str(tmp_path / "scripts/check_security.py"))
+    monkeypatch.setattr(check_security, "audit_requirements", lambda *a: ["synthetic==1.0"])
     monkeypatch.setattr(check_security.subprocess, "check_output", lambda *a, **kw: b"")
 
     def run(args, **kwargs):
         if "pip_audit" in args:
+            assert args.count("-r") == 1  # Separate dependency environments.
+            Path(args[args.index("-o") + 1]).write_text(
+                json.dumps({"dependencies": [{"name": "synthetic", "version": "1.0"}]}),
+                encoding="utf-8",
+            )
             return SimpleNamespace(returncode=audit_code)
         if "bandit" in args:
-            from pathlib import Path
-
             Path(args[args.index("-o") + 1]).write_text(
                 json.dumps(
                     {

@@ -50,13 +50,15 @@ def test_invalid_numeric_environment_values_use_safe_defaults(monkeypatch):
     assert config.ai_timeout_s == 60.0
 
 
-def test_doctor_report_has_expected_fields():
+def test_doctor_report_has_expected_fields(monkeypatch):
+    monkeypatch.setattr("app.config.nmap_preflight", lambda config: (True, "synthetic-version"))
     report = doctor_report()
     assert "python_version" in report
     assert "os" in report
     assert "nmap_available" in report
     assert "provider_configured" in report
     assert isinstance(report["data_dir"], str)
+    assert report["nmap_version"] == "synthetic-version"
 
 
 def test_resolve_nmap_path_finds_standard_windows_install(tmp_path, monkeypatch):

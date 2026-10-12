@@ -42,9 +42,8 @@ REVIEWED_WORDING = {
         "A connection on this device answered. No specific security "
         "assessment is available for this service."
     ): (
-        "This device has a feature that answered the scan. The tool does "
-        "not have a security check for that feature, so its safety is "
-        "unknown."
+        "The device replied to this check. This tool does not test the "
+        "security of this feature, so its safety is unknown."
     ),
     (
         "Telnet normally sends management information without encryption. "
@@ -76,9 +75,9 @@ REVIEWED_WORDING = {
         "redirect check recorded for this port. A redirect alone does not "
         "establish that every page uses HTTPS."
     ): (
-        "HTTP does not protect traffic with encryption. Look in device details for any "
-        "check of whether this port switches to HTTPS. One switch does not prove "
-        "that all pages use HTTPS."
+        "HTTP does not scramble information to protect it while it travels. "
+        "Any saved check for a switch to HTTPS concerns only the starting page, "
+        "not all pages."
     ),
     (
         "Someone with permission may be able to control the device from "
@@ -107,8 +106,8 @@ REVIEWED_WORDING = {
         "This may be normal for the device. Check what the connection is "
         "for before deciding whether it needs a change."
     ): (
-        "This connection may be normal. Check its purpose before deciding "
-        "whether to change anything."
+        "This may be ordinary behaviour for the device. Find out what the "
+        "feature does before changing any settings."
     ),
     (
         "This is a local observation from the selected service profile only."

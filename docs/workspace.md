@@ -3,6 +3,54 @@
 Keep application code in `app/`, tests in `tests/`, operational helpers in `scripts/`,
 and explanation/decisions/evaluation records in `docs/`.
 
+## Presentation organisation — 9 October 2026
+
+See [the UI/UX execution record](ui-ux-implementation-20261009.md) for the 28-item
+brief and verification. Shared header/footer includes prevent separate page shells.
+Report state and writes remain in `scan.js`; `devices.mjs`, `finding-list.mjs` and
+`editor.mjs` handle cohesive display/interaction responsibilities. Notes/nickname
+revision ownership and saved evidence are unchanged. CSS is organised into component
+and responsive sections rather than duplicated small-screen overrides.
+
+The [eight follow-ups](ui-ux-followups-20261009.md) add `report-view.mjs` for validated
+per-tab reading-state/disclosure restoration and navigation offsets; controller
+state/writes still belong to `scan.js`. `presentation.mjs` owns the common review
+title. Announcement placement shares `devices.mjs::deviceResultEntries` rather than
+duplicating the address selection rule.
+
+The application ships seven templates (including the base and two shared includes),
+15 JavaScript modules and one stylesheet. The reachability regression checks every
+routed template and static import. The default gate now runs eight JavaScript suites
+and 15 module syntax checks. No user data, prior environments or evidence directories
+were deleted for presentation cleanup. The dated counts below describe older versions.
+
+## Review — 8 October 2026
+
+The later [home live review](home-live-review-20261008.md) implements the connection
+query, summary/search/picker date and pinned-build follow-ups. Actual home scans and
+installed-package/browser/security verification are recorded there; normal reports
+were preserved. No unused source file was proven safe to delete.
+
+The [offline code review](offline-code-review-20261008.md) records the latest source
+organisation and verification. All 67 application Python modules, five templates
+and 12 assets remain reachable; no unused source file was proven safe to remove.
+Older dated counts and cleanup records below describe their earlier version.
+
+- `scanner/cpe.py`: pure fingerprint parsing/eligibility, independent of NVD HTTP.
+- `scanner/cve.py`: bounded public-reference HTTP orchestration and compatibility
+  aliases; `scanner/cpe_identity.py`: conservative dictionary resolution.
+- `schemas/common.py::observation_time`: shared aware-UTC parsing for comparison,
+  historical naming and cross-report nickname reuse; saved timestamps stay intact.
+- `static/js/notes.mjs` and `nicknames.mjs`: independent revision-protected display
+  snapshots, not evidence storage or scanner state.
+- `tests/fixtures/offline.py`: accidental live-work guards for synthetic tests.
+
+The default gate runs six JS suites and 11 module syntax checks. It excludes
+browser, live-provider, lab and reader-study work. `requirements-build.lock` now
+provisions pinned tools for the owned build environment in `scripts/check_package.py`;
+an optional prepared wheelhouse supports offline build/install checks. The later home
+session verified this workflow. Existing environments/artifacts were not deleted.
+
 ## Cleanup review — 2 October 2026
 
 The follow-up live-test cleanup removed only regenerated `build` and `.ruff_cache`

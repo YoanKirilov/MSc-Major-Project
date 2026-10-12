@@ -226,6 +226,21 @@ class AnalysisProgress(StrictModel):
         return self
 
 
+class EarlierDevice(StrictModel):
+    last_ip: str = Field(max_length=15)
+    reported_name: str | None = Field(default=None, max_length=255)
+    name_source: str | None = Field(default=None, max_length=32)
+    observed_at: str = Field(max_length=40)
+
+
+class EarlierObservations(StrictModel):
+    status: Literal["available", "not_compared"] = "not_compared"
+    reason: str = Field(max_length=300)
+    source_scan_id: str | None = Field(default=None, max_length=36)
+    items: list[EarlierDevice] = Field(default_factory=list, max_length=50)
+    omitted_count: int = Field(default=0, ge=0)
+
+
 class ScanDocument(StrictModel):
     schema_version: Literal[1] = 1
     revision: int = 1
@@ -251,6 +266,7 @@ class ScanDocument(StrictModel):
     )
     coverage: Coverage = Field(default_factory=Coverage)
     observations: list[DiscoveryObservation] = Field(default_factory=list)
+    earlier_observations: EarlierObservations | None = None
     devices: list[Device] = Field(default_factory=list)
     services: list[Service] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
