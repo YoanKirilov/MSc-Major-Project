@@ -117,19 +117,24 @@ def test_pages_and_modules_disable_stale_browser_caching():
             response = client.get(path)
             assert response.headers["cache-control"] == "no-store"
         page = client.get("/")
-        assert "dashboard.js?v=20261009-followups" in page.text
-        module = client.get("/static/js/dashboard.js?v=20261009-followups")
+        assert "dashboard.js?v=20261013-progress-position" in page.text
+        module = client.get("/static/js/dashboard.js?v=20261013-progress-position")
         assert "report.mjs?v=20261009-followups" in module.text
 
 
 def test_dedicated_scan_pages_share_template_with_fixed_profiles():
     with TestClient(create_app()) as client:
+        home = client.get("/")
+        assert home.status_code == 200
+        assert 'data-profile="light"' in home.text
+        assert 'data-profile="deep-tcp-v1"' in home.text
+        assert 'href="/light"' not in home.text and 'href="/deep"' not in home.text
         for path, label in [("/light", "Light"), ("/deep", "Deep")]:
             page = client.get(path)
             assert page.status_code == 200
             assert f"NetGuard AI - {label} Scan" in page.text
             assert 'data-profile="light"' not in page.text
             assert 'data-profile="deep-tcp-v1"' not in page.text
-            assert 'href="/light"' in page.text and 'href="/deep"' in page.text
+            assert 'href="/light"' not in page.text and 'href="/deep"' not in page.text
             assert 'id="scanLaunchButton"' in page.text
             assert "{%" not in page.text

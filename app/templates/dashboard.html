@@ -11,6 +11,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Local network security assessment." />
     <title>NetGuard AI - {{ scan_page | default('local') | capitalize }} Scan</title>
+    <script src="/static/js/appearance.js?v=20261013-accessibility"></script>
     <link rel="stylesheet" href="/static/css/app.css" />
   </head>
   <body class="scan-home">
@@ -22,36 +23,57 @@
         <section class="scan-landing" aria-labelledby="page-title">
           <p class="eyebrow">{% if scan_page | default('') %}{{ scan_page | capitalize }} scan{% else %}Private network security{% endif %}</p>
           {% if scan_page | default('') == 'deep' %}
-          <h1 id="page-title">Take a closer look<br />at one device.</h1>
+          <h1 id="page-title">Take a closer look at one device.</h1>
           {% else %}
-          <h1 id="page-title">Understand the devices<br />on your network.</h1>
+          <h1 id="page-title">Understand your home network.</h1>
           {% endif %}
-          <p class="scan-intro">Check which device features answer on your local network, then get plain-English explanations of what to review and what the scan could not confirm.</p>
-          <nav class="scan-config" aria-label="Independent scan pages"><a href="/light" target="_blank" rel="noopener">Light scan page</a> · <a href="/deep" target="_blank" rel="noopener">Deep scan page</a></nav>
-          {% if not scan_page | default('') %}
-          <div class="scan-mode" role="group" aria-label="Scan depth">
-            <button class="mode-button active" type="button" data-profile="light" aria-pressed="true"><strong>Light</strong><span>Find and check devices across your network</span></button>
-            <button class="mode-button" type="button" data-profile="deep-tcp-v1" aria-pressed="false"><strong>Deep</strong><span>Take a closer look at one device</span></button>
+          <p class="scan-intro">See which devices can be found, what needs your attention, and what the checks could not confirm. Results are explained in plain English.</p>
+          <div class="scan-setup-card">
+            <fieldset class="scan-choice">
+              <legend>{% if not scan_page | default('') %}Choose a scan{% else %}{{ scan_page | capitalize }} scan{% endif %}</legend>
+              {% if not scan_page | default('') %}
+              <div class="scan-mode" role="group" aria-label="Scan depth">
+                <button class="mode-button active" type="button" data-profile="light" aria-pressed="true"><strong>Light</strong><span>Find and check devices across your network</span></button>
+                <button class="mode-button" type="button" data-profile="deep-tcp-v1" aria-pressed="false"><strong>Deep</strong><span>Check one device in more detail</span></button>
+              </div>
+              {% else %}
+              <p class="scan-choice-description">{% if scan_page == 'deep' %}Choose one device you own or have permission to check.{% else %}Find and check devices across your authorised local network.{% endif %}</p>
+              {% endif %}
+            </fieldset>
+            <div class="scan-target-fields">
+              <div id="recentDevicePanel" hidden>
+                <label for="recentDeviceSelect">Choose from recent Light results</label>
+                <select id="recentDeviceSelect"></select>
+                <button id="refreshDeviceChoices" class="text-button" type="button">Refresh device choices</button>
+                <p id="recentDeviceNote" class="scan-config" role="status"></p>
+              </div>
+              <label class="deep-host-field" id="deepHostField" hidden for="deepHostInput">Device address (IP) for the Deep scan</label>
+              <input class="deep-host-field" id="deepHostInput" type="text" inputmode="decimal" placeholder="Enter the device address" hidden />
+              <p class="scan-config" id="scanSetupNote" hidden></p>
+              <button class="text-button" id="clearSavedTargetsButton" type="button" hidden>Use the local network instead</button>
+            </div>
+            <div class="scan-start-area">
+              <p class="scan-config scan-readiness" id="scan-config" role="status" aria-live="polite">Checking local scanner configuration...</p>
+              <p class="scan-notice" id="scan-notice">Only scan a private network you own or have permission to check.</p>
+              <button class="scan-launch" id="scanLaunchButton" type="button" aria-describedby="scan-notice" disabled>
+                <span>Checking scanner...</span>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <p class="scan-config scan-time-note">Scans can take several minutes. Progress and results are saved on this computer.</p>
+              <p id="capacityNote" class="scan-config" role="status" hidden></p>
+            </div>
           </div>
-          {% else %}
-          <p class="scan-config">{% if scan_page == 'deep' %}Take a closer look at one device you own or have permission to check.{% else %}Find and check devices across your authorised local network.{% endif %} You can keep the other scan page open alongside this one.</p>
-          {% endif %}
-          <div id="recentDevicePanel" hidden><label for="recentDeviceSelect">Choose from recent Light results</label><select id="recentDeviceSelect"></select><button id="refreshDeviceChoices" class="text-button" type="button">Refresh device choices</button><p id="recentDeviceNote" class="scan-config" role="status"></p></div>
-          <label class="deep-host-field" id="deepHostField" hidden for="deepHostInput">Device address (IP) for the Deep scan</label>
-          <input class="deep-host-field" id="deepHostInput" type="text" inputmode="decimal" placeholder="Example: 192.168.0.53" hidden />
-          <p class="scan-config" id="scanSetupNote" hidden></p>
-          <button class="text-button" id="clearSavedTargetsButton" type="button" hidden>Use the local network instead</button>
-          <button class="scan-launch" id="scanLaunchButton" type="button" aria-describedby="scan-notice" disabled>
-            <span>Checking scanner...</span>
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <p class="scan-notice" id="scan-notice">Only scan a private network you own or have permission to assess. Light checks the detected local network; Deep requires one explicit host and performs exhaustive service/version identification plus safe service checks. It does not use exploit or password-guessing checks.</p>
-          <p class="scan-config">Light checks fewer features, but can still take several minutes on a network with many devices. Devices that respond slowly and local AI preparation can add time. Progress is saved as checks finish.</p>
-          <details class="scan-config"><summary>What does each scan check?</summary><p>Light checks 12 TCP and 3 UDP ports across the authorised network. Deep checks all 65,535 TCP ports and 25 selected UDP ports on one authorised device, with software identification and safe service checks. It can take substantially longer. Neither scan checks every possible security problem or proves a device is safe.</p></details>
-          <p class="scan-config" id="scan-config" aria-live="polite">Checking local scanner configuration...</p>
-          <div id="runningScans" class="scan-config" hidden aria-label="Other running scans"></div>
-          <p id="runningScansNote" class="scan-config" role="status"></p>
-          <p id="capacityNote" class="scan-config" role="status" hidden></p>
+          <details class="scan-extra-details">
+            <summary>What does each scan check?</summary>
+            <p>Light checks a smaller set of features across the detected local network. Deep checks many more features on one device and can take substantially longer.</p>
+            <p>In technical terms, Light checks 12 TCP and 3 UDP ports. Deep checks all 65,535 TCP ports and 25 selected UDP ports, with software identification and safe service checks.</p>
+            <p>Neither scan tries to break into devices or guess passwords. These checks cannot find every possible security problem or prove a device is safe.</p>
+            <p>Slow responses, larger networks and local AI preparation can add time. Progress is saved as checks finish, then the app prepares easier-to-understand explanations for your report.</p>
+          </details>
+          <div class="scan-running-overview">
+            <div id="runningScans" class="scan-config" hidden aria-label="Other running scans"></div>
+            <p id="runningScansNote" class="scan-config" role="status"></p>
+          </div>
         </section>
 
         <p id="scan-progress-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
@@ -87,6 +109,6 @@
       }
       window.addEventListener('error', dashboardStartupFailed, true);
     </script>
-    <script type="module" src="/static/js/dashboard.js?v=20261009-followups" onerror="dashboardStartupFailed()"></script>
+    <script type="module" src="/static/js/dashboard.js?v=20261013-progress-position" onerror="dashboardStartupFailed()"></script>
   </body>
 </html>

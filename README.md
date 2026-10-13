@@ -19,8 +19,8 @@ for automated verification and remaining physical-device/reader evaluation.
 
 The 12 October follow-up groups feature evidence once per device, shortens review
 headings and adds visible practical help, term explanations and safe web-page
-precautions. Explanatory report paragraphs are justified by default; Reading
-preferences offers left alignment and remembers the choice in this tab. Full device
+precautions. The paragraph alignment choice introduced then has now been replaced
+by the 13 October appearance preferences; report prose is left aligned. Full device
 addresses search exactly, unchecked cards say “Not assessed”, and transient saved
 scan/progress read errors offer retry without starting a replacement scan. Approved
 AI wording now uses prompt 4.3.0; factual results and JSON storage are unchanged.
@@ -30,6 +30,33 @@ checklist-status counts before expansion and clearer filtered-task availability.
 Technical tables keep readable columns on small screens; repeated unidentified
 connection replies are explained without merging findings or their action statuses.
 See the [repeat findings and execution record](docs/ui-ux-live-followups-20261012.md).
+
+The latest layout follow-up shows only the final explanation/action wording, keeping
+original rules in saved evidence and exports. Bottom supporting options share a
+desktop row, wrap on phones and expand into readable wider panels. The shared page
+width is slightly larger (1360 px); filtered-result and empty-checklist feedback is
+clearer. [Plan and verification](docs/report-layout-final-wording-20261012.md).
+
+The home page now groups both scan choices, device selection, readiness and one
+Scan action in a single setup. Duplicate links to separate scan pages are removed;
+the existing profile-specific URLs and parallel scans still work. Saved reports
+now start empty and reveal one entry per intentional downward scroll gesture.
+The first keyboard control scrolls to the reports; Show next report then offers
+a one-entry alternative. Search applies to the complete library, not only loaded
+entries. Light report titles are blue, Deep titles purple, and hover/focus swaps
+those colours. [The earlier home/history record](docs/home-history-ux-20261012.md)
+preserves the superseded eight-entry implementation.
+
+Accessibility preferences now offers Dark/Light appearance, larger text and reduced
+movement, replacing paragraph alignment. Report prose is naturally left aligned.
+Display choices are remembered separately from evidence and applied across this
+browser; device-level reduced motion is always respected. Both palettes include
+readable component surfaces and profile/severity colours.
+[13 October plan and verification](docs/report-accessibility-20261013.md).
+
+Home scan progress now stays below the setup when starting or refreshing a scan,
+without automatic scrolling or changing the setup's top spacing. Recovery still
+observes the same job and fixed target. [Fix, checks and next design recommendations](docs/home-progress-position-20261013.md).
 
 Reports now keep bounded per-tab reading position, searches, filters and disclosures
 on refresh. Feature-specific titles match across devices/results/tasks; loading is
@@ -61,8 +88,9 @@ timeout; their dated limitations remain intact despite the subsequent query fix.
 
 Earlier implementation: [7 October development plan and execution record](docs/development-plan-20261007.md).
 Nicknames now recover safely from a valid backup with an explicit notice and stale-edit
-protection. Deep refresh restores the fixed target and promotes progress on mobile;
-running scan setup is disabled. Light requests explicitly cap selected addresses at 254.
+protection. Deep refresh restores the fixed target; the earlier mobile progress
+promotion was superseded by the stable below-setup layout on 13 October.
+Running scan setup is disabled. Light requests explicitly cap selected addresses at 254.
 Naming coverage and a separate, bounded earlier-device observation view clarify what
 was and was not recognised. Older reports remain readable and are not backfilled.
 

@@ -165,6 +165,9 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
             expect(page.locator("#save-settings")).to_be_enabled()
 
             page.goto(base + "/history")
+            expect(page.locator("#history-list a")).to_have_count(0)
+            expect(page.locator("#history-status")).to_contain_text("Scroll down to reveal")
+            page.get_by_role("button", name="Scroll to reports", exact=True).click()
             expect(page.locator("#history-status")).to_contain_text("No saved reports yet")
             expect(page.locator("#history-empty")).to_be_visible()
             assert page.title().startswith("Saved reports")
@@ -177,6 +180,7 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
             expect(page.locator("#history-before")).to_have_attribute("aria-invalid", "true")
             page.get_by_role("button", name="Clear filters", exact=True).click()
             expect(page.locator("#history-filter-error")).to_be_hidden()
+            page.get_by_role("button", name="Scroll to reports", exact=True).click()
             expect(page.locator("#history-status")).to_contain_text("No saved reports yet")
             for width, height in ((320, 568), (390, 844), (768, 1024), (1440, 1000)):
                 page.set_viewport_size({"width": width, "height": height})
@@ -188,7 +192,7 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
                         expect(page.locator("#save-settings")).to_be_enabled()
                     elif route == "/history":
                         expect(page.locator("#history-status")).to_contain_text(
-                            "No saved reports yet"
+                            "Scroll down to reveal"
                         )
                     else:
                         expect(page.locator("#scanLaunchButton")).to_be_enabled()

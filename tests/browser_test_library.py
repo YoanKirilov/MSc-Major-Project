@@ -379,9 +379,11 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             page.goto(base + "/history")
             page.locator("#history-query").fill("update router")
             page.get_by_role("button", name="Search reports", exact=True).click()
+            page.get_by_role("button", name="Scroll to reports", exact=True).click()
             expect(page.locator("#history-list")).to_contain_text("After router update")
             page.locator("#history-profile").select_option("deep-tcp-v1")
             page.get_by_role("button", name="Search reports", exact=True).click()
+            page.get_by_role("button", name="Scroll to reports", exact=True).click()
             expect(page.locator("#history-status")).to_contain_text("No reports match your filters")
             broken = ScanDocument(
                 scan_id=str(uuid4()), target={"mode": "known_hosts", "hosts": ["192.168.0.99"]}
@@ -389,6 +391,7 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             store._create_scan(broken)
             store._atomic_write(store._scan_dir(broken.scan_id) / "scan.json", "broken fixture")
             page.get_by_role("button", name="Search reports", exact=True).click()
+            page.get_by_role("button", name="Scroll to reports", exact=True).click()
             expect(page.locator("#history-warnings")).to_contain_text("1 saved report(s)")
             expect(page.locator("#history-list li")).to_have_count(0)
             uncertain = ScanDocument(
@@ -405,11 +408,14 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             page.locator("#history-profile").select_option("")
             page.locator("#history-query").fill(uncertain.scan_id)
             page.get_by_role("button", name="Search reports", exact=True).click()
+            page.get_by_role("button", name="Scroll to reports", exact=True).click()
             expect(page.locator("#history-list a")).to_have_count(1)
             expect(page.locator("#history-list a")).to_contain_text("Date unavailable")
             expect(page.locator("#history-warnings")).to_contain_text("dates could not be verified")
             page.locator("#history-after").fill(utc_now().date().isoformat())
             page.get_by_role("button", name="Search reports", exact=True).click()
+            page.get_by_role("button", name="Scroll to reports", exact=True).click()
+            expect(page.locator("#history-status")).to_contain_text("No reports match your filters")
             expect(page.locator("#history-list a")).to_have_count(0)
             assert uncertain_path.read_bytes() == uncertain_evidence
             page.route("**/annotations", lambda route: route.fulfill(status=503, body="{}"))

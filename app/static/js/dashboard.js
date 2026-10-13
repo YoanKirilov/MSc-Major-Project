@@ -118,8 +118,7 @@ async function resumeScan(id) {
   cancelButton.textContent = 'Cancel scan';
   const main = document.querySelector('.scan-home-main');
   main.classList.toggle('is-running', true);
-  main.insertBefore(progress, document.querySelector('.scan-landing'));
-  progress.scrollIntoView({ block: 'start', behavior: 'instant' });
+  // Keep progress below setup and preserve the reader's position, including on refresh.
   await pollScan(id);
 }
 
@@ -164,7 +163,6 @@ function setError(message) {
     document.querySelector('#refreshDeviceChoices').disabled = false;
     const main = document.querySelector('.scan-home-main');
     main.classList.toggle('is-running', false);
-    main.insertBefore(progress, errorPanel);
     showSetup();
   }
 }

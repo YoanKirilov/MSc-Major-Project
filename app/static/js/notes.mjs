@@ -81,7 +81,9 @@ export function projectNotes(document, notes, { disabled = false, data = null, e
     }
   });
   const filteredCount = document.querySelector('#checklist-filter-count');
-  if (filteredCount) filteredCount.textContent = `${visibleTasks} of ${tasks.length} review tasks available${filter === 'all' ? '' : ' in this status filter'}. Open a Review tasks heading to read and record an action.`;
+  if (filteredCount) filteredCount.textContent = tasks.length
+    ? `${visibleTasks} of ${tasks.length} review tasks available${filter === 'all' ? '' : ' in this status filter'}. ${visibleTasks ? 'Open a Review tasks heading to read and record an action.' : 'Choose All statuses to see the other tasks.'}`
+    : 'No review tasks were recorded. This is not a safety verdict.';
   for (const id of ['#expandReviewTasks', '#collapseReviewTasks']) {
     const button = document.querySelector(id);
     if (button) button.disabled = visibleTasks === 0;

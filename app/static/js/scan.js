@@ -1,19 +1,19 @@
 import { request } from './api.js?v=20261001-network-recovery';
 import { createTextEditor } from './editor.mjs?v=20261008-ui-ux';
 import { renderFindingList, findingDeviceOptions, repeatedUnknownReplies } from './finding-list.mjs?v=20261012-followups';
-import { createReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation } from './report-view.mjs?v=20261012-followups';
+import { createReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation } from './report-view.mjs?v=20261013-accessibility';
 import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from './devices.mjs?v=20261012-reading';
 import { createCvePanel } from './cves.mjs?v=20261002-cve';
-import { createNoteState, checkStatus, projectNotes } from './notes.mjs?v=20261012-followups';
+import { createNoteState, checkStatus, projectNotes } from './notes.mjs?v=20261012-final-layout';
 import { createNicknameState, projectNicknames } from './nicknames.mjs?v=20261007-followup';
 import { recordedTimeLabel, localFeatureHelp, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261012-reading';
 import { partialScanTitle, prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261007-clarity';
 
 const severityConfig = {
-  high: { label: 'High', color: '#ff626d' },
-  medium: { label: 'Medium', color: '#ff9a52' },
-  low: { label: 'Low', color: '#f6ca61' },
-  informational: { label: 'Review', color: '#63a9ff' },
+  high: { label: 'High', color: 'var(--severity-high)' },
+  medium: { label: 'Medium', color: 'var(--severity-medium)' },
+  low: { label: 'Low', color: 'var(--severity-low)' },
+  informational: { label: 'Review', color: 'var(--severity-info)' },
 };
 const scanId = window.location.pathname.split('/').pop();
 const title = document.querySelector('#result-title');
@@ -79,13 +79,6 @@ const retryReportLoad = document.querySelector('#retryReportLoad');
 retryReportLoad.addEventListener('click', () => { retryReportLoad.disabled = true; poll(); });
 const readingState = createReadingState(() => window.sessionStorage, scanId);
 const savedReading = readingState.load();
-const textAlignment = document.querySelector('#textAlignment');
-textAlignment.value = savedReading?.alignment || 'justify';
-document.body.dataset.textAlignment = textAlignment.value;
-textAlignment.addEventListener('change', () => {
-  document.body.dataset.textAlignment = textAlignment.value === 'left' ? 'left' : 'justify';
-  rememberReading();
-});
 document.addEventListener?.('click', event => {
   if (!event.target?.closest?.('[data-glossary-link]')) return;
   event.preventDefault();
@@ -121,7 +114,6 @@ function rememberReading() {
     search: searchInput.value, devices: deviceSearchInput.value, filter: activeFilter,
     tasks: document.querySelector('#checklist-filter').value,
     sort: document.querySelector('#deviceSort').value, limit: deviceLimit,
-    alignment: document.body.dataset.textAlignment,
     reviewDevice: reviewDevice.value,
     open: openDisclosureKeys(document), y: window.scrollY || 0 });
 }
@@ -482,7 +474,7 @@ function showDetail(finding) {
   const device = currentData?.devices.find(item => item.device_id === finding?.device_id);
   const service = currentData?.services.find(item => item.service_id === finding?.service_id);
   const explanation = finding ? explanationFor(finding) : null;
-  const signature = JSON.stringify([finding, deviceLabel(device || {}), service, explanation, currentData?.guidance_history]);
+  const signature = JSON.stringify([finding, deviceLabel(device || {}), service, explanation]);
   if (signature === detailSignature) { notes.refresh(); return; }
   detailSignature = signature;
   detailPanel.replaceChildren();
@@ -525,11 +517,6 @@ function showDetail(finding) {
       ? explanation.content.how_to_check[index] || action.verification : action.verification;
     const item = document.createElement('li');
     item.append(text('span', actionGuidance(step, check)), actionChecklist(finding, action));
-    if (step !== action.text || check !== action.verification) {
-      const original = document.createElement('details');
-      original.append(text('summary', 'Original rule-based step'), text('p', action.text + ' ' + action.verification));
-      item.append(original);
-    }
     list.append(item);
   });
   if (list.childElementCount) { actions.append(list); detailPanel.append(actions); }
@@ -545,7 +532,7 @@ function showDetail(finding) {
   }
   const help = document.createElement('details');
   help.className = 'detail-block supporting-details';
-  help.append(text('summary', 'Sources, explanation provenance and technical evidence'));
+  help.append(text('summary', 'Sources and technical details'));
   help.append(text('p', explanation.aiAssisted
     ? 'Local AI contributed validated wording. Unaccepted fields keep reviewed rule-based guidance.'
     : 'This wording uses reviewed rule-based guidance from the saved observations.', 'explanation-source'));
@@ -554,22 +541,6 @@ function showDetail(finding) {
     const diagnostics = document.createElement('details');
     diagnostics.append(text('summary', 'Technical wording checks'), text('p', JSON.stringify(explanation.rejectedFields)));
     help.append(diagnostics);
-  }
-  const previous = currentData.guidance_history?.[0]?.findings?.find(item => item.finding_id === finding.finding_id);
-  if (previous) {
-    const saved = document.createElement('details');
-    saved.append(text('summary', 'Guidance saved before the first refresh'),
-      text('p', previous.title), text('p', previous.fixed_explanation.meaning), text('p', previous.fixed_explanation.why_it_matters));
-    previous.limitations.forEach(line => saved.append(text('p', line)));
-    previous.actions.forEach(action => saved.append(text('p', action.text + ' ' + action.verification)));
-    help.append(saved);
-  }
-  if (explanation.aiAssisted || explanation.editorial) {
-    const original = document.createElement('details');
-    original.append(text('summary', 'Original rule-based explanation'), text('p', finding.title),
-      text('p', finding.fixed_explanation.meaning), text('p', finding.fixed_explanation.why_it_matters));
-    finding.limitations.forEach(item => original.append(text('p', item)));
-    help.append(original);
   }
   const evidence = document.createElement('details');
   evidence.append(text('summary', 'Technical evidence'));

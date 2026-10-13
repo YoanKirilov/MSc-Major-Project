@@ -135,7 +135,7 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                     ("/light", "#scanLaunchButton"),
                     ("/deep", "#scanLaunchButton"),
                     ("/settings", "#settings-form"),
-                    ("/history", "#history-list"),
+                    ("/history", "#history-results-title"),
                     (f"/scans/{scan_id}", "#first-action"),
                 ]:
                     page.goto(base + route)
@@ -143,6 +143,7 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                     if route == "/settings":
                         expect(page.locator("#save-settings")).to_be_enabled()
                     elif route == "/history":
+                        expect(page.locator("#history-list a")).to_have_count(0)
                         expect(page.locator("#history-list")).not_to_have_attribute(
                             "aria-busy", "true"
                         )

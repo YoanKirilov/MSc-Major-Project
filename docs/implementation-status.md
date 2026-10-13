@@ -1,5 +1,52 @@
 # Implementation brief status
 
+## Stable home progress — 13 October 2026
+
+[The fix and design review](home-progress-position-20261013.md) removes progress-card
+promotion and automatic scrolling on start/reconnect. Progress remains below setup;
+the setup's top alignment stays consistent even on tall displays. Scan admission,
+parallel jobs, saved data and AI/scanner contracts are unchanged. The record separates
+verified evidence from proposed next design work: 602 Python/138 JavaScript and
+31 selected three-engine browser cases passed, plus installed-package checks.
+Visual review identified stale running/readiness copy and tightly spaced desktop
+progress actions as remaining follow-ups; neither is claimed fixed by this change.
+
+## Zero-start reports and accessibility — 13 October 2026
+
+[The execution record](report-accessibility-20261013.md) supersedes the earlier
+eight-entry history batches and justified-alignment option. Opening/searching
+history starts empty; intentional scrolling reveals one report at a time, with
+an explicit first-scroll keyboard control. Light/Deep title colours stay tied to
+profile and reverse on hover/focus. Dark/Light, larger text and reduced movement
+replace alignment; saved facts and reading filters/disclosures remain separate.
+The record distinguishes focused passes, broad-run old-contract/launch failures,
+their retests and final package/offline evidence. No live scan/provider ran.
+
+## Home setup and progressive history — 12 October 2026
+
+[The execution record](home-history-ux-20261012.md) covers a cohesive home-page scan
+setup, removal of duplicate Light/Deep entry links, and eight-report batches as the
+reader scrolls. Both scan modes, compatibility URLs, parallel jobs and safety checks
+remain. Native Load more/retry controls preserve keyboard access and loaded results;
+filters search the full library. No live scan or provider call is part of this UI
+task. Finished-source verification is recorded in the linked execution record.
+
+## Final-only wording and supporting row — 12 October 2026
+
+[The latest execution record](report-layout-final-wording-20261012.md) covers removal
+of duplicate original/previous prose from the interface (not JSON/evidence), the
+responsive desktop supporting row, a shared 1360-pixel shell, shorter source labels,
+polite review-count feedback and accurate empty-task messages. Focused three-engine,
+offline and installed-package checks passed. New Light checked 9 of 10 discovered
+devices, retaining one unreachable address after two attempts; Deep completed this
+PC without scan errors. Raw/AI replay passed. Final live-report/full-gate status and
+the continuing runtime/manual-evaluation limits are recorded there.
+
+Final full gate: 732 Python/browser and 111 JavaScript passes. The actual-report
+viewer passed 16 responsive combinations with zero page errors or extra scans/
+edits, and evidence hashes were unchanged. Original wording is hidden only from
+the interface, not deleted from saved results. Refresh a report to see the changes.
+
 Read the newest sections first. Older dated sections preserve what was pending at
 that time; they are not the current outstanding-work list.
 

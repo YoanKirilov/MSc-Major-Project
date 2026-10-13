@@ -1,5 +1,69 @@
 # Testing status
 
+## Stable home-page progress — 13 October 2026
+
+[The execution record](home-progress-position-20261013.md) documents the reproduced
+progress-promotion regression, stable below-setup fix and focused start/refresh checks.
+The complete offline gate passed 602 Python and 138 JavaScript cases, lint/formatting
+and seventeen syntax checks. Offline package verification passed six pages/eighteen
+assets/demo reopening; all 93 app files match installed source. The selected browser
+workflow/reflow checks passed 31 cases across Chromium, Firefox and WebKit. Two
+Chromium cases were repeated for four visually inspected progress screenshots;
+remaining readiness-copy/action-spacing issues are recorded, not hidden. No live
+scans or provider calls are included in this presentation change.
+
+## Empty-start history and accessibility — 13 October 2026
+
+[The new execution record](report-accessibility-20261013.md) replaces the earlier
+eight-entry history behaviour and paragraph-alignment control. Final-source checks
+passed 36 history, 15 appearance and six corrected responsive/settings browser
+cases across Chromium, Firefox and WebKit; final offline checks passed 602 Python/
+136 JavaScript cases, lint/148-file formatting and seventeen syntax checks.
+Package verification passed six pages/eighteen assets/demo reopening, with all
+93 app files identical to source and both dependency checks clean.
+
+The earlier broad run retained 773 passes, six old-contract failures and one WebKit
+launch-timeout setup error; its failures and successful affected retests are logged,
+not hidden or called an all-green full-gate rerun. No scan/provider/normal-data
+write ran. Physical-device, assistive-technology and reader evaluation remain open.
+
+## Home setup and progressive saved reports — 12 October 2026
+
+[The execution record](home-history-ux-20261012.md) separates focused browser,
+broader regression, final offline and installed-package evidence. The broader run
+passed all 154 browser cases but failed one old integration assertion requiring
+the intentionally removed page links (755 other passes). After updating that
+contract, the final offline gate passed 602 Python and 123 JavaScript tests, lint,
+147-file formatting and sixteen syntax checks. No app source changed between these
+runs. The full three-engine command was not rerun after the test-only correction.
+
+The installed wheel passed six pages, seventeen assets and demo reopening; all
+92 application files matched source. Eight-entry scrolling, keyboard Load more,
+submitted filters, append/reset failures, changing-list refresh and home layout/
+enlarged text passed focused cases. No live scans/providers or normal-data writes
+ran. Physical-device, screen-reader and participant evaluation remain separate.
+
+## Final-only wording and supporting-row check — 12 October 2026
+
+[The current execution record](report-layout-final-wording-20261012.md) separates
+focused, offline, installed-package, live and actual-report browser evidence.
+Six new three-engine cases and the offline gate (602 Python/111 JavaScript) passed,
+including final-only text with unchanged rules, desktop-row geometry, native keyboard
+behaviour, narrow/enlarged reflow and useful empty states. The new installed wheel
+passed six page routes/16 assets/demo reopening, with all 91 app files matching source.
+Live Light checked 9 of 10 discovered devices and preserved the one unreachable
+check; Deep completed this PC. Replay matched 156 services/12 findings and 13 accepted
+AI records, with one reviewed fallback retained. The full-gate result follows in
+the execution record; the missing device is not marked successfully assessed.
+
+Finished-source full gate passed **732 Python/browser and 111 JavaScript tests**,
+one optional real-provider test deselected, with lint/146-file formatting/15-module
+syntax checks passing. Actual report viewing passed 16 engine/profile/viewport
+combinations, including final-only text, one-row desktop supporting options and
+the visible failed-device retry. No extra scan/edit requests or evidence changes
+occurred. One initial viewer attempt measured a hidden optional control; its
+harness correction and passing rerun are retained in the execution record.
+
 Older dated sections are historical test snapshots, not current unresolved-issue
 lists. See the latest execution record for the finished-source status.
 

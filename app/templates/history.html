@@ -38,14 +38,17 @@
 </section>
 <section class="history-results" aria-labelledby="history-results-title">
   <h2 id="history-results-title">Reports</h2>
-  <p id="history-status" class="status-message" role="status">Loading saved reports…</p>
+  <p id="history-status" class="status-message" role="status" tabindex="-1">Scroll down to reveal saved reports one at a time.</p>
   <p id="history-warnings" class="status-message status-warning" role="status" hidden></p>
-  <div id="history-empty" class="empty-state" hidden><h3>No saved reports yet</h3><p>After an authorised scan finishes, its report is saved here.</p><a class="secondary-button" href="/">Set up a scan</a></div>
-  <ul id="history-list" class="history-list"></ul>
-  <nav class="form-actions" aria-label="Saved report pages">
-    <button class="secondary-button" type="button" id="history-previous" disabled>Previous</button>
-    <button class="secondary-button" type="button" id="history-next" disabled>Next</button>
-  </nav>
+  <div class="form-actions history-load-controls">
+    <button class="secondary-button history-load-more" type="button" id="history-load-more" aria-controls="history-list" aria-describedby="history-more-hint">Scroll to reports</button>
+    <p id="history-more-hint" class="field-hint history-end">Reports appear as you scroll down. You can also use this button.</p>
+  </div>
+  <div id="history-scroll-stage" class="history-scroll-stage">
+    <div id="history-empty" class="empty-state" hidden><h3>No saved reports yet</h3><p>After an authorised scan finishes, its report is saved here.</p><a class="secondary-button" href="/">Set up a scan</a></div>
+    <ul id="history-list" class="history-list" aria-labelledby="history-results-title"></ul>
+    <div id="history-sentinel" class="history-sentinel" aria-hidden="true"></div>
+  </div>
 </section>
 <details class="card storage-details"><summary>Backups and storage</summary>
   <button class="secondary-button" type="button" id="storageUsageButton">Check saved data size</button>
@@ -53,4 +56,4 @@
   <p>Back up before removing old reports. Stop the app, then use its storage export command to copy reports, names and settings into a new private folder. Restore into a new folder, never over existing evidence. See <code>docs/storage-backups.md</code> for commands. Backups contain private network details; do not publish them.</p>
 </details>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/history.js?v=20261008-ui"></script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/history.js?v=20261013-one-at-a-time"></script>{% endblock %}

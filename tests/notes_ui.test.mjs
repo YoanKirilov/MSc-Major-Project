@@ -69,6 +69,8 @@ test('status filters hide complete task rows, not recommendations in the selecte
   assert.equal(taskRow.hidden, false);
   assert.equal(task.hidden, true);
   assert.match(elements.get('#checklist-filter-count').textContent, /0 of 1 review tasks available/);
+  assert.match(elements.get('#checklist-filter-count').textContent, /Choose All statuses/);
+  assert.doesNotMatch(elements.get('#checklist-filter-count').textContent, /Open a Review tasks heading/);
   assert.equal(elements.get('#checklist-empty').hidden, false);
   document.activeElement = controls[1];
   projectNotes(document, { revision: 1, action_checks: [] });
@@ -77,6 +79,18 @@ test('status filters hide complete task rows, not recommendations in the selecte
   document.activeElement = null;
   projectNotes(document, { revision: 1, action_checks: [] });
   assert.equal(task.hidden, false, 'an in-flight save must remain visible');
+});
+
+test('no-action reports do not direct users to nonexistent task controls or imply safety', () => {
+  const elements = new Map(['#report-user-title', '#editReportTitle', '#annotation-notice',
+    '#checklist-filter', '#checklist-filter-count', '#expandReviewTasks', '#collapseReviewTasks'].map(id => [id, {}]));
+  elements.get('#checklist-filter').value = 'all';
+  projectNotes({ querySelector: id => elements.get(id), querySelectorAll: () => [] },
+    { revision: 1, action_checks: [] });
+  assert.equal(elements.get('#checklist-filter-count').textContent,
+    'No review tasks were recorded. This is not a safety verdict.');
+  assert.equal(elements.get('#expandReviewTasks').disabled, true);
+  assert.equal(elements.get('#collapseReviewTasks').disabled, true);
 });
 
 test('background projections do not undo the user closing a filtered task disclosure', () => {

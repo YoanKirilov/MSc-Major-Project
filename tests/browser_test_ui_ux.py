@@ -423,7 +423,72 @@ def test_repeat_technical_columns_and_unknown_reply_context_preserve_evidence(ui
     assert path.read_bytes() == before
 
 
-def test_reading_followup_grouped_evidence_and_alignment_survive_reload(ui):
+def test_final_layout_supporting_options_reflow_and_keep_native_keyboard_state(ui):
+    from playwright.sync_api import expect
+
+    page, _ = _open(ui, size=(1440, 1000))
+    grid = page.locator(".supporting-grid")
+    summaries = grid.locator(":scope > details > summary, :scope > section > details > summary")
+    cards = grid.locator(":scope > *:visible")
+    assert cards.count() == 6  # Includes the optional unmatched mDNS announcements.
+    tops = [card.bounding_box()["y"] for card in cards.all()]
+    assert max(tops) - min(tops) <= 1
+    for selector in ("main", ".topbar", ".site-footer"):
+        assert page.locator(selector).bounding_box()["width"] == 1360
+    expect(page.locator("#resultsSummary")).to_have_attribute("role", "status")
+    expect(page.locator("#resultsSummary")).to_have_attribute("aria-atomic", "true")
+    glossary = page.locator("#report-glossary")
+    summary = glossary.locator(":scope > summary")
+    summary.focus()
+    page.keyboard.press("Enter")
+    expect(glossary).to_have_attribute("open", "")
+    assert abs(glossary.bounding_box()["width"] - grid.bounding_box()["width"]) <= 1
+    expect(summary).to_be_focused()
+    page.reload()
+    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    expect(glossary).to_have_attribute("open", "")
+    for width in (320, 390, 768):
+        page.set_viewport_size({"width": width, "height": 1000})
+        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+        for control in summaries.all():
+            rect = control.bounding_box()
+            assert rect["width"] >= 44 and rect["height"] >= 44
+    page.set_viewport_size({"width": 768, "height": 1024})
+    page.add_style_tag(content="html {font-size:200% !important}")
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+    expect(summary).to_be_visible()
+    expect(page.locator("#textAlignment")).to_have_count(0)
+    expect(page.locator("#themePreference")).to_have_count(1)
+
+
+def test_final_layout_renders_only_current_wording_without_changing_saved_rules(ui):
+    from playwright.sync_api import expect
+
+    page, base, reports = ui
+    report = reports["rich"]
+    endpoint = base + f"/api/live-scans/{report.scan_id}"
+    before = page.request.get(endpoint).json()
+    page, _ = _open(ui)
+    for card in page.locator("#findingsList .finding-card").all():
+        card.click()
+        expect(page.locator("#detailPanel")).to_contain_text("What we found")
+        expect(page.locator("#detailPanel")).to_contain_text("What to do next")
+        expect(page.locator("#detailPanel")).not_to_contain_text("Original rule-based")
+        expect(page.locator("#detailPanel")).not_to_contain_text("Guidance saved before")
+        expect(page.locator("#detailPanel .supporting-details > summary")).to_have_text(
+            "Sources and technical details"
+        )
+    after = page.request.get(endpoint).json()
+    assert before["findings"] == after["findings"]
+    assert before["guidance_history"] == after["guidance_history"]
+    assert before["explanations"] == after["explanations"]
+    assert all(finding["fixed_explanation"] for finding in after["findings"])
+    _open(ui, kind="empty")
+    expect(page.locator("#checklist-filter-count")).to_contain_text("No review tasks were recorded")
+    expect(page.locator("#expandReviewTasks")).to_be_disabled()
+
+
+def test_reading_followup_grouped_evidence_and_theme_survive_reload(ui):
     from playwright.sync_api import expect
 
     page, report = _open(ui)
@@ -448,13 +513,14 @@ def test_reading_followup_grouped_evidence_and_alignment_survive_reload(ui):
         page.locator("#detailPanel .detail-block p").first.evaluate(
             "el => getComputedStyle(el).textAlign"
         )
-        == "justify"
+        == "left"
     )
     page.locator(".reading-options > summary").click()
-    page.locator("#textAlignment").select_option("left")
+    page.locator("#themePreference").select_option("light")
     page.reload()
     expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
-    expect(page.locator("#textAlignment")).to_have_value("left")
+    expect(page.locator("#themePreference")).to_have_value("light")
+    expect(page.locator("html")).to_have_attribute("data-theme", "light")
     expect(group.locator(".feature-technical")).to_have_attribute("open", "")
     assert (
         page.locator("#detailPanel .detail-block p").first.evaluate(
@@ -462,7 +528,7 @@ def test_reading_followup_grouped_evidence_and_alignment_survive_reload(ui):
         )
         == "left"
     )
-    page.locator("#textAlignment").select_option("justify")
+    page.locator("#themePreference").select_option("dark")
     for width, height in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": height})
         assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
@@ -1156,3 +1222,77 @@ def test_followup_scan_choices_lead_with_purpose_and_keep_exact_coverage_accessi
     expect(page.locator("#scan-progress-status")).to_have_attribute("aria-live", "polite")
     page.goto(base + "/deep")
     expect(page.get_by_label("Device address (IP) for the Deep scan", exact=True)).to_be_visible()
+
+
+def test_home_setup_has_one_primary_action_after_choices_and_permission(ui):
+    """The primary action belongs to its setup, with no duplicate page launchers."""
+    from playwright.sync_api import expect
+
+    page, base, _ = ui
+    for width, height in VIEWPORTS:
+        page.set_viewport_size({"width": width, "height": height})
+        page.goto(base + "/")
+        expect(page.locator("#scanLaunchButton")).to_be_enabled()
+        expect(page.get_by_role("navigation", name="Independent scan pages")).to_have_count(0)
+        expect(
+            page.locator('.scan-landing a[href="/light"], .scan-landing a[href="/deep"]')
+        ).to_have_count(0)
+        expect(page.get_by_role("group", name="Choose a scan")).to_be_visible()
+        expect(page.locator(".scan-setup-card .scan-launch")).to_have_count(1)
+        expect(page.locator(".scan-extra-details")).not_to_have_attribute("open", "")
+        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+        action = page.locator("#scanLaunchButton").bounding_box()
+        modes = page.locator(".scan-mode").bounding_box()
+        notice = page.locator("#scan-notice").bounding_box()
+        readiness = page.locator("#scan-config").bounding_box()
+        assert action["y"] >= notice["y"] + notice["height"] + 8
+        assert notice["y"] >= readiness["y"] + readiness["height"] + 8
+        assert action["y"] > modes["y"] + modes["height"]
+        assert abs(action["x"] - modes["x"]) <= 1
+        assert abs(action["width"] - modes["width"]) <= 1
+        assert action["height"] >= 44
+        # Choosing a mode never submits a scan; the fixture rejects every scan POST.
+        page.get_by_role("button", name="Deep", exact=False).click()
+        expect(
+            page.get_by_label("Device address (IP) for the Deep scan", exact=True)
+        ).to_be_visible()
+        page.wait_for_function("document.querySelector('#recentDeviceNote').textContent.length > 0")
+        expect(page.locator(".scan-start-area #scanLaunchButton")).to_be_enabled()
+        page.get_by_role("button", name="Light", exact=False).click()
+        expect(page.locator(".scan-target-fields")).not_to_be_visible()
+        page.screenshot(
+            path=str(Path(os.environ["APP_DATA_DIR"]).parent / f"home-{width}.png"),
+            full_page=True,
+        )
+
+
+def test_home_setup_reflows_with_enlarged_text_and_keeps_native_keyboard_choices(ui):
+    from playwright.sync_api import expect
+
+    page, base, _ = ui
+    page.set_viewport_size({"width": 768, "height": 1024})
+    page.goto(base + "/")
+    expect(page.locator("#scanLaunchButton")).to_be_enabled()
+    page.add_style_tag(content="html { font-size: 200% !important; }")
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+    light = page.get_by_role("button", name="Light", exact=False)
+    deep = page.get_by_role("button", name="Deep", exact=False)
+    light.focus()
+    page.keyboard.press("Tab")
+    expect(deep).to_be_focused()
+    page.keyboard.press("Enter")
+    expect(deep).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#deepHostInput")).to_be_visible()
+    page.wait_for_function("document.querySelector('#recentDeviceNote').textContent.length > 0")
+    expect(deep).to_be_focused()
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+    for control in page.locator(
+        ".scan-setup-card button, .scan-setup-card input, .scan-setup-card select"
+    ).all():
+        if control.is_visible():
+            box = control.bounding_box()
+            assert box["x"] >= 0 and box["x"] + box["width"] <= 769
+            assert box["height"] >= 44
+    page.screenshot(
+        path=str(Path(os.environ["APP_DATA_DIR"]).parent / "home-enlarged.png"), full_page=True
+    )

@@ -5,6 +5,47 @@ Acceptance thresholds are in [quality-plan.md](quality-plan.md), not implied by 
 Current execution: [quality-evidence-20260928.md](quality-evidence-20260928.md).
 PASS/LIMITED/FAIL/PENDING apply to the stated test conditions, not a whole ISO standard.
 
+## Stable home progress — 13 October 2026
+
+[The fix and verification](home-progress-position-20261013.md) add Q03/Q06/Q11
+evidence for stable setup/progress order and no forced start/reconnect scroll.
+Synthetic browser checks observe fixed targets, independent Light/Deep jobs and
+refresh without duplicate submission; offline tests cover read-failure recovery.
+Q12 includes installed assets matching source. These are scoped presentation and
+recovery checks, not a new live scan or participant/assistive-technology evaluation.
+
+## Zero-start reports and appearance — 13 October 2026
+
+[The execution record](report-accessibility-20261013.md) links Q03/Q06/Q11 to
+zero initial reports, one-entry gesture loading, explicit keyboard alternatives,
+filter/error recovery and separated display state. Q04/Q09/Q13 retain factual
+evidence and written profile/severity labels independently of colour. Q06/Q12 add
+left-aligned prose, both themes, enlarged text, reduced movement and scoped contrast/
+responsive regressions. Versioned appearance storage holds only display choices;
+legacy alignment is ignored without losing report reading state. Q07 still requires
+participant and assistive-technology evaluation; this is not WCAG certification.
+
+## Home/history usability evidence — 12 October 2026
+
+[The execution record](home-history-ux-20261012.md) adds Q03/Q06 evidence for one
+home-page setup/action, mode changes without scan submission and keyboard-accessible
+progressive report loading. Q04 covers retained results on failed append/filter
+requests and unchanged saved facts. Q11 separates pagination state from its DOM
+controller with generation guards, submitted filters and bounded batch requests;
+Q12 checks the packaged helper and responsive layouts. No live scanning, provider
+or participant result is inferred from these synthetic checks.
+
+## Final-wording/layout evidence — 12 October 2026
+
+[The latest execution record](report-layout-final-wording-20261012.md) adds
+Q03/Q06/Q11 evidence for final-only explanations, responsive native supporting
+disclosures, consistent shared width, filtered-count announcements and empty states.
+Q04/Q09/Q13 retain original rules in JSON/API/exports while removing duplicate
+prose from the main interface; raw replay, validated AI/fallback and unchanged
+hashes support traceability. Q12 includes an offline installed-wheel check with
+all 91 app files matching source. Final automated and live-viewer results are
+recorded there; reader/physical-device/assistive-technology evaluation remains open.
+
 ## Same-day repeat evidence — 12 October 2026
 
 [The repeat execution record](ui-ux-live-followups-20261012.md) adds Q03/Q06/Q11

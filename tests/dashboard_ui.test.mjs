@@ -104,7 +104,7 @@ function setup(request, saved = null, hash = '', pathname = '/') {
 }
 const ready = { ui_contract_version: 1, scanner_available: true, allowed_network: '192.168.0.0/24', storage_status: 'ok', ai_available: true };
 
-test('refresh restores immutable Deep target and promotes progress once, including general page', async () => {
+test('refresh restores immutable Deep target without moving progress or scrolling, including general page', async () => {
   for (const pathname of ['/deep', '/']) {
     const calls = [];
     const app = setup(async path => {
@@ -120,10 +120,10 @@ test('refresh restores immutable Deep target and promotes progress once, includi
     assert.equal(app.elements.get('#refreshDeviceChoices').disabled, true);
     assert.match(app.elements.get('#progressTarget').textContent, /192\.168\.0\.216.*fixed/);
     const progress = app.elements.get('#scanProgress');
-    assert.equal(app.elements.get('.scan-home-main').inserted.child, progress);
-    assert.equal(progress.scrolls, 1);
+    assert.equal(app.elements.get('.scan-home-main').inserted, undefined);
+    assert.equal(progress.scrolls || 0, 0);
     await app.timers.shift()();
-    assert.equal(progress.scrolls, 1);
+    assert.equal(progress.scrolls || 0, 0);
     assert.ok(calls.every(path => path !== '/api/live-scans'));
   }
 });
@@ -140,6 +140,8 @@ test('metadata outage retains the pinned job and disabled setup while progress s
   assert.equal(app.window.location.hash, `#scan=${scanId}`);
   assert.match(app.elements.get('#progressTarget').textContent, /saved target/);
   assert.match(app.elements.get('#progressPhase').textContent, /easier to understand/);
+  assert.equal(app.elements.get('.scan-home-main').inserted, undefined);
+  assert.equal(app.elements.get('#scanProgress').scrolls || 0, 0);
 });
 
 test('missing pinned report returns usable setup instead of leaving the address disabled', async () => {
@@ -152,6 +154,44 @@ test('missing pinned report returns usable setup instead of leaving the address 
   assert.equal(app.elements.get('#recentDeviceSelect').disabled, false);
   assert.equal(app.elements.get('#scanLaunchButton').disabled, false);
   assert.match(app.elements.get('#scanError').textContent, /could not be found/);
+  assert.equal(app.elements.get('.scan-home-main').inserted, undefined);
+  assert.equal(app.elements.get('#scanProgress').scrolls || 0, 0);
+});
+
+test('home markup puts progress after setup and before errors', () => {
+  const page = readFileSync(new URL('../app/templates/dashboard.html', import.meta.url), 'utf8');
+  const setupIndex = page.indexOf('class="scan-landing"');
+  const progressIndex = page.indexOf('id="scanProgress"');
+  const errorIndex = page.indexOf('id="scanError"');
+  assert.ok(setupIndex >= 0 && setupIndex < progressIndex && progressIndex < errorIndex);
+});
+
+test('starting Light or Deep keeps progress below setup without an automatic scroll', async () => {
+  for (const pathname of ['/light', '/deep', '/']) {
+    let submissions = 0;
+    const profile = pathname === '/deep' ? 'deep-tcp-v1' : 'light';
+    const app = setup(async (path, options) => {
+      if (path === '/api/status') return ready;
+      if (path === '/api/live-scans') {
+        submissions++;
+        const payload = JSON.parse(options.body);
+        assert.equal(payload.profile, profile);
+        return { scan_id: scanId };
+      }
+      if (path === `/api/scans/${scanId}`) return { policy: { profile }, target: { hosts: ['192.168.0.216'] } };
+      return { state: 'running', phase: 'service_scan' };
+    }, null, '', pathname);
+    await app.load();
+    if (profile === 'deep-tcp-v1') app.elements.get('#deepHostInput').value = '192.168.0.216';
+    await app.elements.get('#scanLaunchButton').events.click();
+    assert.equal(submissions, 1);
+    assert.equal(app.elements.get('#scanProgress').hidden, false);
+    assert.equal(app.elements.get('.scan-home-main').inserted, undefined);
+    assert.equal(app.elements.get('#scanProgress').scrolls || 0, 0);
+    assert.equal(app.window.location.hash, `#scan=${scanId}`);
+    await app.elements.get('#scanLaunchButton').events.click();
+    assert.equal(submissions, 1);
+  }
 });
 
 test('network mismatch rechecks status without submitting a scan, then recovers', async () => {

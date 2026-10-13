@@ -12,7 +12,6 @@ export function validatedReadingState(value) {
     filter: filters.includes(value.filter) ? value.filter : 'all',
     tasks: taskFilters.includes(value.tasks) ? value.tasks : 'all',
     sort: sorts.includes(value.sort) ? value.sort : 'priority',
-    alignment: value.alignment === 'left' ? 'left' : 'justify',
     reviewDevice: boundedText(value.reviewDevice, 80) || 'all',
     selected: boundedText(value.selected, 80),
     limit: Number.isInteger(value.limit) ? Math.min(254, Math.max(24, value.limit)) : 24,

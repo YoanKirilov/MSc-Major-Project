@@ -468,7 +468,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   assert.match(text(elements.get('#detailPanel')), /What we found Observed service/);
   assert.doesNotMatch(text(elements.get('#detailPanel')), /Plain explanation/);
   assert.match(text(elements.get('#detailPanel')), /Plain action/);
-  assert.match(text(elements.get('#detailPanel')), /Original rule-based explanation/);
+  assert.doesNotMatch(text(elements.get('#detailPanel')), /Original rule-based explanation|Original rule-based step|Guidance saved before/);
   context.data.explanations = [];
   assert.equal(elements.get('#refreshGuidanceButton').hidden, false);
   context.data.findings = []; context.data.state = 'failed';

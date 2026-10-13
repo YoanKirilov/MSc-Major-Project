@@ -25,9 +25,45 @@ pytestmark = [
 ]
 
 
+def dashboard_geometry(page):
+    """Read layout without scrolling either the setup or the progress card."""
+    return page.evaluate("""() => {
+        const setup = document.querySelector('.scan-landing');
+        const progress = document.querySelector('#scanProgress');
+        const setupBounds = setup.getBoundingClientRect();
+        const progressBounds = progress.getBoundingClientRect();
+        return {
+            scrollY,
+            setupTop: setupBounds.top + scrollY,
+            setupBottom: setupBounds.bottom + scrollY,
+            progressTop: progressBounds.top + scrollY,
+            progressAfterSetup: Boolean(
+                setup.compareDocumentPosition(progress) & Node.DOCUMENT_POSITION_FOLLOWING
+            ),
+        };
+    }""")
+
+
+def assert_progress_stays_below_setup(page, before_start=None):
+    geometry = dashboard_geometry(page)
+    assert geometry["progressAfterSetup"]
+    assert geometry["progressTop"] >= geometry["setupBottom"] - 1
+    if before_start is not None:
+        assert abs(geometry["setupTop"] - before_start["setupTop"]) <= 1
+        assert abs(geometry["scrollY"] - before_start["scrollY"]) <= 1
+
+
 @pytest.mark.parametrize("direct_pages", [False, True])
+@pytest.mark.parametrize(
+    "viewport",
+    [
+        {"width": 390, "height": 844},
+        {"width": 1280, "height": 900},
+        {"width": 1280, "height": 1200},
+    ],
+)
 @pytest.mark.parametrize("engine", os.getenv("RESPONSIVE_BROWSERS", "chromium").split(","))
-def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages, engine):
+def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages, viewport, engine):
     from playwright.sync_api import expect, sync_playwright
 
     monkeypatch.setenv("APP_ALLOWED_NETWORK", "192.168.56.0/24")
@@ -67,9 +103,18 @@ def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages
         base = f"http://127.0.0.1:{port}"
         with sync_playwright() as playwright:
             browser = getattr(playwright, engine).launch(headless=True)
-            context = browser.new_context(viewport={"width": 390, "height": 844})
+            context = browser.new_context(viewport=viewport)
             errors = []
+            submitted_jobs = []
             context.on("page", lambda page: page.on("pageerror", lambda e: errors.append(str(e))))
+            context.on(
+                "request",
+                lambda request: (
+                    submitted_jobs.append(request.post_data_json)
+                    if request.method == "POST" and request.url.endswith("/api/live-scans")
+                    else None
+                ),
+            )
             light = context.new_page()
             light.goto(manager.get_bootstrap_url(port))
             expect(light.locator("#scan-config")).to_contain_text("Ready to scan")
@@ -84,9 +129,16 @@ def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages
             light.reload()
             expect(light.locator("#scanSetupNote")).to_contain_text("192.168.56.10")
             expect(light.locator("#scanLaunchButton")).to_be_enabled()
+            light.locator("#scanLaunchButton").scroll_into_view_if_needed()
+            light_setup = dashboard_geometry(light)
             light.locator("#scanLaunchButton").click()
             light.wait_for_url("**#scan=*")
+            expect(light.locator("#scanProgress")).to_be_visible()
+            assert_progress_stays_below_setup(light, light_setup)
             light_id = light.url.split("#scan=")[1]
+            if engine == "chromium" and not direct_pages and viewport["height"] != 1200:
+                expect(light.locator("#progressPhase")).to_contain_text("Checking device")
+                light.screenshot(path=str(tmp_path / "light-progress.png"), full_page=True)
             if direct_pages:
                 deep = context.new_page()
                 deep.goto(base + "/deep")
@@ -98,19 +150,27 @@ def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages
             if not direct_pages:
                 deep.locator('[data-profile="deep-tcp-v1"]').click()
             deep.locator("#deepHostInput").fill("192.168.56.10")
+            deep.locator("#scanLaunchButton").scroll_into_view_if_needed()
+            deep_setup = dashboard_geometry(deep)
             deep.locator("#scanLaunchButton").click()
             deep.wait_for_url("**#scan=*")
+            expect(deep.locator("#scanProgress")).to_be_visible()
+            assert_progress_stays_below_setup(deep, deep_setup)
             deep_id = deep.url.split("#scan=")[1]
+            if engine == "chromium" and not direct_pages and viewport["height"] != 1200:
+                expect(deep.locator("#progressPhase")).to_contain_text("Checking device")
+                deep.screenshot(path=str(tmp_path / "deep-progress.png"), full_page=True)
             assert light_id != deep_id
             for page in (light, deep):
-                # Configure the mobile viewport before creating tabs. Resizing a
+                # Configure the viewport before creating tabs. Resizing a
                 # background Firefox tab can stall the automation driver on Windows.
                 page.bring_to_front()
                 page.reload()
                 expect(page.locator("#scanLaunchButton")).to_be_disabled()
                 expect(page.locator("#progressPhase")).to_contain_text("Checking device")
-                expect(page.locator("#progressPhase")).to_be_in_viewport()
-                expect(page.locator("#scanProgress")).to_be_in_viewport()
+                expect(page.locator("#scanProgress")).to_be_visible()
+                assert_progress_stays_below_setup(page)
+                assert len(submitted_jobs) == 2
                 expect(page.locator("#deepHostInput")).to_be_disabled()
                 expect(page.locator("#recentDeviceSelect")).to_be_disabled()
                 for button in page.locator(".mode-button").all():
@@ -122,6 +182,7 @@ def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages
                 assert "/light#scan=" in light.url and "/deep#scan=" in deep.url
             assert light_entered.is_set() and deep_entered.is_set()
             assert set(app.state.supervisor.active_scan_ids) == {light_id, deep_id}
+            assert [job["profile"] for job in submitted_jobs] == ["light", "deep-tcp-v1"]
 
             third = context.new_page()
             third.goto(base + "/#setup=1&new=1&hosts=192.168.56.10")
@@ -230,13 +291,17 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             expect(page.locator("#scan-config")).to_contain_text(
                 "Ready to scan your authorised local network"
             )
+            page.locator("#scanLaunchButton").scroll_into_view_if_needed()
+            initial_setup = dashboard_geometry(page)
             page.locator("#scanLaunchButton").click()
             expect(page.locator("#progressPhase")).to_have_text(
                 "Gathering device details", timeout=15000
             )
+            assert_progress_stays_below_setup(page, initial_setup)
             before_details_refresh = len(scanned)
             page.reload()
             expect(page.locator("#progressPhase")).to_have_text("Gathering device details")
+            assert_progress_stays_below_setup(page)
             assert len(scanned) == before_details_refresh
             details_released.set()
             expect(page.locator("#progressPhase")).to_have_text(
@@ -251,6 +316,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             )
             expect(page.locator("#scanLaunchButton")).to_be_disabled()
             expect(page.locator("#progressDetail")).to_contain_text("Prepared 0 of 3 explanations")
+            assert_progress_stays_below_setup(page)
             assert len(scanned) == before_refresh
             released.set()
             page.wait_for_url("**/scans/*", timeout=15000)
@@ -302,6 +368,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             assert extra.locator("script").count() == 0
             first_report = page.url
             page.get_by_role("link", name="Saved reports").click()
+            page.get_by_role("button", name="Scroll to reports", exact=True).click()
             page.locator("#history-list a").first.click()
             assert page.url == first_report
             # Create a Light known-host result using the actual authenticated API.

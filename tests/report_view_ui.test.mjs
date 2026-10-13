@@ -6,7 +6,7 @@ import { reviewItemTitle } from '../app/static/js/presentation.mjs';
 import { findingDeviceOptions, repeatedUnknownReplies } from '../app/static/js/finding-list.mjs';
 
 const state = () => ({ version: 1, search: 'web', devices: 'display', filter: 'low', tasks: 'to_check',
-  sort: 'name', alignment: 'justify', reviewDevice: 'all', selected: 'finding-1', limit: 48, open: ['device-details'], y: 987 });
+  sort: 'name', reviewDevice: 'all', selected: 'finding-1', limit: 48, open: ['device-details'], y: 987 });
 
 test('reading state is isolated by report and tab and never persists evidence or edits', () => {
   const values = new Map();
@@ -43,14 +43,38 @@ test('stored filters, lengths, scroll and disclosure keys are bounded and allowl
   assert.equal(value.filter, 'all');
   assert.equal(value.tasks, 'all');
   assert.equal(value.sort, 'priority');
-  assert.equal(validatedReadingState({ ...state(), alignment: 'script' }).alignment, 'justify');
-  assert.equal(validatedReadingState({ ...state(), alignment: 'left' }).alignment, 'left');
   assert.equal(value.limit, 254);
   assert.equal(value.y, 0);
   assert.equal(value.open.length, 2048);
   assert.equal(value.open.filter(key => key === 'x').length, 1);
   assert.equal(validatedReadingState({ ...state(), y: -99, limit: 2 }).y, 0);
   assert.equal(validatedReadingState({ ...state(), y: 9e9, limit: 2 }).limit, 24);
+});
+
+test('legacy alignment is ignored without losing per-report filters or scroll position', () => {
+  for (const alignment of ['justify', 'left', 'script']) {
+    const raw = JSON.stringify({ ...state(), alignment });
+    const restored = createReadingState(() => ({ getItem: () => raw }), 'a').load();
+    assert.deepEqual(restored, state());
+    assert.equal(Object.hasOwn(restored, 'alignment'), false);
+  }
+  let stored;
+  const reading = createReadingState(() => ({ setItem(_key, value) { stored = value; } }), 'a');
+  assert.equal(reading.save({ ...state(), alignment: 'justify', theme: 'light', textSize: 'larger', motion: 'reduce' }), true);
+  assert.deepEqual(JSON.parse(stored), state());
+});
+
+test('accessibility controls replace justified alignment with native labelled preferences', () => {
+  const report = readFileSync(new URL('../app/templates/scan.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(report, /textAlignment|Paragraph alignment|Justified/);
+  assert.match(report, /<summary>Accessibility preferences<\/summary>/);
+  for (const id of ['themePreference', 'textSizePreference', 'motionPreference']) {
+    assert.match(report, new RegExp(`<label for="${id}">`));
+    assert.match(report, new RegExp(`<select id="${id}"[^>]*aria-describedby=`));
+  }
+  assert.match(report, /<option value="dark">Dark<\/option><option value="light">Light<\/option>/);
+  assert.match(report, /Reduced movement from your device settings is always respected\./);
+  assert.match(report, /These preferences apply to this browser, not your scan results\./);
 });
 
 test('device review options count every finding without mutating facts or inventing names', () => {

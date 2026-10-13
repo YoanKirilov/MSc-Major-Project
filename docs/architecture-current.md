@@ -1,10 +1,46 @@
-# Current architecture — updated 12 October 2026
+# Current architecture — updated 13 October 2026
+
+The [stable home-progress fix](home-progress-position-20261013.md) keeps progress
+below setup on start/reconnect without automatic scrolling. Idle and running setup
+share top-aligned layout. Pinned-job recovery and the scanning contracts are unchanged.
+
+[The accessibility/reveal change](report-accessibility-20261013.md) supersedes
+eight-entry history loading and paragraph alignment. History reset/open/search
+now requests and renders no reports; intentional scrolling admits one entry at
+a time, with gesture locking and an explicit keyboard alternative. Recorded
+profile colours override visited-link colour and reverse on hover/focus.
+
+`static/js/appearance.js` restores allowlisted Dark/Light, text size and movement
+choices from bounded, versioned browser storage before the stylesheet. Native
+controls bind on DOM readiness and update root datasets. Device reduced motion
+always takes precedence. Display preferences are separate from scan facts and
+per-report reading state; old alignment is ignored without losing searches or
+disclosures. Light surfaces and severity/text colours are theme-aware. No scan,
+job, provider or JSON-storage contract changes were needed.
+
+The [home/history usability change](home-history-ux-20261012.md) consolidates the
+home-page scan choices, target controls, readiness and primary action. Duplicate
+Light/Deep navigation links are removed; their routes remain compatible and tabs
+still observe separate jobs. `static/js/history-feed.mjs` owns bounded one-entry
+pagination, submitted-filter snapshots, stale-response rejection and append retry.
+The history controller appends on downward scrolling or explicit Show next report; it does
+not chain requests on initial layout or after a response. Loaded entries remain in
+the native list. Existing authenticated `/api/reports` pagination and whole-library
+matching are unchanged; this is progressive rendering, not a new database/index.
+
+The latest [final-wording/layout follow-up](report-layout-final-wording-20261012.md)
+removes duplicate original/previous prose from the per-item interface, not from
+saved findings/exports. Only accepted final wording or reviewed fallback is rendered.
+Supporting disclosures share a desktop row and wrap on narrow displays; open panels
+use a wider row with bounded prose. Header/main/footer now share a 1360-pixel shell
+token. Filtered review counts are polite status messages; empty task feedback no
+longer points to nonexistent controls. Scanner/storage/AI contracts are unchanged.
 
 The 12 October reading follow-up adds retryable storage-read responses for scan/
 progress endpoints, exact full-address identity search, and explicit unchecked-device
 previews. Each device has one grouped feature-evidence disclosure beside its identity
-details; individual feature rows remain compact. Report paragraphs default to justified
-alignment with a per-tab left-aligned option. Existing evidence, revision safeguards,
+details; individual feature rows remain compact. The earlier alignment control
+was replaced by the 13 October appearance preferences. Existing evidence, revision safeguards,
 job limits and JSON storage are unchanged.
 
 Purpose-first titles, visible conditional feature help, first-action web precautions
@@ -51,7 +87,8 @@ resubmits it. `jobs/enrichment.py` owns optional bounded device enrichment.
 Schema and standalone scope validation share a 254-address maximum for selected
 Light hosts, with bounded input strings. Deep remains one explicit authorised host.
 On connection the controller reads saved metadata, restores the immutable target,
-disables setup and places progress before setup. Polls do not repeatedly scroll.
+disables setup and keeps progress below setup. Starting, reconnecting and polling
+do not automatically scroll the page.
 Progress responses add live backend contact and scanner-process lifecycle activity;
 these are not persisted completion estimates or proof of remote responsiveness.
 
