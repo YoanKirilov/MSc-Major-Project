@@ -9,6 +9,15 @@ MAX_BROWSER_PORT = 65535
 PORT_ATTEMPTS = 64
 
 
+def scroll_history_with_keyboard(page):
+    """Let the first frame paint, then use native scrolling, not a loading hook."""
+    page.locator("#history-status").focus()
+    page.evaluate(
+        "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+    )
+    page.keyboard.press("End")
+
+
 def browser_listener():
     """Keep the socket reserved through Uvicorn startup; never probe then close.
 

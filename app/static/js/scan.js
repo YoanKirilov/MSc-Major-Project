@@ -2,12 +2,12 @@ import { request } from './api.js?v=20261001-network-recovery';
 import { createTextEditor } from './editor.mjs?v=20261008-ui-ux';
 import { renderFindingList, findingDeviceOptions, repeatedUnknownReplies } from './finding-list.mjs?v=20261012-followups';
 import { createReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation } from './report-view.mjs?v=20261013-accessibility';
-import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from './devices.mjs?v=20261012-reading';
+import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from './devices.mjs?v=20261014-reliability';
 import { createCvePanel } from './cves.mjs?v=20261002-cve';
 import { createNoteState, checkStatus, projectNotes } from './notes.mjs?v=20261012-final-layout';
 import { createNicknameState, projectNicknames } from './nicknames.mjs?v=20261007-followup';
-import { recordedTimeLabel, localFeatureHelp, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261012-reading';
-import { partialScanTitle, prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261007-clarity';
+import { recordedTimeLabel, localFeatureHelp, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261014-dates';
+import { partialScanTitle, prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261014-reliability';
 
 const severityConfig = {
   high: { label: 'High', color: 'var(--severity-high)' },
@@ -427,6 +427,7 @@ function text(tag, value, className = '') {
 
 function deviceCategory(device) {
   if (device.user_category) return device.user_category;
+  if (recordedDeviceRole(device, currentData) === 'Computer that ran this scan') return 'This computer (scan source)';
   const labels = {
     camera: 'camera', printer: 'printer', router: 'router',
     iot_other: 'smart-home device', computer: 'computer', media: 'television or media device', unknown: 'unknown type',
@@ -489,7 +490,10 @@ function showDetail(finding) {
   detailPanel.style.setProperty('--severity-color', config.color);
   const deviceDescription = device ? deviceLabel(device) + ' · ' + device.ip : 'Observed device';
   detailPanel.append(top, text('h3', reviewItemTitle(finding, service, explanation.title)),
-    text('p', deviceDescription + ' · ' + formatServiceLabel(service), 'detail-location'));
+    text('p', deviceDescription, 'detail-location'));
+  const provenance = text('button', explanation.aiAssisted ? 'Local AI assisted wording · about this wording' : 'Reviewed guidance · about this wording', 'text-button wording-provenance');
+  provenance.type = 'button';
+  detailPanel.append(provenance);
   const block = (heading, value, className = 'detail-block') => {
     const section = text('div', '', className);
     section.append(text('h4', heading), text('p', value));
@@ -533,9 +537,15 @@ function showDetail(finding) {
   const help = document.createElement('details');
   help.className = 'detail-block supporting-details';
   help.append(text('summary', 'Sources and technical details'));
+  help.append(text('p', formatServiceLabel(service), 'detail-location'));
+  provenance.addEventListener('click', () => {
+    help.open = true;
+    help.querySelector('summary').focus();
+  });
   help.append(text('p', explanation.aiAssisted
     ? 'Local AI contributed validated wording. Unaccepted fields keep reviewed rule-based guidance.'
     : 'This wording uses reviewed rule-based guidance from the saved observations.', 'explanation-source'));
+  help.append(text('p', 'Wording checks help keep explanations faithful to the recorded results. They are not an independent test of whether a device is safe. Your Checked marks record your own review, not a verified fix.'));
   if (Object.keys(explanation.rejectedFields).length) {
     help.append(block('Wording checks', 'AI wording was not accepted for: ' + wordingLabels(explanation.rejectedFields) + '. Reviewed rule-based guidance is used instead.'));
     const diagnostics = document.createElement('details');
@@ -1079,8 +1089,8 @@ function render(data) {
   const aiNotice = document.querySelector('#ai-report-notice');
   aiNotice.hidden = !analysisFailed;
   aiNotice.textContent = pendingWording(data)
-    ? 'Some wording still uses reviewed rule-based guidance. Retry the remaining AI wording without scanning again.'
-    : 'AI simplification is unavailable. Your saved facts and reviewed rule-based guidance remain accessible; you can retry without scanning again.';
+    ? 'Some explanations still use built-in wording. You can retry the remaining explanations without scanning again.'
+    : 'Automatic explanations are unavailable. Your saved results and built-in explanations are still here. You can try again without running another scan.';
   const overviewRecord = currentOverview(data);
   const aiRecords = (data.explanations || []).filter(record => record.source === 'ai' && usableAiRecord(record, data));
   document.querySelector('#ai-report-source').textContent = overviewRecord || aiRecords.length
@@ -1149,7 +1159,7 @@ function render(data) {
   simplifyButton.hidden = !['completed', 'partial', 'failed', 'cancelled'].includes(data.state)
     || (data.analysis_status === 'ready' && !pendingWording(data) && !outdatedAi && currentOverview(data));
   simplifyButton.disabled = preparing;
-  simplifyButton.textContent = pendingWording(data) ? 'Retry remaining wording' : analysisFailed ? 'Retry report preparation' : 'Prepare this saved report with Ollama';
+  simplifyButton.textContent = pendingWording(data) ? 'Retry remaining explanations' : analysisFailed ? 'Retry plain-English explanations' : 'Prepare plain-English explanations';
   restoreReading();
 }
 

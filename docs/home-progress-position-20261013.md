@@ -1,5 +1,9 @@
 # Stable home-page scan progress — 13 October 2026
 
+The later [combined usability execution](design-polish-20261013.md) implements
+the remaining presentation issues and design priorities below. This record retains
+the earlier position-only change and its historical verification evidence.
+
 ## Request and confirmed cause
 
 Starting or reconnecting to a scan moved its progress card above the home-page

@@ -29,12 +29,74 @@ test('Deep uses stage activity during its device check and exact AI counts after
       coverage: { candidate_count: 1 }, analysis_progress: { total: 5, completed: 2, state: 'preparing' } }, null, `#scan=${scanId}`, '/deep');
   await app.load();
   assert.equal(app.elements.get('#progressPercent').textContent, 'Running');
+  assert.equal(app.elements.get('#progressTrack').attributes['aria-valuenow'], undefined);
+  assert.match(app.elements.get('#scan-config').textContent, /in progress.*Progress is below/);
+  assert.doesNotMatch(app.elements.get('#scan-config').textContent, /Ready/);
   assert.match(app.elements.get('#scanStageChecks').textContent, /Current/);
   assert.equal(app.elements.get('#scanStageAnalysis').dataset.state, 'waiting');
   phase = 'analysis';
   await app.timers.shift()();
   assert.match(app.elements.get('#scanStageAnalysis').textContent, /Current/);
   assert.match(app.elements.get('#progressDetail').textContent, /2 of 5/);
+  assert.equal(app.elements.get('#progressTrack').attributes['aria-valuenow'], '94');
+  assert.match(app.elements.get('#scan-config').textContent, /results are saved.*explanations/);
+});
+
+test('queued and discovery progress are indeterminate, with honest state messages', async () => {
+  for (const phase of ['queued', 'discovery']) {
+    const app = setup(async path => path === '/api/status' ? ready : path === `/api/scans/${scanId}`
+      ? { policy: { profile: 'light' } } : { state: 'running', phase, coverage: { candidate_count: 254 } }, scanId);
+    await app.load();
+    assert.equal(app.elements.get('#progressTrack').attributes['aria-valuenow'], undefined);
+    assert.match(app.elements.get('#progressTrack').attributes['aria-valuetext'], /Time remaining is unknown/);
+    assert.equal(app.elements.get('#progressPercent').textContent, phase === 'queued' ? 'Waiting' : 'Running');
+    assert.doesNotMatch(app.elements.get('#scan-config').textContent, /Ready to scan/);
+    assert.equal(app.elements.get('#scanProgress').scrolls || 0, 0);
+  }
+});
+
+test('reported numeric progress is bounded and never exposes NaN or negative ARIA values', async () => {
+  for (const coverage of [
+    { candidate_count: 1, service_completed_count: -9 },
+    { candidate_count: 1, service_completed_count: NaN },
+    { candidate_count: 1, service_completed_count: 9999 },
+  ]) {
+    const app = setup(async path => path === '/api/status' ? ready : path === `/api/scans/${scanId}`
+      ? { policy: { profile: 'light' } } : { state: 'running', phase: 'service_scan', coverage }, scanId);
+    await app.load();
+    const value = Number(app.elements.get('#progressTrack').attributes['aria-valuenow']);
+    assert.ok(Number.isFinite(value) && value >= 0 && value <= 99);
+  }
+});
+
+test('failed cancellation keeps the same job and a retryable cancel action', async () => {
+  let cancelAttempts = 0;
+  const app = setup(async (path, options) => {
+    if (options?.method === 'DELETE') { cancelAttempts++; throw Object.assign(new Error('Connection unavailable'), { status: 503 }); }
+    if (path === '/api/status') return ready;
+    if (path === `/api/scans/${scanId}`) return { policy: { profile: 'light' } };
+    return { state: 'running', phase: 'service_scan' };
+  }, scanId);
+  await app.load();
+  await app.elements.get('#scanCancelButton').events.click();
+  assert.equal(cancelAttempts, 1);
+  assert.equal(app.elements.get('#scanLaunchButton').disabled, true);
+  assert.equal(app.elements.get('#scanLaunchButton').querySelector('span').textContent, 'Scan in progress');
+  assert.equal(app.elements.get('#scanCancelButton').hidden, false);
+  assert.equal(app.elements.get('#scanCancelButton').disabled, false);
+  assert.equal(app.window.location.hash, `#scan=${scanId}`);
+  await app.timers.shift()();
+  assert.match(app.elements.get('#scan-config').textContent, /in progress.*Progress is below/);
+});
+
+test('selecting a saved Deep target clears its old missing-address error', async () => {
+  const app = setup(async () => ready, null, '#setup=1&profile=deep-tcp-v1');
+  await app.load();
+  await app.elements.get('#scanLaunchButton').events.click();
+  assert.equal(app.elements.get('#deepHostError').hidden, false);
+  app.elements.get('#recentDeviceSelect').events.change();
+  assert.equal(app.elements.get('#deepHostError').hidden, true);
+  assert.equal(app.elements.get('#deepHostInput').attributes['aria-invalid'], undefined);
 });
 test('runtime progress distinguishes a responsive app from scanner-check progress', async () => {
   const app = setup(async path => path === '/api/status' ? { ...ready, active_scan_id: scanId } : {
@@ -89,6 +151,7 @@ function setup(request, saved = null, hash = '', pathname = '/') {
     append(child) { (this.children ||= []).push(child); }
     insertBefore(child, before) { this.inserted = { child, before }; }
     scrollIntoView() { this.scrolls = (this.scrolls || 0) + 1; }
+    focus() { this.focused = true; }
   }
   const storage = new Map(saved ? [[key, saved]] : []);
   const timers = [];
@@ -154,6 +217,7 @@ test('missing pinned report returns usable setup instead of leaving the address 
   assert.equal(app.elements.get('#recentDeviceSelect').disabled, false);
   assert.equal(app.elements.get('#scanLaunchButton').disabled, false);
   assert.match(app.elements.get('#scanError').textContent, /could not be found/);
+  assert.doesNotMatch(app.elements.get('#scan-config').textContent, /Ready|in progress|Reconnecting/);
   assert.equal(app.elements.get('.scan-home-main').inserted, undefined);
   assert.equal(app.elements.get('#scanProgress').scrolls || 0, 0);
 });
@@ -383,7 +447,13 @@ test('choosing a different Deep device requires an address, not an automatic sca
   const app = setup(async (path) => { calls.push(path); return ready; }, null, '#setup=1&profile=deep-tcp-v1');
   await app.load();
   await app.elements.get('#scanLaunchButton').events.click();
-  assert.match(app.elements.get('#scanError').textContent, /Enter one authorised device/);
+  assert.match(app.elements.get('#scanError').textContent, /Enter the address of one device/);
+  assert.equal(app.elements.get('#deepHostInput').attributes['aria-invalid'], 'true');
+  assert.equal(app.elements.get('#deepHostInput').focused, true);
+  assert.equal(app.elements.get('#deepHostError').hidden, false);
+  app.elements.get('#deepHostInput').events.input();
+  assert.equal(app.elements.get('#deepHostInput').attributes['aria-invalid'], undefined);
+  assert.equal(app.elements.get('#deepHostError').hidden, true);
   assert.deepEqual(calls, ['/api/status']);
 });
 

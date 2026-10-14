@@ -1,5 +1,71 @@
 # Implementation brief status
 
+## UI/UX reliability and recovery — 14 October 2026
+
+[Execution and verification](ui-ux-implementation-20261014.md) track the research
+IDs individually. Implemented stable job controls/focus, distinct report deletion
+identities, zoned dates and explicit UTC filter dates, persistent Settings feedback
+and dirty/discard/leave protection, authenticated recovery browsing after reload,
+recovery storage/backup coverage, wording provenance, per-tab search/page resumption,
+role-aware beginner wording, forced-colour states and opt-in device theme.
+
+Offline checks passed 658 Python/five Windows link-privilege skips, 195 JS,
+Ruff/158-file formatting and twenty shipped syntax checks. Focused Chromium/Firefox
+UX retests passed ten cases, and the new report disclosure/reflow cases passed two;
+fifty older History cases passed in the broader run. Final package verification
+passed six pages, 21 assets and synthetic report removal/recovery/restore, with
+clean build/runtime dependency checks. These are scoped results, not accessibility
+certification. Physical devices, actual assistive-technology speech and novice
+participant comprehension remain pending. Live results are recorded separately.
+
+## Bounded report pages and deletion - 13 October 2026
+
+[The new execution record](report-management-20261013.md) supersedes the repeated
+next-report controls and unbounded history list with at most 24 reports per numbered
+page, zero initial rows/requests and one-at-a-time cached reveal. Current-page shown
+selection supports confirmed individual/bulk deletion and last-batch Undo; hidden
+rows and running reports are not implicitly selected. Session/CSRF, scan/notes
+revisions, active AI/job admission, safe paths, bounded waits and recoverable atomic
+folder moves protect the backend. Shared nicknames/settings are not erased.
+
+Recovery files remain private and on disk (1,000 entries/2 GiB, no automatic purge);
+the 13 October saved-size/export allowlists did not include `.trash` (superseded by
+14 October recovery accounting/backups above). Immediate Undo can be lost on
+page refresh/navigation without losing the recovery archive. Focused backend checks
+passed 54 cases with five actual Windows symlink tests skipped for missing privilege;
+simulated junction guards passed. The final offline gate passed 653 Python/190
+JavaScript cases with five link-privilege skips and 91 deselections, Ruff/154-file
+formatting and eighteen syntax checks. Installed functional checks passed six pages,
+nineteen assets, synthetic report create/reopen/delete/Undo and demo reopening;
+both dependency checks were clean. All 96 installed application files match source.
+The final scoped Chromium/Firefox matrix passed all 50 cases with no assertion or
+cleanup failures. Earlier 49 passes/one first-paint harness failure and the next
+run's 50 passing bodies/two Firefox teardown errors are preserved; both harness
+issues were corrected without scripted scroll/loading or exception suppression.
+Three affected Firefox retests passed before the final clean matrix. Six affected
+colour/settings/library/synthetic-workflow regressions passed in 97.48 seconds;
+final Ruff/154-file formatting rechecks passed after fixture cleanup. WebKit remains
+blocked/unverified. Allow active jobs to finish, restart the backend task and reload
+the browser for the new routes/UI.
+The Python-3.11-compatible junction fallback was exercised synthetically on Windows
+3.14, not an actual 3.11/Ubuntu run. Prior counts below are dated evidence, not this
+change's verification. No live scan or existing-report deletion ran.
+
+## Combined usability improvements — 13 October 2026
+
+[The execution record](design-polish-20261013.md) implements the prior remaining
+running-copy/action-spacing issues and all five design priorities: global display
+preference discovery, compact saved-device choices, end-of-list paging, task-progress
+semantics and report action hierarchy. Related fixes improve missing-address error
+focus, cancellation-error recovery, unchanged live-region messages and unreadable-row
+keyboard focus. Offline checks passed 602 Python/158 JavaScript; final installed
+assets match all 93 app source files. Chromium/Firefox browser evidence is recorded
+there separately. WebKit is blocked before page creation by Windows App Control,
+not counted as validated. Final affected Chromium/Firefox retests passed; the
+initial broad failures and Windows teardown flake are preserved in the record.
+The callback remains a runtime investigation, not claimed fixed by UI changes.
+No live scan/provider or normal data write ran.
+
 ## Stable home progress — 13 October 2026
 
 [The fix and design review](home-progress-position-20261013.md) removes progress-card

@@ -13,6 +13,7 @@ import pytest
 from app.storage.json_store import JsonStore
 from tests.browser_test_ui_ux import _open
 from tests.browser_test_ui_ux import ui as _report_ui
+from tests.fixtures.browser import scroll_history_with_keyboard
 
 ui = _report_ui
 
@@ -73,6 +74,94 @@ def test_appearance_controls_replace_justification_and_persist_across_pages(ui):
     for route in ("/", "/settings", "/history", f"/scans/{reports['zero'].scan_id}"):
         _navigate(page, base + route)
         _assert_preferences(page, "light", "larger", True)
+
+
+def test_shared_display_link_keyboard_access_and_settings_choices_without_saving(ui, tmp_path):
+    from playwright.sync_api import expect
+
+    page, base, reports = ui
+    page.set_viewport_size({"width": 320, "height": 568})
+    page.emulate_media(reduced_motion="no-preference")
+    mutations = []
+    page.on(
+        "request",
+        lambda request: (
+            mutations.append(request.url)
+            if "/api/" in request.url and request.method not in {"GET", "OPTIONS"}
+            else None
+        ),
+    )
+    for route in ("/", "/history", f"/scans/{reports['zero'].scan_id}", "/settings"):
+        _navigate(page, base + route)
+        link = page.get_by_role("link", name="Display preferences", exact=True)
+        expect(link).to_have_count(1)
+        expect(link).to_have_attribute("href", "/settings#display-preferences")
+        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
+    _navigate(page, base + "/")
+    page.get_by_role("link", name="Display preferences", exact=True).focus()
+    page.keyboard.press("Enter")
+    page.wait_for_url(base + "/settings#display-preferences")
+    page.wait_for_load_state("networkidle")
+    panel = page.locator("#display-preferences")
+    expect(panel).to_be_visible()
+    expect(panel).to_be_focused()
+    expect(page.locator("#settings-form #themePreference")).to_have_count(0)
+    page.keyboard.press("Tab")
+    expect(page.get_by_label("Colour theme", exact=True)).to_be_focused()
+    page.get_by_label("Colour theme", exact=True).select_option("light")
+    page.get_by_label("Text size", exact=True).select_option("larger")
+    page.get_by_label("Movement on screen", exact=True).select_option("reduce")
+    _assert_preferences(page, "light", "larger", True)
+    expect(page.locator("#display-preferences-note")).to_contain_text("without pressing Save")
+    for control in panel.locator("select").all():
+        rect = control.bounding_box()
+        assert rect["height"] >= 44 and rect["width"] <= 320
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
+    page.locator("#themePreference").scroll_into_view_if_needed()
+    page.screenshot(path=tmp_path / "settings-display-preferences-larger-320.png")
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    expect(page.locator("#themePreference")).to_have_value("light")
+    expect(page.locator("#textSizePreference")).to_have_value("larger")
+    expect(page.locator("#motionPreference")).to_have_value("reduce")
+    _navigate(page, base + f"/scans/{reports['zero'].scan_id}")
+    _preferences(page)
+    expect(page.locator("#themePreference")).to_have_value("light")
+    expect(page.locator("#textSizePreference")).to_have_value("larger")
+    expect(page.locator("#motionPreference")).to_have_value("reduce")
+    assert not mutations, f"Display choices must never save app settings or start work: {mutations}"
+
+
+def test_display_choices_work_with_blocked_storage_and_unavailable_app_settings(ui):
+    from playwright.sync_api import expect
+
+    page, base, _ = ui
+    page.add_init_script(
+        """Object.defineProperty(window, 'localStorage', {get() {
+          throw new DOMException('Synthetic browser storage denied', 'SecurityError');
+        }});"""
+    )
+    page.route(
+        "**/api/settings",
+        lambda route: route.fulfill(
+            status=503,
+            content_type="application/json",
+            body='{"detail":"Synthetic saved settings unavailable"}',
+        ),
+    )
+    _navigate(page, base + "/settings#display-preferences")
+    expect(page.locator("#settings-errors")).to_be_visible()
+    expect(page.locator("#save-settings")).to_be_disabled()
+    panel = page.locator("#display-preferences")
+    expect(panel).to_be_visible()
+    page.get_by_label("Colour theme", exact=True).select_option("light")
+    page.get_by_label("Text size", exact=True).select_option("larger")
+    _assert_preferences(page, "light", "larger", True)
+    expect(panel.locator("#appearance-storage-notice")).to_contain_text(
+        "could not remember them for later"
+    )
+    page.get_by_label("Colour theme", exact=True).select_option("dark")
+    expect(panel.locator("#appearance-storage-notice")).to_have_count(1)
 
 
 def test_system_reduced_motion_is_respected_even_when_following_device(ui):
@@ -276,7 +365,7 @@ def test_report_name_colour_keeps_scan_type_and_swaps_on_hover(ui):
             page.locator("#history-profile").select_option(profile)
             page.get_by_role("button", name="Search reports", exact=True).click()
             expect(page.locator("#history-list a")).to_have_count(0)
-            page.locator("#history-load-more").click()
+            scroll_history_with_keyboard(page)
             link = page.locator(f"#history-list a[data-profile='{profile}']").first
             expect(link).to_be_visible()
             page.mouse.move(0, 0)
@@ -292,7 +381,7 @@ def test_report_name_colour_keeps_scan_type_and_swaps_on_hover(ui):
             _navigate(page, base + "/history")
             page.locator("#history-profile").select_option(profile)
             page.get_by_role("button", name="Search reports", exact=True).click()
-            page.locator("#history-load-more").click()
+            scroll_history_with_keyboard(page)
             link = page.locator(f"#history-list a[data-profile='{profile}']").first
             expect(link).to_be_visible()
             page.mouse.move(0, 0)

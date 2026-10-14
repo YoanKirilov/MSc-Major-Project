@@ -9,7 +9,7 @@ import pytest
 import uvicorn
 from app.main import create_app
 from app.security.session import SessionManager
-from tests.fixtures.browser import browser_listener
+from tests.fixtures.browser import browser_listener, scroll_history_with_keyboard
 
 pytestmark = [
     pytest.mark.browser,
@@ -54,8 +54,11 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
             page.on("pageerror", lambda error: errors.append(str(error)))
 
             def dialog_seen(dialog):
-                dialogs.append(dialog.message)
-                dialog.dismiss()
+                dialogs.append({"type": dialog.type, "message": dialog.message})
+                if dialog.message.startswith("Discard unsaved") or dialog.type == "beforeunload":
+                    dialog.accept()
+                else:
+                    dialog.dismiss()
 
             page.on("dialog", dialog_seen)
 
@@ -167,7 +170,7 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
             page.goto(base + "/history")
             expect(page.locator("#history-list a")).to_have_count(0)
             expect(page.locator("#history-status")).to_contain_text("Scroll down to reveal")
-            page.get_by_role("button", name="Scroll to reports", exact=True).click()
+            scroll_history_with_keyboard(page)
             expect(page.locator("#history-status")).to_contain_text("No saved reports yet")
             expect(page.locator("#history-empty")).to_be_visible()
             assert page.title().startswith("Saved reports")
@@ -180,7 +183,7 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
             expect(page.locator("#history-before")).to_have_attribute("aria-invalid", "true")
             page.get_by_role("button", name="Clear filters", exact=True).click()
             expect(page.locator("#history-filter-error")).to_be_hidden()
-            page.get_by_role("button", name="Scroll to reports", exact=True).click()
+            scroll_history_with_keyboard(page)
             expect(page.locator("#history-status")).to_contain_text("No saved reports yet")
             for width, height in ((320, 568), (390, 844), (768, 1024), (1440, 1000)):
                 page.set_viewport_size({"width": width, "height": height})
@@ -222,7 +225,11 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
                               text:e.textContent.slice(0,60)})).slice(0,30)})""")
                         )
                     )
-            assert not errors and not dialogs and not external
+            assert not errors and not external
+            assert all(
+                item["type"] == "beforeunload" or item["message"].startswith("Discard unsaved")
+                for item in dialogs
+            )
             browser.close()
     finally:
         server.should_exit = True

@@ -4,10 +4,11 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../app/static/js/appearance.js', import.meta.url), 'utf8');
-function setup({ raw = null, blocked = false, media = false, loading = false } = {}) {
+function setup({ raw = null, blocked = false, media = false, systemLight = false, loading = false } = {}) {
   const values = new Map(raw === null ? [] : [['netguard-appearance-v1', raw]]);
   const writes = [], windowEvents = {}, documentEvents = {}, controls = new Map();
   const motion = { matches: media, addEventListener(type, callback) { this[type] = callback; } };
+  const theme = { matches: systemLight, addEventListener(type, callback) { this[type] = callback; } };
   const options = { notices: [], append(node) { this.notices.push(node); controls.set(node.id, node); } };
   const document = {
     readyState: loading ? 'loading' : 'complete', documentElement: { dataset: {} },
@@ -25,12 +26,25 @@ function setup({ raw = null, blocked = false, media = false, loading = false } =
       return { getItem: key => values.get(key) || null,
         setItem(key, value) { writes.push(value); values.set(key, value); } };
     },
-    matchMedia: () => motion,
+    matchMedia: query => query.includes('color-scheme') ? theme : motion,
     addEventListener: (name, callback) => { windowEvents[name] = callback; },
   };
   vm.runInNewContext(source, { window, document });
-  return { api: window.NetGuardAppearance, window, document, values, writes, controls, motion, windowEvents, documentEvents, options };
+  return { api: window.NetGuardAppearance, window, document, values, writes, controls, motion, theme, windowEvents, documentEvents, options };
 }
+
+test('device theme is opt-in; explicit choices win across system changes and storage failure', () => {
+  const app = setup({ systemLight: true, blocked: true });
+  assert.equal(app.document.documentElement.dataset.theme, 'dark');
+  app.api.applyAppearancePreferences({ theme: 'system' });
+  assert.equal(app.document.documentElement.dataset.theme, 'light');
+  app.theme.matches = false; app.theme.change();
+  assert.equal(app.document.documentElement.dataset.theme, 'dark');
+  app.api.applyAppearancePreferences({ theme: 'light' });
+  app.theme.change();
+  assert.equal(app.document.documentElement.dataset.theme, 'light');
+  assert.equal(app.api.getAppearancePreferences().theme, 'light');
+});
 const plain = value => JSON.parse(JSON.stringify(value));
 
 test('appearance initializes before paint without saving or reading any scan data', () => {
@@ -131,7 +145,21 @@ test('subscribers cannot mutate internal choices or break another subscriber', (
 test('all page shells initialize appearance before the stylesheet without inline scripting', () => {
   for (const file of ['base.html', 'dashboard.html', 'scan.html']) {
     const html = readFileSync(new URL(`../app/templates/${file}`, import.meta.url), 'utf8');
-    const boot = html.indexOf('<script src="/static/js/appearance.js?v=20261013-accessibility"></script>');
+    const boot = html.indexOf('<script src="/static/js/appearance.js?v=20261014-reliability"></script>');
     assert.ok(boot >= 0 && boot < html.indexOf('<link rel="stylesheet"'));
+  }
+});
+
+test('shared navigation exposes immediate browser display choices outside the saved settings form', () => {
+  const header = readFileSync(new URL('../app/templates/includes/shared-header.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../app/templates/settings.html', import.meta.url), 'utf8');
+  assert.match(header, /href="\/settings#display-preferences">Display preferences<\/a>/);
+  const section = html.slice(html.indexOf('<section id="display-preferences"'), html.indexOf('<section class="card settings-card" aria-label="App settings">'));
+  assert.match(section, /tabindex="-1"/);
+  assert.match(section, /Changes apply straight away, without pressing Save settings/);
+  assert.doesNotMatch(section, /<form\b|<details\b/);
+  for (const id of ['themePreference', 'textSizePreference', 'motionPreference']) {
+    assert.equal((section.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1);
+    assert.match(section, new RegExp(`<label for="${id}">`));
   }
 });

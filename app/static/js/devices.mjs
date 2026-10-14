@@ -3,7 +3,7 @@
 import {
   IDENTIFY_DEVICE_LABEL, deviceLabel, featureLabel, namingCoverage,
   recordedDeviceRole, recordedTimeLabel, reviewItemTitle,
-} from './presentation.mjs?v=20261012-reading';
+} from './presentation.mjs?v=20261014-dates';
 import { prioritise } from './report.mjs?v=20261008-dates';
 
 const nameSources = {
@@ -98,7 +98,8 @@ export function nameQualification(device) {
   return qualifications.join('. ');
 }
 
-function possibleCategory(device) {
+function possibleCategory(device, data) {
+  if (data && recordedDeviceRole(device, data) === 'Computer that ran this scan') return 'This computer (scan source)';
   if (device.profile?.conflict) return 'Clues disagree; device type not identified';
   const label = { camera: 'camera', printer: 'printer', router: 'network gateway',
     iot_other: 'smart-home device', computer: 'computer', media: 'media device' }[device.profile?.category];
@@ -166,7 +167,7 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
     heading.append(text('span', deviceLabel(device), 'device-summary-name'));
     heading.append(text('span', `Network address: ${device.ip}`, 'device-summary-address'));
     heading.append(text('span', nameQualification(device), 'device-summary-source'));
-    heading.append(text('span', possibleCategory(device), 'device-summary-type'));
+    heading.append(text('span', possibleCategory(device, data), 'device-summary-type'));
     const role = recordedDeviceRole(device, data);
     if (role) heading.append(text('span', role, 'device-summary-source'));
     heading.append(text('span', deviceStatus(device, target), 'device-summary-status'));
@@ -247,7 +248,7 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
     fact(identity, 'Name evidence', device.hostname_conflict
       ? 'Sources disagree; no name verifies identity' : `${device.hostname_confidence || 'Not recorded'} confidence; reported names do not verify identity`);
     if (device.hostname_observed_at) fact(identity, 'Name recorded', recordedTimeLabel(device.hostname_observed_at));
-    fact(identity, 'Possible type', possibleCategory(device));
+    fact(identity, 'Possible type', possibleCategory(device, data));
     if (device.vendor) fact(identity, 'Network adapter manufacturer', `${device.vendor} — does not identify the device model`);
     about.append(identity);
     if (device.hostname_source === 'saved_report') about.append(text('p', 'An earlier scan reported this name for the same network-adapter address. It was not confirmed this time. Adapter addresses can change or be copied.'));

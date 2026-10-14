@@ -91,7 +91,7 @@ export function coverageSummary(data) {
       : 'No device checks finished. Device security could not be assessed.';
   }
   const mdnsOnly = (c.targets || []).filter((target) => target.discovery_sources?.includes('mdns') && !target.discovery_sources.includes('nmap')).length;
-  const scope = discover ? `${total} device${total === 1 ? '' : 's'} identified during discovery${mdnsOnly ? `, including ${mdnsOnly} seen only through mDNS announcements` : ''}.` : `${total} device address${total === 1 ? ' was' : 'es were'} selected.`;
+  const scope = discover ? `${total} device${total === 1 ? '' : 's'} found during discovery${mdnsOnly ? `, including ${mdnsOnly} seen only through mDNS announcements` : ''}.` : `${total} device address${total === 1 ? ' was' : 'es were'} selected.`;
   return `${scope} ${finished} device check${finished === 1 ? '' : 's'} finished.`
     + (remaining ? ` ${remaining} ${active ? 'still pending' : 'did not finish'}.` : '');
 }

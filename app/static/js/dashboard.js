@@ -1,6 +1,6 @@
 import { request } from './api.js?v=20261001-network-recovery';
-import { configurePicker, startSetupTools } from './setup-tools.mjs?v=20261001-network-recovery';
-import { analysisProgressText, progressAnnouncement, readScanSetup, ollamaStatusText } from './report.mjs?v=20261009-followups';
+import { configurePicker, startSetupTools } from './setup-tools.mjs?v=20261014-reliability';
+import { analysisProgressText, progressAnnouncement, readScanSetup, ollamaStatusText } from './report.mjs?v=20261014-reliability';
 
 const launchButton = document.querySelector('#scanLaunchButton');
 const configText = document.querySelector('#scan-config');
@@ -10,11 +10,13 @@ const phaseText = document.querySelector('#progressPhase');
 const percentText = document.querySelector('#progressPercent');
 const detailText = document.querySelector('#progressDetail');
 const progressBar = document.querySelector('#progressBar');
+const progressTrack = document.querySelector('#progressTrack');
 const progressNote = document.querySelector('#progressNote');
 const cancelButton = document.querySelector('#scanCancelButton');
 const modeButtons = [...document.querySelectorAll('.mode-button')];
 const deepHostField = document.querySelector('#deepHostField');
 const deepHostInput = document.querySelector('#deepHostInput');
+const deepHostError = document.querySelector('#deepHostError');
 const setupNote = document.querySelector('#scanSetupNote');
 const clearTargetsButton = document.querySelector('#clearSavedTargetsButton');
 const pageProfile = ({ '/light': 'light', '/deep': 'deep-tcp-v1' })[window.location.pathname] || null;
@@ -31,10 +33,26 @@ let capacityCheckScheduled = false;
 let aiReadinessChecks = 0;
 let spokenProgressKey = '';
 
+function showScanMessage(message) {
+  // Repeated polls should not replace an unchanged live-region message.
+  if (configText.textContent !== message) configText.textContent = message;
+}
+
+function clearTargetError() {
+  deepHostInput.removeAttribute('aria-invalid');
+  deepHostError.hidden = true;
+  deepHostError.textContent = '';
+}
+deepHostInput.addEventListener('input', clearTargetError);
+document.querySelector('#recentDeviceSelect').addEventListener('change', () => {
+  if (!deepHostInput.disabled) clearTargetError();
+});
+
 function showCapacityWait() {
   capacityFull = true;
   capacityNote.hidden = false;
   capacityNote.textContent = 'All scan slots are in use. This page will become ready when a slot is free. No new scan has started; press Scan when it is ready.';
+  showScanMessage('Waiting for a free scan slot. No new scan has started on this page.');
   launchButton.disabled = true;
   launchButton.querySelector('span').textContent = 'Waiting for a free slot';
   if (!capacityCheckScheduled) {
@@ -79,6 +97,8 @@ function savedScanId() {
 
 async function resumeScan(id) {
   rememberScan(id);
+  clearTargetError();
+  showScanMessage('Reconnecting to this scan. Progress is below; refreshing does not start another scan.');
   launchButton.disabled = true;
   deepHostInput.disabled = true;
   modeButtons.forEach(button => { button.disabled = true; });
@@ -99,10 +119,10 @@ async function resumeScan(id) {
   }
   if (['light', 'deep-tcp-v1'].includes(metadata?.policy?.profile)) {
     selectedProfile = metadata.policy.profile;
-    showSetup();
   }
   const hosts = metadata?.target?.hosts;
   if (selectedProfile === 'deep-tcp-v1') deepHostInput.value = hosts?.[0] || '';
+  if (['light', 'deep-tcp-v1'].includes(metadata?.policy?.profile)) showSetup();
   document.querySelector('#progressTarget').textContent = metadata?.target
     ? `${selectedProfile === 'deep-tcp-v1' ? 'Deep' : 'Light'} scan: ${metadata.target.cidr || hosts?.join(', ') || 'saved target'}. This target is fixed for this scan.`
     : 'Reconnecting to the saved target. Refreshing does not change or restart this scan.';
@@ -129,6 +149,7 @@ function showSetup() {
     item.setAttribute('aria-pressed', String(active));
   });
   const deep = selectedProfile === 'deep-tcp-v1';
+  if (!deep) clearTargetError();
   deepHostField.hidden = !deep;
   deepHostInput.hidden = !deep;
   configurePicker(deep);
@@ -154,8 +175,15 @@ function setError(message) {
   errorPanel.textContent = message;
   progress.hidden = !activeScanId;
   launchButton.disabled = Boolean(activeScanId);
-  launchButton.querySelector('span').textContent = 'Scan';
-  cancelButton.hidden = true;
+  launchButton.querySelector('span').textContent = activeScanId ? 'Scan in progress' : 'Scan';
+  cancelButton.hidden = !activeScanId;
+  if (activeScanId) {
+    cancelButton.disabled = false;
+    cancelButton.textContent = 'Cancel scan';
+    showScanMessage('This scan is still selected. Check the message below; do not start another scan to reconnect.');
+  } else {
+    showScanMessage('Check the message below before trying again.');
+  }
   if (!activeScanId) {
     deepHostInput.disabled = false;
     modeButtons.forEach(button => { button.disabled = false; });
@@ -173,6 +201,8 @@ cancelButton.addEventListener('click', async () => {
   cancelButton.textContent = 'Cancelling...';
   try {
     await request(`/api/live-scans/${activeScanId}`, { method: 'DELETE' });
+    cancelButton.textContent = 'Cancellation requested';
+    showScanMessage('Cancellation requested. Waiting for this scan to stop; saved results will remain available.');
   } catch (error) {
     setError(error.message);
   }
@@ -211,6 +241,7 @@ async function loadStatus() {
     if (status.scan_capacity_available === false
         || (status.scan_capacity_available === undefined && status.active_scan_count >= status.max_concurrent_scans)) {
       showCapacityWait();
+      return;
     }
     if (status.network_warning) {
       configText.textContent = status.network_warning;
@@ -222,7 +253,7 @@ async function loadStatus() {
     }
     if (activeNetwork && scannerAvailable) {
       configText.textContent = status.ai_available
-        ? 'Ready to scan your authorised local network. Ollama will explain the results before your report opens.'
+        ? 'Ready to scan your authorised local network. We will make the results easier to understand before your report opens.'
         : ollamaStatusText(status);
       if (!status.ai_available && status.ai_readiness?.state === 'unresponsive' && aiReadinessChecks < 3) {
         aiReadinessChecks += 1;
@@ -252,6 +283,13 @@ function updateProgress(scan) {
   const completed = coverage.service_completed_count || 0;
   const attempted = coverage.service_attempted_count || 0;
   const deep = (scan.policy?.profile || selectedProfile) === 'deep-tcp-v1';
+  if (!cancelButton.disabled) {
+    showScanMessage(scan.phase === 'queued'
+      ? 'Your scan is waiting to start. Progress is below; refreshing does not start another scan.'
+      : scan.phase === 'analysis'
+      ? 'Your scan results are saved. We are making the explanations easier to understand; progress is below.'
+      : 'Your scan is in progress. Progress is below; refreshing does not start another scan.');
+  }
   const phases = ['discovery', 'service_scan', 'enrichment', 'analysis'];
   const activeStage = phases.indexOf(scan.phase);
   ['Discovery', 'Checks', 'Details', 'Analysis'].forEach((stage, index) => {
@@ -288,16 +326,23 @@ function updateProgress(scan) {
       : `Analysing ${attempted} completed host${attempted === 1 ? '' : 's'}`;
   }
   const checkingOne = deep && scan.phase === 'service_scan';
+  const indeterminate = checkingOne || ['queued', 'discovery'].includes(scan.phase);
+  percent = Math.max(0, Math.min(99, Number.isFinite(percent) ? percent : 0));
   const speech = progressAnnouncement(scan, deep);
   if (speech.key !== spokenProgressKey) {
     spokenProgressKey = speech.key;
     document.querySelector('#scan-progress-status').textContent = speech.message;
   }
-  percentText.textContent = checkingOne ? 'Running' : `${percent}%`;
-  percentText.dataset.activity = checkingOne ? 'true' : 'false';
-  progressBar.classList.toggle('is-active', checkingOne);
+  percentText.textContent = indeterminate ? (scan.phase === 'queued' ? 'Waiting' : 'Running') : `${percent}%`;
+  percentText.dataset.activity = indeterminate ? 'true' : 'false';
+  progressBar.classList.toggle('is-active', indeterminate);
   progressBar.style.width = `${percent}%`;
   if (checkingOne) detailText.textContent = 'Checking this device’s features. Results will be saved when the check returns.';
+  if (indeterminate) progressTrack.removeAttribute('aria-valuenow');
+  else progressTrack.setAttribute('aria-valuenow', String(percent));
+  progressTrack.setAttribute('aria-valuetext', indeterminate
+    ? `${phaseText.textContent}. Time remaining is unknown.`
+    : `${percent}% overall stage progress. Time remaining is unknown.`);
   progressNote.textContent = scan.phase === 'analysis'
     ? 'Scan observations have been saved. This final step can take a few minutes.'
     : `${scan.device_count ?? scan.devices?.length ?? 0} device results saved, ${scan.finding_count ?? scan.findings?.length ?? 0} items to review so far.`;
@@ -346,6 +391,7 @@ async function pollScan(scanId) {
     } else {
       // Losing the browser connection must not forget or restart the backend job.
       errorPanel.hidden = false;
+      showScanMessage('Connection interrupted. Reconnecting to the same selected scan without restarting it.');
       errorPanel.textContent = `Connection interrupted. Reconnecting to the same scan; do not start another. ${error.message}`;
       window.setTimeout(() => pollScan(scanId), Math.min(1000 * 2 ** Math.min(pollFailures++, 4), 15000));
     }
@@ -377,12 +423,21 @@ launchButton.addEventListener('click', async () => {
     return;
   }
   if (deep && !deepHost) {
-    setError('Enter one authorised device IP for a Deep scan.');
+    const message = 'Enter the address of one device you own or have permission to check.';
+    setError(message);
+    deepHostError.textContent = message;
+    deepHostError.hidden = false;
+    deepHostInput.setAttribute('aria-invalid', 'true');
+    deepHostInput.focus();
     return;
   }
+  clearTargetError();
   if (scopeSource === 'automatic' && !window.confirm(`Scan the detected network ${activeNetwork}? Continue only if you own this network or have permission to scan it.`)) return;
   launchButton.disabled = true;
   launchButton.querySelector('span').textContent = 'Starting...';
+  showScanMessage('Starting your scan. Progress will appear below; wait for confirmation before trying again.');
+  progressTrack.removeAttribute('aria-valuenow');
+  progressTrack.setAttribute('aria-valuetext', 'Preparing the scan. Time remaining is unknown.');
   progress.hidden = false;
   phaseText.textContent = 'Preparing local scan';
   detailText.textContent = 'Validating authorised scope';

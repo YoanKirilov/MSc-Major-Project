@@ -10,5 +10,6 @@
     <a href="/"{% if active_page | default('') == 'scan' %} aria-current="page"{% endif %}>Scan</a>
     <a href="/history"{% if active_page | default('') == 'history' %} aria-current="page"{% endif %}>Saved reports</a>
     <a href="/settings"{% if active_page | default('') == 'settings' %} aria-current="page"{% endif %}>Settings</a>
+    <a href="/settings#display-preferences">Display preferences</a>
   </nav>
 </header>

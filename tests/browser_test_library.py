@@ -15,7 +15,7 @@ from app.schemas.scan import Device, DeviceDetail, ScanDocument
 from app.security.session import SessionManager
 from app.storage.annotations import NameRefresh
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import browser_listener
+from tests.fixtures.browser import browser_listener, scroll_history_with_keyboard
 from tests.fixtures.fixtures import make_telnet_scan
 
 pytestmark = [
@@ -346,7 +346,9 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             picker = context.new_page()
             picker.goto(base + "/deep")
             expect(picker.locator("#recentDeviceSelect")).to_contain_text("Kitchen TV")
-            expect(picker.locator("#recentDeviceSelect")).to_contain_text("response not confirmed")
+            expect(picker.locator("#recentDeviceSelect")).not_to_contain_text(
+                "response not confirmed"
+            )
             for width in (320, 390):
                 picker.set_viewport_size({"width": width, "height": 844})
                 assert not picker.evaluate("document.documentElement.scrollWidth > innerWidth")
@@ -354,6 +356,12 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             picker.set_viewport_size({"width": 1280, "height": 900})
             picker.locator("#recentDeviceSelect").select_option("192.168.0.10")
             expect(picker.locator("#deepHostInput")).to_have_value("192.168.0.10")
+            expect(picker.locator("#recentDeviceDetails")).to_contain_text(
+                "no completed device check recorded"
+            )
+            expect(picker.locator("#recentDeviceDetails")).to_contain_text(
+                "not a check of whether the device is connected now"
+            )
             with picker.expect_response("**/api/recent-devices"):
                 picker.locator("#refreshDeviceChoices").click()
             expect(picker.locator("#recentDeviceSelect")).to_have_value("192.168.0.10")
@@ -379,11 +387,11 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             page.goto(base + "/history")
             page.locator("#history-query").fill("update router")
             page.get_by_role("button", name="Search reports", exact=True).click()
-            page.get_by_role("button", name="Scroll to reports", exact=True).click()
+            scroll_history_with_keyboard(page)
             expect(page.locator("#history-list")).to_contain_text("After router update")
             page.locator("#history-profile").select_option("deep-tcp-v1")
             page.get_by_role("button", name="Search reports", exact=True).click()
-            page.get_by_role("button", name="Scroll to reports", exact=True).click()
+            scroll_history_with_keyboard(page)
             expect(page.locator("#history-status")).to_contain_text("No reports match your filters")
             broken = ScanDocument(
                 scan_id=str(uuid4()), target={"mode": "known_hosts", "hosts": ["192.168.0.99"]}
@@ -391,7 +399,7 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             store._create_scan(broken)
             store._atomic_write(store._scan_dir(broken.scan_id) / "scan.json", "broken fixture")
             page.get_by_role("button", name="Search reports", exact=True).click()
-            page.get_by_role("button", name="Scroll to reports", exact=True).click()
+            scroll_history_with_keyboard(page)
             expect(page.locator("#history-warnings")).to_contain_text("1 saved report(s)")
             expect(page.locator("#history-list li")).to_have_count(0)
             uncertain = ScanDocument(
@@ -408,13 +416,13 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             page.locator("#history-profile").select_option("")
             page.locator("#history-query").fill(uncertain.scan_id)
             page.get_by_role("button", name="Search reports", exact=True).click()
-            page.get_by_role("button", name="Scroll to reports", exact=True).click()
+            scroll_history_with_keyboard(page)
             expect(page.locator("#history-list a")).to_have_count(1)
             expect(page.locator("#history-list a")).to_contain_text("Date unavailable")
             expect(page.locator("#history-warnings")).to_contain_text("dates could not be verified")
             page.locator("#history-after").fill(utc_now().date().isoformat())
             page.get_by_role("button", name="Search reports", exact=True).click()
-            page.get_by_role("button", name="Scroll to reports", exact=True).click()
+            scroll_history_with_keyboard(page)
             expect(page.locator("#history-status")).to_contain_text("No reports match your filters")
             expect(page.locator("#history-list a")).to_have_count(0)
             assert uncertain_path.read_bytes() == uncertain_evidence

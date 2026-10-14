@@ -12,7 +12,7 @@ python -m app storage retention --data-dir "C:\path\app-data" --older-than-days 
 ```
 
 Exports include managed live-report JSON, raw XML, guidance archives, annotations,
-nicknames and settings, with a SHA-256 manifest. Locks, session credentials and demo
+nicknames, settings and managed `.trash` recovery evidence/receipts, with a SHA-256 manifest. Locks, session credentials and demo
 runs are excluded. They are ordinary private folders, not encrypted archives.
 Restore verifies checksums before creating the destination and will not overwrite an
 existing folder. It copies data; it does not migrate unknown schemas or establish
@@ -26,4 +26,14 @@ Retention remains a **preview**, not deletion. Export and verify first; decide w
 reports to retain for the study. Nothing is deleted automatically. If a copy fails,
 the source is preserved and any partial destination remains for inspection; retry
 with another new destination. History offers an on-demand usage check and warns at
-250 MiB. Current bounded transfer limits: 20 MiB/file, 20,000 files, 1 GiB total.
+250 MiB. Current bounded transfer limits: 20 MiB/file, 20,000 files, 3 GiB total.
+Linked paths are rejected before traversal. Managed recovery evidence is included
+in the same checksum policy, not silently omitted. Unknown files are not exported.
+
+On Saved reports, **Recover deleted reports → Reload recovery copies** lists up
+to 24 copies per page and can restore a report after navigation/reload. Restore
+rechecks evidence and note revisions and refuses to overwrite an existing report.
+Unreadable or unsafe copies are preserved, not automatically repaired or purged.
+The size check separates active managed data from recovery data and shows the
+2 GiB recovery capacity; removal does not immediately free space. Backups contain
+private device details, including those from deleted reports.

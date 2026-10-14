@@ -33,9 +33,9 @@ test('saved dates display an unavailable label instead of guessing or Invalid Da
     assert.equal(presentation.recordedTimeLabel(value, 'Date unavailable'), 'Date unavailable');
   }
   const value = '2026-10-08T01:00:00+03:00';
-  assert.equal(presentation.recordedTimeLabel(value), new Date(value).toLocaleString());
-  assert.equal(presentation.recordedTimeLabel('2026-10-07T22:00:00Z'), new Date(value).toLocaleString());
-  assert.equal(presentation.recordedTimeLabel('2024-02-29T12:00:00Z'), new Date('2024-02-29T12:00:00Z').toLocaleString());
+  assert.equal(presentation.recordedTimeLabel(value), new Date(value).toLocaleString(undefined, { timeZoneName: 'short' }));
+  assert.equal(presentation.recordedTimeLabel('2026-10-07T22:00:00Z'), new Date(value).toLocaleString(undefined, { timeZoneName: 'short' }));
+  assert.equal(presentation.recordedTimeLabel('2024-02-29T12:00:00Z'), new Date('2024-02-29T12:00:00Z').toLocaleString(undefined, { timeZoneName: 'short' }));
 });
 
 test('unfinished counts include cancelled and unstarted selected checks, not silent addresses', () => {
@@ -457,7 +457,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     rejected_fields: { recommended_steps: 'list_length_changed' }, content: { meaning: 'Observed service.', why_it_matters: 'Review settings.' } }];
   vm.runInContext('render(data)', context);
   assert.equal(elements.get('#simplifyButton').hidden, false);
-  assert.equal(elements.get('#simplifyButton').textContent, 'Retry remaining wording');
+  assert.equal(elements.get('#simplifyButton').textContent, 'Retry remaining explanations');
   assert.match(text(elements.get('#detailPanel')), /suggested actions/);
   context.data.plain_guidance = { high: { title: 'Plain finding title', limitations: ['Plain limitation.'], content: {
     meaning: 'Plain explanation.', why_it_matters: 'Plain reason.',

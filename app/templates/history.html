@@ -6,6 +6,7 @@
   <p class="eyebrow">Your local records</p>
   <h1>Saved reports</h1>
   <p>Reopen results saved on this computer. Opening a report does not start a scan.</p>
+  <p id="history-backend-status" class="status-message status-warning" role="status" hidden></p>
 </header>
 <section class="card" aria-label="Find a saved report">
   <div id="history-filter-error" class="error-summary" role="alert" tabindex="-1" hidden><h2>Check the report filters</h2><p id="history-filter-error-message"></p></div>
@@ -24,10 +25,10 @@
       <select id="history-state"><option value="">All states</option><option value="completed">Finished</option><option value="partial">Some checks unfinished</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option><option value="running">In progress</option><option value="queued">Waiting</option></select>
     </div>
     <div class="form-field">
-      <label for="history-after">From date (UTC)</label><input id="history-after" type="date" />
+      <label for="history-after">From date (UTC)</label><input id="history-after" type="date" aria-describedby="history-date-help" />
     </div>
     <div class="form-field">
-      <label for="history-before">To date (UTC)</label><input id="history-before" type="date" aria-describedby="history-before-error" />
+      <label for="history-before">To date (UTC)</label><input id="history-before" type="date" aria-describedby="history-date-help history-before-error" />
       <p id="history-before-error" class="field-error" hidden></p>
     </div>
     <div class="form-actions history-query-field">
@@ -35,25 +36,61 @@
       <button class="secondary-button" type="reset">Clear filters</button>
     </div>
   </form>
+  <p id="history-date-help" class="field-hint">Both dates include the whole UTC day. Report times use your browser's timezone; each row shows the UTC filter date to use here.</p>
+  <p id="history-applied-filters" class="field-hint"></p>
 </section>
 <section class="history-results" aria-labelledby="history-results-title">
-  <h2 id="history-results-title">Reports</h2>
+  <h2 id="history-results-title" tabindex="-1">Reports</h2>
   <p id="history-status" class="status-message" role="status" tabindex="-1">Scroll down to reveal saved reports one at a time.</p>
   <p id="history-warnings" class="status-message status-warning" role="status" hidden></p>
-  <div class="form-actions history-load-controls">
-    <button class="secondary-button history-load-more" type="button" id="history-load-more" aria-controls="history-list" aria-describedby="history-more-hint">Scroll to reports</button>
-    <p id="history-more-hint" class="field-hint history-end">Reports appear as you scroll down. You can also use this button.</p>
+  <div class="history-management" role="group" aria-label="Manage shown reports">
+    <label class="history-select-all"><input id="history-select-all" type="checkbox" disabled aria-describedby="history-selection-hint" /> Select shown reports</label>
+    <button id="history-delete-selected" class="danger-button" type="button" disabled>Delete selected</button>
+    <span id="history-selection-status" role="status">No reports selected.</span>
   </div>
+  <p id="history-selection-hint" class="field-hint">Select only the reports shown on this page. Running reports cannot be deleted.</p>
+  <p id="history-feedback" class="status-message" role="status" tabindex="-1"></p>
+  <div class="history-feedback-actions">
+    <button id="history-undo-delete" class="secondary-button" type="button" hidden>Undo last deletion</button>
+    <button id="history-retry" class="secondary-button" type="button" hidden>Retry loading reports</button>
+    <button id="history-refresh" class="secondary-button" type="button" hidden>Refresh reports</button>
+    <a id="history-scroll-link" href="#history-sentinel">Scroll to reports</a>
+  </div>
+  <nav id="history-pagination" class="history-pagination" aria-label="Report pages" hidden></nav>
   <div id="history-scroll-stage" class="history-scroll-stage">
     <div id="history-empty" class="empty-state" hidden><h3>No saved reports yet</h3><p>After an authorised scan finishes, its report is saved here.</p><a class="secondary-button" href="/">Set up a scan</a></div>
     <ul id="history-list" class="history-list" aria-labelledby="history-results-title"></ul>
     <div id="history-sentinel" class="history-sentinel" aria-hidden="true"></div>
   </div>
+  <nav id="history-pagination-bottom" class="history-pagination" aria-label="Report pages after the list" hidden></nav>
+  <p id="history-page-hint" class="field-hint">Scroll to reveal reports one at a time, up to 24 on each page. Use Page Down or End with a keyboard.</p>
 </section>
+<dialog id="history-delete-dialog" class="rescan-dialog history-delete-dialog" aria-labelledby="history-delete-title" aria-describedby="history-delete-help">
+  <h2 id="history-delete-title">Delete selected reports?</h2>
+  <p id="history-delete-help">The reports and their notes will be removed from this list. A private recovery copy stays on this computer. Shared device nicknames are not deleted.</p>
+  <ul id="history-delete-list"></ul>
+  <p id="history-delete-error" class="status-message status-warning" role="alert" hidden></p>
+  <div class="form-actions">
+    <button id="history-delete-cancel" class="secondary-button" type="button" autofocus>Keep reports</button>
+    <button id="history-delete-confirm" class="danger-button" type="button">Delete reports</button>
+  </div>
+</dialog>
+<details class="card storage-details" id="recovery-copies">
+  <summary>Recover deleted reports</summary>
+  <p>Recovery copies stay on this computer after you leave this page. Restore brings back the report and its notes; it never replaces an existing report. No copies are permanently erased here.</p>
+  <button id="recovery-load" type="button" class="secondary-button">Reload recovery copies</button>
+  <p id="recovery-status" class="status-message" role="status" tabindex="-1">Choose Reload recovery copies to view them. Opening this section does not start a scan.</p>
+  <ul id="recovery-list" class="history-list"></ul>
+  <nav id="recovery-pages" class="history-pagination" aria-label="Recovery pages" hidden>
+    <button id="recovery-previous" type="button" class="secondary-button">Previous recovery page</button>
+    <button id="recovery-next" type="button" class="secondary-button">Next recovery page</button>
+  </nav>
+</details>
 <details class="card storage-details"><summary>Backups and storage</summary>
   <button class="secondary-button" type="button" id="storageUsageButton">Check saved data size</button>
   <p id="storageUsage" class="status-message" role="status"></p>
-  <p>Back up before removing old reports. Stop the app, then use its storage export command to copy reports, names and settings into a new private folder. Restore into a new folder, never over existing evidence. See <code>docs/storage-backups.md</code> for commands. Backups contain private network details; do not publish them.</p>
+  <p>Deleting keeps a recovery copy, so it does not immediately free disk space. Use Undo for your last deletion, or Recover deleted reports after returning to this page.</p>
+  <p>Back up before removing old reports. Stop the app, then use its storage export command to copy reports, recovery copies, names and settings into a new private folder. Restore a backup into a new folder, never over existing evidence. See <code>docs/storage-backups.md</code> for commands. Backups contain private network details; do not publish them.</p>
 </details>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/history.js?v=20261013-one-at-a-time"></script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/history.js?v=20261014-reliability"></script>{% endblock %}

@@ -3,13 +3,15 @@
   'use strict';
   const key = 'netguard-appearance-v1';
   const defaults = { theme: 'dark', textSize: 'standard', motion: 'device' };
-  const choices = { theme: ['dark', 'light'], textSize: ['standard', 'larger'], motion: ['device', 'reduce'] };
+  const choices = { theme: ['dark', 'light', 'system'], textSize: ['standard', 'larger'], motion: ['device', 'reduce'] };
   const controls = { theme: 'themePreference', textSize: 'textSizePreference', motion: 'motionPreference' };
   const listeners = new Set();
   const bound = new WeakSet();
   let storageAvailable = true;
   let deviceMotion;
+  let deviceTheme;
   try { deviceMotion = window.matchMedia('(prefers-reduced-motion: reduce)'); } catch { /* Optional device preference. */ }
+  try { deviceTheme = window.matchMedia('(prefers-color-scheme: light)'); } catch { /* Dark is the safe default. */ }
 
   function normalize(value) {
     return Object.fromEntries(Object.entries(choices).map(([name, allowed]) =>
@@ -29,7 +31,7 @@
   function getAppearancePreferences() { return { ...preferences }; }
   function render() {
     const root = document.documentElement;
-    root.dataset.theme = preferences.theme;
+    root.dataset.theme = preferences.theme === 'system' ? deviceTheme?.matches ? 'light' : 'dark' : preferences.theme;
     root.dataset.textSize = preferences.textSize;
     root.dataset.reduceMotion = String(preferences.motion === 'reduce' || Boolean(deviceMotion?.matches));
     for (const [name, id] of Object.entries(controls)) {
@@ -72,7 +74,12 @@
       const control = document.getElementById(id);
       if (!control || bound.has(control)) continue;
       bound.add(control);
-      control.addEventListener('change', () => applyAppearancePreferences({ [name]: control.value }));
+      control.addEventListener('change', () => {
+        applyAppearancePreferences({ [name]: control.value });
+        const feedback = document.getElementById('appearance-feedback');
+        if (feedback) feedback.textContent = storageAvailable ? 'Display preference applied and remembered in this browser.'
+          : 'Display preference applied on this page, but this browser could not remember it.';
+      });
     }
     render();
   }
@@ -88,4 +95,6 @@
   });
   if (deviceMotion?.addEventListener) deviceMotion.addEventListener('change', publish);
   else deviceMotion?.addListener?.(publish);
+  if (deviceTheme?.addEventListener) deviceTheme.addEventListener('change', publish);
+  else deviceTheme?.addListener?.(publish);
 })(window, document);

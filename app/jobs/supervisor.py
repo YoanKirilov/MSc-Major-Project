@@ -5,6 +5,7 @@ import logging
 import socket
 from collections.abc import Callable
 from ipaddress import IPv4Address
+from time import monotonic
 from typing import Any
 
 from filelock import Timeout as StorageLockTimeout
@@ -130,6 +131,58 @@ class ScanSupervisor:
     def is_analysis_active(self, scan_id: str) -> bool:
         task = self._analysis_tasks.get(scan_id)
         return task is not None and not task.done()
+
+    async def delete_reports(self, targets) -> list[dict]:
+        """Serialize report removal with all scan/AI admission; never cancel a job."""
+        from app.storage.report_trash import ReportTrash
+
+        results = []
+        async with self._admission:
+            trash = ReportTrash(self.store)
+            deadline = monotonic() + 40
+            for target in targets:
+                if target.scan_id in self.active_scan_ids:
+                    results.append(
+                        trash.result(
+                            target.scan_id,
+                            "active",
+                            "This report is being used by a scan or explanation job. "
+                            "Wait for it to finish.",
+                        )
+                    )
+                elif monotonic() >= deadline:
+                    results.append(
+                        trash.result(
+                            target.scan_id,
+                            "unavailable",
+                            "The removal time limit was reached. This report was not removed.",
+                        )
+                    )
+                else:
+                    results.append(await trash.delete(target, deadline=deadline))
+        return results
+
+    async def restore_reports(self, trash_ids) -> list[dict]:
+        """Undo only managed removal receipts; restoration never overwrites evidence."""
+        from app.storage.report_trash import ReportTrash
+
+        results = []
+        async with self._admission:
+            trash = ReportTrash(self.store)
+            deadline = monotonic() + 40
+            for trash_id in trash_ids:
+                if monotonic() >= deadline:
+                    results.append(
+                        {
+                            "trash_id": trash_id,
+                            "status": "unavailable",
+                            "message": "The restore time limit was reached. "
+                            "Try again after reloading.",
+                        }
+                    )
+                else:
+                    results.append(await trash.restore(trash_id, deadline=deadline))
+        return results
 
     async def start(self, scan_id: str) -> None:
         async with self._admission:

@@ -13,7 +13,7 @@ from app.main import create_app
 from app.scanner.runner import ProcessResult
 from app.schemas.scan import DeviceDetail
 from app.security.session import SessionManager
-from tests.fixtures.browser import browser_listener
+from tests.fixtures.browser import browser_listener, scroll_history_with_keyboard
 from tests.fixtures.provider import ReviewedProvider
 
 pytestmark = [
@@ -368,7 +368,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             assert extra.locator("script").count() == 0
             first_report = page.url
             page.get_by_role("link", name="Saved reports").click()
-            page.get_by_role("button", name="Scroll to reports", exact=True).click()
+            scroll_history_with_keyboard(page)
             page.locator("#history-list a").first.click()
             assert page.url == first_report
             # Create a Light known-host result using the actual authenticated API.
@@ -399,7 +399,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             assert response.value.status == 202
             assert response.value.request.post_data_json["hosts"] == ["192.168.56.10"]
             expect(page.locator("#ai-report-notice")).to_contain_text(
-                "AI simplification is unavailable", timeout=15000
+                "Automatic explanations are unavailable", timeout=15000
             )
             expect(page.locator("#report-content")).to_be_visible()
             count = len(scanned)
@@ -465,7 +465,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             expect(page.locator("#deepHostInput")).to_have_value("")
             expect(page.locator("#scanLaunchButton")).to_be_enabled()
             page.locator("#scanLaunchButton").click()
-            expect(page.locator("#scanError")).to_contain_text("Enter one authorised device")
+            expect(page.locator("#scanError")).to_contain_text("Enter the address of one device")
             assert len(scanned) == before_setup
             # An outdated/failed module must offer recovery, not an inert Scan button.
             blocked_module = "**/static/js/report.mjs*"

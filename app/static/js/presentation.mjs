@@ -15,7 +15,11 @@ export function recordedTimeLabel(value, unavailable = 'Time unavailable') {
       || Number(parts[7] || 0) > 23 || Number(parts[8] || 0) > 59) return unavailable;
   const date = new Date(value);
   if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() < 1 || date.getUTCFullYear() > 9999) return unavailable;
-  return date.toLocaleString();
+  return date.toLocaleString(undefined, { timeZoneName: 'short' });
+}
+
+export function recordedUtcDay(value) {
+  return recordedTimeLabel(value, '') ? new Date(value).toISOString().slice(0, 10) : '';
 }
 
 export function localFeatureHelp(device, service, data) {

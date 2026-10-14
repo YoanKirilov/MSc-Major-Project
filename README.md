@@ -8,6 +8,28 @@ Current development: [12 October beginner-reading fixes](docs/readability-fixes-
 [private JSON backup/restore](docs/storage-backups.md). Dated test logs describe the
 version tested at that time; see [testing status](docs/testing.md) for verification.
 
+The latest [report-management change](docs/report-management-20261013.md) bounds
+Saved reports to 24 entries per numbered page. Opening/searching still starts empty;
+scrolling reveals reports one by one without Show next report buttons. Select shown
+reports for individual/bulk deletion, confirm the named selection, and Undo the last
+acknowledged batch. Removal keeps a bounded private recovery copy; it is not secure
+erasure or immediate disk-space cleanup. Current verification/limits are recorded
+separately from the earlier presentation checks: the final offline gate passed
+653 Python/190 JavaScript cases with five Windows link-privilege skips. Installed
+functional checks and the final 96-file installed hash comparison passed, as did
+50 scoped Chromium/Firefox browser cases and six affected regressions. WebKit remains
+unverified under Windows startup policy; earlier harness failures and external checks
+are distinguished in the linked record. Let active scans finish, restart the backend task, then reload
+the browser to load both the new API and interface.
+
+The earlier same-day [combined design polish](docs/design-polish-20261013.md) adds clearer
+running/reconnecting messages, accessible task progress, inline Deep-address errors,
+spaced actions and simpler report recovery. Display preferences are reachable from
+every page and apply immediately in Settings. Recent-device choices have separate
+saved-check context; its end-of-list next-report controls are superseded by the
+bounded report pages above. No scanner/provider/evidence contract
+changed, and this update was tested without live scans.
+
 Latest presentation changes give devices a consistent summary and action area,
 place mobile explanations beside the selected review item, and separate device
 search from review-item search. The complete checklist exposes every saved action;
@@ -41,8 +63,8 @@ The home page now groups both scan choices, device selection, readiness and one
 Scan action in a single setup. Duplicate links to separate scan pages are removed;
 the existing profile-specific URLs and parallel scans still work. Saved reports
 now start empty and reveal one entry per intentional downward scroll gesture.
-The first keyboard control scrolls to the reports; Show next report then offers
-a one-entry alternative. Search applies to the complete library, not only loaded
+Keyboard users can follow Scroll to reports and use native scroll keys; numbered
+page controls navigate the remaining results. Search applies to the complete library, not only loaded
 entries. Light report titles are blue, Deep titles purple, and hover/focus swaps
 those colours. [The earlier home/history record](docs/home-history-ux-20261012.md)
 preserves the superseded eight-entry implementation.
@@ -444,6 +466,8 @@ The app uses **local JSON only**; there is no SQLite database. By default, the d
 <data-dir>/scans/<scan-id>/guidance/*.json      # archived guidance snapshots
 <data-dir>/scans/<scan-id>/annotations.json    # report title, checklist and later lookups
 <data-dir>/scans/<scan-id>/annotations.previous.json # previous editable notes
+<data-dir>/.trash/<trash-id>/                  # recoverable removed report folder
+<data-dir>/.trash/<trash-id>/.removal-receipt.json # original ID and revision-bound Undo
 <data-dir>/demo-runs/<run-id>.json              # saved fictional demo run
 ```
 
@@ -457,6 +481,23 @@ repeatedly downloading full evidence. It opens the full report after processing 
 `PUT /api/live-scans/{scan_id}/action-checks` saves a valid action's review status on a
 finished live report. It requires the session, CSRF token and expected annotation
 revision; it does not update the original scan document.
+
+`GET /api/reports` provides whole-library search and pagination with deletion
+revision tokens. `POST /api/reports/delete` removes 1-24 explicitly selected,
+finished live reports after session/CSRF, active-job and scan/notes revision checks.
+`POST /api/reports/restore` restores acknowledged recovery UUIDs without overwriting
+existing reports. Mixed batch outcomes are reported individually; no destructive
+request is automatically retried. The existing scan `DELETE` endpoint is cancellation,
+not report removal. See [the contracts and limits](docs/report-management-20261013.md).
+
+Recovery archives remain on disk: 1,000 entries/2 GiB maximum, fail closed when full,
+and no automatic purge. The immediate Undo action belongs to the open history page;
+refresh/navigation may lose that button but not its archived files. **Recover deleted
+reports** now lists authenticated recovery copies in bounded 24-item pages, with
+revision-safe Restore after reload/navigation. Size measurement separates active
+managed data and recovery copies; offline checksum export includes managed `.trash`
+evidence and receipts. Shared nicknames/settings remain unchanged by report deletion.
+See [the 14 October execution record](docs/ui-ux-implementation-20261014.md).
 
 Managed JSON reads and writes share a 20 MiB UTF-8 byte limit. An oversized write preserves the previous checkpoint and backup. At most three guidance snapshots stay inline; older snapshots, or snapshots that would exceed the document limit, move to separate JSON files with references in the report. Unusually large scan evidence can still hit the limit and is reported as incomplete rather than publishing an unreadable document. See [storage lifecycle planning](docs/storage-lifecycle.md).
 

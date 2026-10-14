@@ -5,16 +5,18 @@ import json
 import re
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.storage.maintenance import _managed
+from app.storage.report_trash import ReportTrash
 from filelock import FileLock
 
-MAX_BACKUP_BYTES = 1024 * 1024 * 1024
+MAX_BACKUP_BYTES = 3 * 1024 * 1024 * 1024
 MAX_FILES = 20000
 ALLOWED = re.compile(
     r"(?:settings|nicknames)(?:\.previous)?\.json|nicknames\.recovery\.json|"
     r"nicknames\.corrupt-[0-9a-f]{32}\.json|"
-    r"scans/[0-9a-f-]{36}/(?:[a-z.]+\.json|annotations\.corrupt-[0-9a-f]{32}\.json|"
+    r"(?:scans|\.trash)/[0-9a-f-]{36}/(?:[a-z.]+\.json|\.removal-receipt\.json|annotations\.corrupt-[0-9a-f]{32}\.json|"
     r"raw/[a-zA-Z0-9.-]+\.xml|guidance/guidance-[0-9a-f-]{36}\.json)"
 )
 
@@ -23,10 +25,28 @@ def files_to_backup(root):
     root = Path(root).resolve(strict=True)
     files = []
     total = 0
+    safety = ReportTrash(SimpleNamespace(data_root=root))
+
+    def walk(folder):
+        pending = [folder]
+        count = 0
+        while pending:
+            parent = pending.pop()
+            safety._safe_path(parent)
+            for entry in parent.iterdir():
+                count += 1
+                if count > 100000:
+                    raise ValueError("Backup exceeds its bounded entry policy")
+                safety._safe_path(entry)
+                if entry.is_dir():
+                    pending.append(entry)
+                else:
+                    yield entry
+
     for path in root.iterdir():
-        if path.name == "scans":
+        if path.name in {"scans", ".trash"}:
             _managed(root, path)
-            candidates = path.rglob("*")
+            candidates = walk(path)
         elif path.name in {
             "settings.json",
             "settings.previous.json",
@@ -38,6 +58,7 @@ def files_to_backup(root):
         else:
             continue
         for entry in candidates:
+            safety._safe_path(entry)
             _managed(root, entry)
             if not entry.is_file():
                 continue
@@ -54,9 +75,15 @@ def files_to_backup(root):
 
 def storage_usage(root):
     files, total = files_to_backup(root)
+    recovery = [item for item in files if item[0].startswith(".trash/")]
+    recovery_bytes = sum(item[2] for item in recovery)
     return {
         "bytes": total,
         "files": len(files),
+        "active_bytes": total - recovery_bytes,
+        "recovery_bytes": recovery_bytes,
+        "recovery_files": len(recovery),
+        "recovery_limit_bytes": ReportTrash.max_bytes,
         "warning": "Consider an offline backup and review older reports."
         if total >= 250 * 1024 * 1024
         else None,
@@ -104,7 +131,8 @@ def transfer(data_dir, destination, *, restore=False):
             "bytes": total,
             "verified": True,
             "note": (
-                "Live reports/settings/nicknames copied. Demo runs, session secrets and locks "
+                "Live reports/settings/nicknames and recovery copies copied. "
+                "Demo runs, session secrets and locks "
                 "excluded. Source unchanged apart from its instance lock."
             ),
         }

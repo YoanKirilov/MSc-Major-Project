@@ -5,6 +5,42 @@ Acceptance thresholds are in [quality-plan.md](quality-plan.md), not implied by 
 Current execution: [quality-evidence-20260928.md](quality-evidence-20260928.md).
 PASS/LIMITED/FAIL/PENDING apply to the stated test conditions, not a whole ISO standard.
 
+## Bounded report management - 13 October 2026
+
+[The execution record](report-management-20261013.md) links Q03/Q06/Q11 to zero-start
+history, bounded 24-entry pages, cached one-entry reveal, numbered navigation,
+shown-page selection and explicit confirmation/Undo. Q04/Q05/Q08 cover private
+recoverable folder moves, scan/notes revision conflicts, active scan/AI admission,
+bounded waits/archive capacity, cancellation-safe completion, UUID/path safeguards
+and authenticated CSRF writes. Global nicknames/settings remain untouched; deletion
+is not secure erasure or a claim that disk space was freed. Recovery retention/export
+limitations are explicit. The focused backend suite passed 54 cases; five real
+Windows link-creation cases were privilege-skipped while simulated junction guards
+passed. Q11/Q12 now include the final offline gate (653 Python/190 JavaScript,
+five link-privilege skips), Ruff/154-file formatting/eighteen syntax checks, and
+installed functional report create/reopen/delete/Undo checks, all 96 installed files
+matching source, and the final scoped 50-case Chromium/Firefox browser pass. The
+first-paint harness failure and subsequent Firefox teardown errors/retests are
+retained rather than described as an initially clean run. The six affected colour/
+Settings/library/synthetic-workflow regressions and final Ruff/154-file formatting
+rechecks also passed. WebKit remains blocked/unverified. Confirmation/recovery
+and reduced movement are informed by the linked official guidance, not a WCAG claim.
+The junction compatibility branch was tested synthetically on Windows/Python 3.14,
+not an actual 3.11/Ubuntu environment.
+Q07 participant/assistive-technology evaluation remains open, and 24 entries is a
+product bound rather than a standards requirement or accessibility certification.
+
+## Combined design polish — 13 October 2026
+
+[The execution record](design-polish-20261013.md) adds Q03/Q06/Q11 evidence for
+accurate running/reconnecting state, field-associated errors, task progress,
+spaced native actions, discoverable display preferences, compact saved context
+and local keyboard paging/focus. Q04/Q09/Q13 retain fixed targets, saved evidence,
+incomplete-check/fallback provenance and no implicit resubmission. Q12 includes
+installed assets matching source. WebKit's enforced Windows policy block is a
+verification limit, not a pass. Q07 participant/assistive-technology evaluation
+remains outstanding; this is not accessibility certification.
+
 ## Stable home progress — 13 October 2026
 
 [The fix and verification](home-progress-position-20261013.md) add Q03/Q06/Q11

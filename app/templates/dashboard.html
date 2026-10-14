@@ -11,8 +11,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Local network security assessment." />
     <title>NetGuard AI - {{ scan_page | default('local') | capitalize }} Scan</title>
-    <script src="/static/js/appearance.js?v=20261013-accessibility"></script>
-    <link rel="stylesheet" href="/static/css/app.css" />
+    <script src="/static/js/appearance.js?v=20261014-reliability"></script>
+    <link rel="stylesheet" href="/static/css/app.css?v=20261014-reliability" />
   </head>
   <body class="scan-home">
     <div class="page-shell">
@@ -43,12 +43,14 @@
             <div class="scan-target-fields">
               <div id="recentDevicePanel" hidden>
                 <label for="recentDeviceSelect">Choose from recent Light results</label>
-                <select id="recentDeviceSelect"></select>
+                <select id="recentDeviceSelect" aria-describedby="recentDeviceNote recentDeviceDetails"></select>
+                <p id="recentDeviceDetails" class="scan-config" role="status" aria-live="polite" aria-atomic="true" hidden></p>
                 <button id="refreshDeviceChoices" class="text-button" type="button">Refresh device choices</button>
                 <p id="recentDeviceNote" class="scan-config" role="status"></p>
               </div>
               <label class="deep-host-field" id="deepHostField" hidden for="deepHostInput">Device address (IP) for the Deep scan</label>
-              <input class="deep-host-field" id="deepHostInput" type="text" inputmode="decimal" placeholder="Enter the device address" hidden />
+              <input class="deep-host-field" id="deepHostInput" type="text" inputmode="decimal" placeholder="Enter the device address" aria-describedby="recentDeviceDetails deepHostError" hidden />
+              <p id="deepHostError" class="field-error" hidden></p>
               <p class="scan-config" id="scanSetupNote" hidden></p>
               <button class="text-button" id="clearSavedTargetsButton" type="button" hidden>Use the local network instead</button>
             </div>
@@ -86,10 +88,13 @@
             <li id="scanStageDetails">Gather details</li><li id="scanStageAnalysis">Explain results</li>
           </ol>
           <div class="progress-value"><strong id="progressPercent">0%</strong><span id="progressDetail">Waiting for the scanner</span></div>
-          <div class="progress-track"><span id="progressBar"></span></div>
+          <div id="progressTrack" class="progress-track" role="progressbar" aria-label="Overall scan progress" aria-valuemin="0" aria-valuemax="100" aria-describedby="progressDetail progressScaleNote"><span id="progressBar" aria-hidden="true"></span></div>
+          <p id="progressScaleNote" class="progress-note">Progress reflects scan stages, not time remaining.</p>
           <p class="progress-note" id="progressNote">Results will appear when the scan finishes.</p>
-          <button class="scan-cancel" id="scanCancelButton" type="button" hidden>Cancel scan</button>
-          <a class="parallel-scan-link" id="anotherScanLink" href="/#setup=1&amp;new=1" target="_blank" rel="noopener">Set up another scan in a new tab</a>
+          <div class="scan-progress-actions" role="group" aria-label="Actions for this scan">
+            <button class="scan-cancel" id="scanCancelButton" type="button" hidden>Cancel scan</button>
+            <a class="parallel-scan-link" id="anotherScanLink" href="/#setup=1&amp;new=1" target="_blank" rel="noopener">Set up another scan in a new tab</a>
+          </div>
           <p class="progress-note">Light and Deep can run together. Each tab keeps its own progress and report; local AI preparation may wait its turn.</p>
         </section>
 
@@ -109,6 +114,6 @@
       }
       window.addEventListener('error', dashboardStartupFailed, true);
     </script>
-    <script type="module" src="/static/js/dashboard.js?v=20261013-progress-position" onerror="dashboardStartupFailed()"></script>
+    <script type="module" src="/static/js/dashboard.js?v=20261014-reliability" onerror="dashboardStartupFailed()"></script>
   </body>
 </html>

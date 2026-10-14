@@ -98,8 +98,10 @@ def search_reports(
                 continue
             try:
                 annotation = annotations._load(document.scan_id)
+                notes_readable = True
             except (OSError, ValueError):
                 annotation = ReportAnnotations()
+                notes_readable = False
                 warnings.add("Some report titles are unreadable; title matches may be missing.")
             searchable = [annotation.title, document.created_at, document.scan_id]
             for device in document.devices:
@@ -122,6 +124,14 @@ def search_reports(
                     "title": annotation.title,
                     "profile": document.policy.get("profile", "unknown"),
                     "target": document.target,
+                    "state": document.state,
+                    "revision": document.revision,
+                    "expected_notes_revision": annotation.revision if notes_readable else None,
+                    "phase": document.phase,
+                    "deletable": notes_readable
+                    and document.phase == "finished"
+                    and document.analysis_status != "running"
+                    and document.state in {"completed", "partial", "failed", "cancelled"},
                 }
             )
         except (OSError, ValueError, TypeError):

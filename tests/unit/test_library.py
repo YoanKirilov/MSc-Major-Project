@@ -107,6 +107,122 @@ def test_corrupt_optional_annotations_do_not_hide_factual_reports(tmp_path):
     assert len(page["warnings"]) == 2
 
 
+def test_history_deletion_tokens_use_evidence_and_notes_revisions_separately(tmp_path):
+    store = JsonStore(tmp_path)
+    doc = report().model_copy(update={"revision": 7})
+    saved = store._create_scan(doc)
+    notes = AnnotationStore(store)
+    current_notes = notes._load(doc.scan_id)
+    for index in range(3):
+        current_notes = notes._update(
+            doc.scan_id,
+            title=TitleUpdate(expected_revision=current_notes.revision, title=f"Review {index}"),
+        )
+    item = search_reports(store)["items"][0]
+    assert item["scan_id"] == saved.scan_id
+    assert item["revision"] == saved.revision == 7
+    assert item["expected_notes_revision"] == current_notes.revision == 4
+    assert item["deletable"] is True
+    assert item["source"] == "live"
+
+
+def test_history_notes_edit_updates_deletion_token_without_stale_projection(tmp_path):
+    store = JsonStore(tmp_path)
+    doc = store._create_scan(report())
+    first = search_reports(store)["items"][0]
+    cached_projection = store.library_cache.entries[doc.scan_id][1]
+    assert first["expected_notes_revision"] == 1
+    changed = AnnotationStore(store)._update(
+        doc.scan_id, title=TitleUpdate(expected_revision=1, title="Fresh review title")
+    )
+    page = search_reports(store, q="fresh review")
+    assert page["total"] == 1
+    item = page["items"][0]
+    assert item["expected_notes_revision"] == changed.revision == 2
+    assert item["revision"] == first["revision"] == doc.revision
+    assert item["title"] == "Fresh review title"
+    assert item["deletable"] is True
+    # The evidence projection can remain cached, but editable notes must be reread.
+    assert store.library_cache.entries[doc.scan_id][1] is cached_projection
+
+
+@pytest.mark.parametrize("payload", ["unreadable notes", "[]", '{"revision":0}'])
+def test_unreadable_notes_disable_deletion_without_hiding_or_rewriting_evidence(tmp_path, payload):
+    store = JsonStore(tmp_path)
+    doc = store._create_scan(report())
+    folder = store._scan_dir(doc.scan_id)
+    evidence = (folder / "scan.json").read_bytes()
+    notes = folder / "annotations.json"
+    store._atomic_write(notes, payload)
+    page = search_reports(store, q="example")
+    assert page["total"] == 1
+    assert page["unreadable_count"] == 0
+    item = page["items"][0]
+    assert item["storage_status"] == "ok"
+    assert item["revision"] == doc.revision
+    assert item["expected_notes_revision"] is None
+    assert item["deletable"] is False
+    assert any("report titles are unreadable" in warning for warning in page["warnings"])
+    assert (folder / "scan.json").read_bytes() == evidence
+    assert notes.read_text(encoding="utf-8") == payload
+
+
+@pytest.mark.parametrize("state", ["completed", "partial"])
+def test_finished_history_with_running_analysis_cannot_be_deleted(tmp_path, state):
+    store = JsonStore(tmp_path)
+    doc = store._create_scan(
+        report().model_copy(update={"state": state, "analysis_status": "running"})
+    )
+    item = search_reports(store)["items"][0]
+    assert item["phase"] == "finished"
+    assert item["state"] == state
+    assert item["revision"] == doc.revision
+    assert item["expected_notes_revision"] == 1
+    assert item["deletable"] is False
+
+
+@pytest.mark.parametrize(
+    ("state", "phase"),
+    [
+        ("queued", "queued"),
+        ("running", "discovery"),
+        ("running", "analysis"),
+        ("completed", "analysis"),
+        ("running", "finished"),
+    ],
+)
+def test_active_state_or_unfinished_phase_disables_history_deletion(tmp_path, state, phase):
+    store = JsonStore(tmp_path)
+    store._create_scan(report().model_copy(update={"state": state, "phase": phase}))
+    item = search_reports(store)["items"][0]
+    assert item["state"] == state
+    assert item["phase"] == phase
+    assert item["deletable"] is False
+
+
+def test_normal_history_search_leaves_all_saved_report_files_byte_identical(tmp_path):
+    store = JsonStore(tmp_path)
+    doc = store._create_scan(report())
+    AnnotationStore(store)._update(
+        doc.scan_id, title=TitleUpdate(expected_revision=1, title="Saved household review")
+    )
+    folder = store._scan_dir(doc.scan_id)
+
+    def contents():
+        return {
+            path.relative_to(folder).as_posix(): path.read_bytes()
+            for path in folder.rglob("*")
+            if path.is_file()
+        }
+
+    original = contents()
+    for query in ("", "household", "example", doc.scan_id):
+        page = search_reports(store, q=query, offset=0, limit=24)
+        assert page["total"] == 1
+        assert page["items"][0]["deletable"] is True
+    assert contents() == original
+
+
 def test_unreadable_reports_are_separate_from_matches_and_pagination(tmp_path):
     store = JsonStore(tmp_path)
     good, broken = report(), report()

@@ -27,10 +27,12 @@ def _compact(document):
     data = document.model_dump(
         include={
             "scan_id": True,
+            "revision": True,
             "source": True,
             "created_at": True,
             "state": True,
             "phase": True,
+            "analysis_status": True,
             "policy": True,
             "target": True,
             "devices": {

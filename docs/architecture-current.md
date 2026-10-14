@@ -1,4 +1,64 @@
-# Current architecture — updated 13 October 2026
+# Current architecture — updated 14 October 2026
+
+The [14 October implementation](ui-ux-implementation-20261014.md) adds keyed
+running-job actions, explicit zoned dates/UTC filter days, durable Settings save
+feedback and unsaved-state protection. Per-tab History filter/page context is
+restored without fetching or revealing any report initially; selection is cleared.
+`history-context.mjs` owns bounded/expiring context and report identities;
+`recovery.mjs` owns explicitly requested recovery listing/Restore. The existing
+revision-safe archive machinery remains authoritative.
+
+`GET /api/reports/recovery` is authenticated, bounded to 24 records per page and
+inspects receipts/paths without following links. Restore rechecks revisions and
+never overwrites. Managed recovery evidence/receipts are now included in offline
+checksum backups; the bounded transfer limit is 3 GiB. Usage separates active and
+recovery data. No purge is implemented. `GET /api/report-capabilities` exposes the
+running Python feature contract so an older backend can show restart guidance.
+Theme follows the device only when opted in; explicit Dark/Light still win.
+See [the small component/state specification](ui-components.md) for shared rules
+and the actual assistive-technology/reader tasks that remain pending.
+
+The [report-management change](report-management-20261013.md) supersedes unbounded
+one-entry history and next-report buttons. The feed starts with zero rows/requests,
+fetches at most 24 reports on first intentional reveal, and exposes cached rows one
+at a time within the selected numbered page. Pagination replaces the page, not an
+ever-growing list. Filters still apply before server pagination; removal refreshes
+the current page and corrects a disappeared last page. Shown-page checkboxes and
+individual/bulk confirmation exclude hidden rows and clear across page/filter changes.
+
+Authenticated/CSRF report-removal and restore routes use bounded unique UUID batches
+and per-item receipts. Supervisor admission serializes removal with scan/AI retries;
+the per-report storage lock validates terminal state, scan/notes revisions and safe
+paths before atomic directory rename into private `.trash/<trash-id>`. Undo validates
+the stored receipt and never overwrites an existing report. Cancellation drains the
+worker before admission is released. Global names/settings and scanner/provider
+contracts remain unchanged. Recovery archives are bounded (1,000 entries/2 GiB),
+not automatically purged and not immediate disk-space cleanup. Active/recovery size
+accounting and managed recovery backup coverage were added on 14 October. Immediate
+Undo receipts are held by the open page; the recovery browser works after that
+UI action is lost. Verification limits
+are recorded in the linked execution record.
+
+The report-path guard uses `Path.is_junction` when available, or the Windows
+mount-point reparse tag when it is absent. Its fallback branch is synthetically
+tested on this Windows/Python 3.14 host, not claimed tested on actual Python 3.11
+or Ubuntu. The latest offline gate passed 653 Python/190 JavaScript tests with
+five actual Windows link-privilege skips; installed functional checks and the
+96-file source/installed hash comparison passed. The final scoped Chromium/Firefox
+history matrix passed 50 cases without assertion/cleanup failures; its earlier
+harness errors are retained in the record. Six affected colour/settings/library/
+synthetic-workflow regressions also passed. WebKit remains unverified under the
+Windows startup block. Let active jobs finish before restarting the backend and
+reloading the updated UI.
+
+The [combined design polish](design-polish-20261013.md) adds truthful running/status
+copy, accessible indeterminate task progress, inline Deep-input errors and spaced
+job actions. Shared navigation exposes existing browser-local display preferences
+in Settings without coupling them to server saves. Recent-device options are compact;
+their separate descriptions retain saved evidence/date and manual target safeguards.
+Its mirrored next-report controls are superseded by numbered report pages while
+retaining zero initial requests and one-entry appearance. Conditional report recovery actions are grouped independently
+of secondary tools. Scanner, provider, job and stored-evidence contracts are unchanged.
 
 The [stable home-progress fix](home-progress-position-20261013.md) keeps progress
 below setup on start/reconnect without automatic scrolling. Idle and running setup
@@ -21,12 +81,13 @@ job, provider or JSON-storage contract changes were needed.
 The [home/history usability change](home-history-ux-20261012.md) consolidates the
 home-page scan choices, target controls, readiness and primary action. Duplicate
 Light/Deep navigation links are removed; their routes remain compatible and tabs
-still observe separate jobs. `static/js/history-feed.mjs` owns bounded one-entry
-pagination, submitted-filter snapshots, stale-response rejection and append retry.
-The history controller appends on downward scrolling or explicit Show next report; it does
-not chain requests on initial layout or after a response. Loaded entries remain in
-the native list. Existing authenticated `/api/reports` pagination and whole-library
-matching are unchanged; this is progressive rendering, not a new database/index.
+still observe separate jobs. `static/js/history-feed.mjs` now owns bounded 24-entry
+pages, one-entry cached reveal, submitted-filter snapshots, stale-response rejection,
+page-request retry and post-deletion page correction. The history controller reveals
+on intentional downward scrolling, not repeated next-report buttons; it does not
+chain requests on initial layout or after a response. Native list rows are scoped
+to the selected page. Existing authenticated `/api/reports` whole-library matching
+is unchanged; this is progressive rendering, not a new database/index.
 
 The latest [final-wording/layout follow-up](report-layout-final-wording-20261012.md)
 removes duplicate original/previous prose from the per-item interface, not from

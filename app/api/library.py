@@ -15,6 +15,7 @@ from app.config import (
 )
 from app.scanner.name_refresh import lookup_names
 from app.schemas.common import StrictModel
+from app.schemas.report_management import ReportDeleteRequest, ReportRestoreRequest
 from app.schemas.scan import ScanState
 from app.security.scope import validate_target
 from app.storage.annotations import ActionCheckUpdate, AnnotationStore, TitleUpdate
@@ -146,6 +147,51 @@ async def recent_devices(request: Request):
     return await asyncio.to_thread(
         search_reports, request.app.state.store, profile="light", scope=scope, recent_devices=True
     )
+
+
+@router.post("/reports/delete")
+async def delete_reports(request: Request, body: ReportDeleteRequest):
+    """Remove selected saved reports, never cancel jobs or erase shared nicknames."""
+    require_session(request, csrf=True)
+    results = await request.app.state.supervisor.delete_reports(body.reports)
+    return {
+        "results": results,
+        "deleted_count": sum(item["status"] == "deleted" for item in results),
+        "recoverable": True,
+    }
+
+
+@router.post("/reports/restore")
+async def restore_reports(request: Request, body: ReportRestoreRequest):
+    require_session(request, csrf=True)
+    results = await request.app.state.supervisor.restore_reports(body.trash_ids)
+    return {
+        "results": results,
+        "restored_count": sum(item["status"] == "restored" for item in results),
+    }
+
+
+@router.get("/reports/recovery")
+async def recovery_reports(
+    request: Request, offset: int = Query(0, ge=0), limit: int = Query(24, ge=1, le=24)
+):
+    require_session(request)
+    from app.storage.report_trash import ReportTrash
+
+    try:
+        return await asyncio.to_thread(
+            ReportTrash(request.app.state.store).list_reports, offset=offset, limit=limit
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            503, "Recovery copies could not be read safely. No reports were changed."
+        ) from exc
+
+
+@router.get("/report-capabilities")
+async def report_capabilities(request: Request):
+    require_session(request)
+    return {"management_version": 2, "recovery_listing": True}
 
 
 @router.get("/running-scans")

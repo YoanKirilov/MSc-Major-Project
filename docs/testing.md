@@ -1,5 +1,104 @@
 # Testing status
 
+## UI/UX fixes and verification — 14 October 2026
+
+[The implementation record](ui-ux-implementation-20261014.md) distinguishes code
+changes, synthetic browser tests and pending human/assistive-technology evaluation.
+The final offline gate `.test-artifacts/checks-faa20e7b53` passed 658 Python/five
+Windows link-privilege skips/96 deselections, 195 JavaScript, Ruff, 158-file
+formatting and twenty shipped JS syntax checks. Five focused recovery/API/backup
+tests passed separately. The focused Chromium/Firefox retest passed ten cases;
+report provenance/keyboard/text-spacing/forced-colour tests passed two. Fifty older
+History cases passed in the wider run. Final offline package installation passed
+six pages, 21 assets, authenticated recovery/capability/usage routes and synthetic
+Delete/Restore, with clean dependency checks.
+
+Initial browser setup errors, ambiguous-selector/CSP/stub issues and an outdated
+cache-version assertion are preserved in the execution record; they are not hidden
+as a single successful run. The CSP was not weakened to inject test styles. No
+browser gate ran Nmap or touched existing saved reports. Two final Chromium/Firefox
+cases also passed against an older backend's storage response. Final installed
+files matched all 98 source app files.
+
+[The subsequent live pair](live-check-20261014-followup.md) used a fresh isolated
+folder: Light finished 9/10 checks with one unreachable address after two attempts;
+Deep finished 1/1. All 156 service records/eleven findings replayed and thirteen AI
+records revalidated with zero rejected fields/fallbacks. Eight actual Chromium
+profile/viewport cases passed; normal reports remained byte-identical, refresh
+retained both jobs and only two scan submissions occurred. The owned backend stopped.
+
+## Live scan and UI/UX review - 14 October 2026
+
+[The new execution record](live-check-20261014.md) separates a cancelled HTTP-reset
+harness attempt from the completed live pair: Light finished 11/11 checks, ten open
+features and seven review items; Deep this PC finished 1/1, fourteen open features
+and four review items. No scan errors occurred in that pair; the expected Windows
+self-routing warning remains. All 186 service records/eleven findings replayed and
+thirteen AI records revalidated with no rejected fields or fallbacks. Eight actual
+Chromium report/profile viewport cases had no page errors or page overflow.
+The offline gate passed 653 Python/five Windows link-privilege skips and 190 JS,
+Ruff/156-file formatting/eighteen syntax checks. Initial report hashes were unchanged;
+a later baseline included a separately running normal scan and its three changing
+checkpoint files, documented without claiming that baseline passed unchanged.
+[The parallel research brief](ui-ux-recommendations-20261014.md) records eleven
+proposed improvements, not implemented fixes or accessibility certification.
+
+## Bounded pages and recoverable report management - 13 October 2026
+
+[The execution record](report-management-20261013.md) separates the new 24-entry
+page/reveal and deletion/Undo contracts from earlier next-report-button evidence.
+The focused backend command in `.test-artifacts/report-trash-20261013-e` passed
+54 cases and skipped five actual symlink-creation cases because Windows privilege
+was unavailable (`WinError 1314`); five simulated junction guards passed. Tests
+cover stale scan/notes revisions, active AI, partial outcomes, archive/time bounds,
+rename/cache failures, terminal sidecar recovery, cancellation holding admission,
+safe paths, no overwrite and session/CSRF. Backend Ruff passed. The independent
+bounded-feed Node suite passed 27 cases before the final combined gate.
+
+The final offline gate in `.test-artifacts/checks-c6afb17f69` passed 653 Python
+tests with five actual Windows link-privilege skips and 91 deselections, all 190
+JavaScript tests, Ruff/154-file formatting and eighteen syntax checks. The final
+installed functional check in `.test-artifacts/package-61ac7b9531` passed six pages,
+nineteen assets, synthetic report create/reopen/delete/Undo and demo reopening;
+builder/runtime dependency checks were clean. The final source/installed comparison
+matched all 96 application files with zero mismatches. Compatibility and library-token runs passed
+38/five skips and 31 respectively; the junction fallback was exercised on Windows
+3.14, not an actual Python 3.11/Ubuntu environment.
+
+The initial Chromium/Firefox history run retained 49 passes and one first-paint
+held-key harness failure; the corrected harness waits two animation frames without
+scripted scrolling/loading. Its next run passed all 50 bodies but had two Firefox
+fixture teardown errors. Cleanup now closes a fresh browser inside active Playwright
+scope without exception suppression; three affected Firefox retests passed. The
+final clean scoped Chromium/Firefox run passed all 50 with exit code zero and no
+assertion/cleanup failures in
+`.test-artifacts/history-management-browser-20261013c/results.xml`. Three earlier
+smoke passes are recorded separately. Six affected colour/settings/library/synthetic
+workflow regressions passed with exit code zero in 97.48 seconds at
+`.test-artifacts/report-management-regressions-20261013-a/results.xml`: two colour
+and two Settings/shared-shell cases across Chromium/Firefox, one Chromium library
+case and one Chromium complete mocked workflow. Final Ruff/154-file formatting
+rechecks passed after fixture cleanup; application files remained unchanged.
+Earlier Windows WebKit startup-policy restrictions do
+not imply this new interface passed in WebKit. All report writes in checks use
+isolated synthetic folders or intercepted browser APIs; no live scan/provider or
+normal saved-report deletion ran. Physical-device, assistive-technology and reader
+evaluation remains separate.
+
+## Combined design polish — 13 October 2026
+
+[The execution record](design-polish-20261013.md) separates the final offline,
+package and synthetic browser evidence from navigation-harness failures/retests.
+Offline checks passed 602 Python/158 JavaScript, lint/150-file formatting and
+seventeen syntax checks; installed verification passed six pages/eighteen assets/
+demo reopening with all 93 app files matching source. Browser checks are isolated,
+not live scans. The broad two-engine run retained 148 passes/four old-contract or
+navigation-harness failures/one Windows teardown error; final affected retests
+passed eight design cases, three contract/cleanup cases and the complete synthetic
+workflow. The broad command was not rerun wholesale, and the Windows lifecycle
+callback remains a runtime investigation. WebKit startup is blocked by Windows App
+Control; its new cases remain unverified and no security bypass was attempted.
+
 ## Stable home-page progress — 13 October 2026
 
 [The execution record](home-progress-position-20261013.md) documents the reproduced
