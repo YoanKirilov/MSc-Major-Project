@@ -32,12 +32,15 @@ DEEP_UDP_PORTS = (
 PROFILE_ID = "tcp12-udp3-v5"
 LIGHT_PROFILE = "light"
 DEEP_PROFILE = "deep-tcp-v1"
+DEEP_PROFILE_ID = "deep-tcp65535-udp25-smb-v2"
+CONFIGURATION_CHECKS_VERSION = "smb-negotiation-v1"
 MAX_KNOWN_HOSTS = 254
 
 LIGHT_SAFE_SCRIPTS = "dns-recursion,snmp-info,upnp-info,http-title,http-headers,ssl-cert"
 DEEP_SAFE_SCRIPTS = (
     "dns-recursion,ntp-info,snmp-info,upnp-info,http-title,http-headers,"
-    "http-methods,ssl-cert,ssh-hostkey,rdp-enum-encryption,smb-os-discovery"
+    "http-methods,ssl-cert,ssh-hostkey,rdp-enum-encryption,smb-os-discovery,"
+    "smb-protocols,smb2-security-mode"
 )
 
 

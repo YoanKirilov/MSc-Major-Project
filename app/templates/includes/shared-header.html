@@ -8,8 +8,8 @@
   </a>
   <nav class="topbar-actions" aria-label="Main navigation">
     <a href="/"{% if active_page | default('') == 'scan' %} aria-current="page"{% endif %}>Scan</a>
+    <a href="/devices"{% if active_page | default('') == 'devices' %} aria-current="page"{% endif %}>My devices</a>
     <a href="/history"{% if active_page | default('') == 'history' %} aria-current="page"{% endif %}>Saved reports</a>
     <a href="/settings"{% if active_page | default('') == 'settings' %} aria-current="page"{% endif %}>Settings</a>
-    <a href="/settings#display-preferences">Display preferences</a>
   </nav>
 </header>

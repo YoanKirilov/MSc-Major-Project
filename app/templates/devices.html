@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% set active_page = 'devices' %}
+{% block title %}My devices · NetGuard AI{% endblock %}
+{% block styles %}<link rel="stylesheet" href="/static/css/device-library.css?v=20261014-household" />{% endblock %}
+{% block content %}
+<header class="page-heading">
+  <p class="eyebrow">Your household records</p>
+  <h1>My devices</h1>
+  <p>Find devices recorded in saved scans, their earlier reports and your own household labels. Opening this page does not start a scan.</p>
+  <p class="device-library-caution">These are saved observations, not a check of which devices are connected now. A matching address or name does not verify a device's identity or safety.</p>
+</header>
+<section class="card" aria-label="Find a saved device">
+  <form id="device-library-search" class="device-library-search">
+    <div class="form-field">
+      <label for="device-library-query">Search saved devices</label>
+      <input id="device-library-query" type="search" maxlength="120" aria-describedby="device-library-query-help" />
+      <p id="device-library-query-help" class="field-hint">Search by saved name, address, network or your room label.</p>
+    </div>
+    <div class="form-field">
+      <label for="device-library-view">Show saved devices</label>
+      <select id="device-library-view" aria-describedby="device-library-view-help">
+        <option value="all">All devices</option>
+        <option value="favourites">My favourites</option>
+        <option value="not-recognised">Not marked recognised by me</option>
+        <option value="unfinished">With unfinished checks</option>
+        <option value="review">With items to review</option>
+      </select>
+      <p id="device-library-view-help" class="field-hint">Choose a view, then press Search devices. It applies across saved records, not just this page. Recognition is your label, not a safety check.</p>
+    </div>
+    <div class="form-actions">
+      <button class="primary-button" type="submit">Search devices</button>
+      <button class="secondary-button" type="reset">Reset search and view</button>
+      <button id="device-library-reload" class="secondary-button" type="button">Reload saved labels</button>
+    </div>
+  </form>
+  <p id="device-library-applied" class="field-hint"></p>
+  <p id="device-library-drafts" class="status-message" role="status"></p>
+</section>
+<section class="device-library-results" aria-labelledby="device-library-heading">
+  <h2 id="device-library-heading" tabindex="-1">Recorded devices</h2>
+  <p id="device-library-status" class="status-message" role="status">Loading saved devices…</p>
+  <p id="device-library-warnings" class="status-message status-warning" role="status" hidden></p>
+  <div id="device-library-error" class="error-summary" role="alert" tabindex="-1" hidden>
+    <h3>The device list needs attention</h3>
+    <p id="device-library-error-message"></p>
+    <button id="device-library-retry" class="secondary-button" type="button">Retry loading devices</button>
+  </div>
+  <div id="device-library-empty" class="empty-state" hidden>
+    <h3 id="device-library-empty-title">No saved devices yet</h3>
+    <p id="device-library-empty-help">Devices from finished scans will be listed here.</p>
+    <a id="device-library-start" class="secondary-button" href="/">Set up a scan</a>
+  </div>
+  <nav id="device-library-pages" class="history-pagination" aria-label="Device pages" hidden></nav>
+  <ul id="device-library-list" class="device-library-list" aria-labelledby="device-library-heading"></ul>
+  <nav id="device-library-pages-bottom" class="history-pagination" aria-label="Device pages after the list" hidden></nav>
+  <p class="field-hint">Each page contains up to 24 devices. Scrolling does not load another page. Household labels are your information, not new scan evidence.</p>
+</section>
+<noscript><p class="status-message status-warning">JavaScript is needed to load saved devices and edit household labels. No scan is started by this page.</p></noscript>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/device-library.js?v=20261014-device-views"></script>{% endblock %}

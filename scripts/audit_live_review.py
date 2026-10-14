@@ -13,6 +13,7 @@ from app.explanations.report import report_input  # noqa: E402
 from app.explanations.service import build_safe_findings  # noqa: E402
 from app.explanations.validation import validated_line  # noqa: E402
 from app.risk.engine import evaluate_device  # noqa: E402
+from app.scanner.certificates import certificate_dates  # noqa: E402
 from app.scanner.commands import DEEP_UDP_PORTS, PORTS, UDP_PORTS  # noqa: E402
 from app.scanner.parser import parse_host  # noqa: E402
 from app.storage.json_store import JsonStore  # noqa: E402
@@ -40,6 +41,9 @@ def main():
         if document.phase != "finished":
             parser.error("Wait for both scans to finish; this command never starts scans")
         services_replayed = 0
+        certificates_revalidated = 0
+        certificate_statuses = Counter()
+        certificate_details_omitted = 0
         reproduced_findings = []
         targets = {target.ip: target for target in document.coverage.targets}
         missing = []
@@ -51,7 +55,7 @@ def main():
             if not raw.is_file():
                 missing.append(device.device_id)
                 continue
-            _, services = parse_host(
+            parsed_device, services = parse_host(
                 raw.read_bytes(),
                 device.ip,
                 scan_id,
@@ -68,7 +72,42 @@ def main():
             if saved != [service.model_dump(exclude={"observed_at"}) for service in services]:
                 raise ValueError("Replayed raw services differ from the saved evidence")
             services_replayed += len(services)
-            reproduced_findings.extend(evaluate_device(device, services))
+            if document.policy.get("extra_details_version") == "1.0.2":
+                saved_times = {
+                    service.service_id: service.observed_at for service in document.services
+                }
+                for service in services:
+                    service.observed_at = saved_times[service.service_id]
+                    interpretation = certificate_dates(service)
+                    if interpretation is None:
+                        continue
+                    value, status = interpretation
+                    entries = [
+                        item
+                        for item in device.details
+                        if item.kind == "certificate"
+                        and item.label == f"Connection certificate dates (port {service.port})"
+                    ]
+                    if not entries:
+                        certificate_details_omitted += 1
+                        continue  # Bounded optional enrichment can omit details, never a pass.
+                    if len(entries) != 1 or (
+                        entries[0].value,
+                        entries[0].status,
+                        entries[0].observed_at,
+                    ) != (value, status, service.observed_at):
+                        raise ValueError(
+                            "Saved certificate interpretation differs from raw evidence"
+                        )
+                    certificates_revalidated += 1
+                    certificate_statuses[status] += 1
+            if [entry.model_dump() for entry in parsed_device.host_script_results] != [
+                entry.model_dump() for entry in device.host_script_results
+            ]:
+                raise ValueError("Replayed host-script evidence differs from saved evidence")
+            reproduced_findings.extend(
+                evaluate_device(parsed_device, services, profile=document.policy.get("profile"))
+            )
         saved_findings = [
             finding
             for finding in document.findings
@@ -158,6 +197,9 @@ def main():
             "findings": len(document.findings),
             "priorities": dict(Counter(finding.severity for finding in document.findings)),
             "services_replayed": services_replayed,
+            "certificates_revalidated": certificates_revalidated,
+            "certificate_statuses": dict(certificate_statuses),
+            "certificate_details_omitted": certificate_details_omitted,
             "findings_replayed": len(reproduced_findings),
             "missing_raw_count": len(missing),
             "ai_status": document.analysis_status,
@@ -175,6 +217,8 @@ def main():
                 Counter(device.hostname_source for device in document.devices if device.hostname)
             ),
             "mdns_observations": len(document.observations),
+            "selected_scripts": document.policy.get("selected_scripts", []),
+            "configuration_checks_version": document.policy.get("configuration_checks_version"),
         }
     (run / "evidence-audit.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     print(

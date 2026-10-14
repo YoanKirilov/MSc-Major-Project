@@ -150,10 +150,11 @@ test('all page shells initialize appearance before the stylesheet without inline
   }
 });
 
-test('shared navigation exposes immediate browser display choices outside the saved settings form', () => {
+test('display choices stay in Settings without a duplicate global navigation shortcut', () => {
   const header = readFileSync(new URL('../app/templates/includes/shared-header.html', import.meta.url), 'utf8');
   const html = readFileSync(new URL('../app/templates/settings.html', import.meta.url), 'utf8');
-  assert.match(header, /href="\/settings#display-preferences">Display preferences<\/a>/);
+  assert.doesNotMatch(header, /Display preferences/);
+  assert.match(header, /href="\/settings"/);
   const section = html.slice(html.indexOf('<section id="display-preferences"'), html.indexOf('<section class="card settings-card" aria-label="App settings">'));
   assert.match(section, /tabindex="-1"/);
   assert.match(section, /Changes apply straight away, without pressing Save settings/);

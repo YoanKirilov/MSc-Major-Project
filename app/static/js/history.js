@@ -1,14 +1,14 @@
 import { request } from './api.js?v=20261001-network-recovery';
 import { startRecoveryBrowser } from './recovery.mjs?v=20261014-recovery';
 import { historyContext, reportIdentity, reportDateLabel } from './history-context.mjs?v=20261014-context';
-import { createHistoryFeed } from './history-feed.mjs?v=20261014-context';
+import { createHistoryFeed } from './history-feed.mjs?v=20261014-paged-viewport';
+import { reportViewport } from './history-viewport.mjs?v=20261014-paged-viewport';
 import { canDeleteReport, createReportSelection, deletionTarget,
   validateDeletionReceipt, validateRestoreReceipt } from './history-selection.mjs?v=20261013-management';
 
 const element = id => document.querySelector(`#history-${id}`);
 const list = element('list');
 const status = element('status');
-const sentinel = element('sentinel');
 const stage = element('scroll-stage');
 const filters = element('filters');
 const dialog = element('delete-dialog');
@@ -23,6 +23,7 @@ try { context = historyContext(window.sessionStorage); }
 catch { context = historyContext(null); }
 const resumed = context.read();
 let recovery;
+const viewport = reportViewport({ window, list });
 
 document.querySelector('#storageUsageButton').addEventListener('click', async event => {
   const output = document.querySelector('#storageUsage');
@@ -47,7 +48,7 @@ function reportName(report) {
 
 function reportItem(report) {
   const item = document.createElement('li');
-  item.className = 'history-report history-reveal';
+  item.className = 'history-report';
   item.dataset.reportId = report.scan_id;
   if (report.storage_status !== 'ok') {
     item.classList.add('status-message', 'status-warning');
@@ -120,7 +121,6 @@ function renderPagination(state) {
         control.addEventListener('click', async () => {
           if (operationBusy || dialog.open || feed.getState().busy) return;
           if (page === feed.getState().page && feed.getState().phase === 'ready') return;
-          clearGesture();
           selection.clear();
           if (await feed.goToPage(page)) {
             element('results-title').focus({ preventScroll: true });
@@ -186,100 +186,40 @@ function syncManagement() {
 function renderHistory(state) {
   if (state.phase === 'ready' || state.phase === 'waiting') context.save(state.filters, state.page);
   stage.dataset.phase = state.phase;
-  stage.dataset.hasMore = String(state.hasMore);
   if (state.render === 'replace') list.replaceChildren(...state.added.map(reportItem));
-  else if (state.render === 'append') list.append(...state.added.map(reportItem));
+  if (state.render === 'replace') viewport.update();
   selection.sync(state.items);
   if (state.busy || operationBusy) list.setAttribute('aria-busy', 'true');
   else list.removeAttribute('aria-busy');
   element('empty').hidden = state.phase !== 'ready' || Boolean(state.total || Object.keys(state.filters).length || state.unreadableCount);
-  if (state.phase === 'waiting') status.textContent = Object.keys(state.filters).length
-    ? 'Filters are ready. Scroll down to see matching reports one at a time.'
-    : 'Scroll down to reveal saved reports one at a time. Each page holds up to 24 reports.';
+  if (state.phase === 'waiting') status.textContent = 'Preparing your saved reports...';
   else if (state.busy) status.textContent = 'Loading this page of reports...';
   else if (state.error) status.textContent = `${state.error} ${state.items.length ? 'The reports already shown are still available.' : ''} Use Retry loading reports to try again.`;
-  else status.textContent = state.total ? `Page ${state.page} of ${state.pageCount}: showing ${state.items.length} of ${state.pageItems.length} reports on this page. ${state.total} matching reports in total.`
+  else status.textContent = state.total ? `Page ${state.page} of ${state.pageCount}: ${state.items.length} reports on this page. ${state.total} matching reports in total.`
     : Object.keys(state.filters).length ? 'No reports match your filters.'
       : state.unreadableCount ? 'No readable saved reports are available.' : 'No saved reports yet.';
-  if (state.phase === 'waiting' && state.page > 1) status.textContent += ` Returning to page ${state.page} after you scroll.`;
-  element('applied-filters').textContent = Object.entries(state.filters).map(([name, value]) => `${({q: 'Search', profile: 'Type', state: 'Completion', after: 'From (UTC)', before: 'To (UTC)'})[name]}: ${value}`).join(' · ');
+  const filterValues = { light: 'Light', 'deep-tcp-v1': 'Deep', completed: 'Finished', partial: 'Some checks unfinished', failed: 'Failed', cancelled: 'Cancelled', running: 'In progress', queued: 'Waiting' };
+  element('applied-filters').textContent = Object.entries(state.filters).map(([name, value]) => `${({q: 'Search', profile: 'Type', state: 'Completion', after: 'From (UTC)', before: 'To (UTC)'})[name]}: ${['profile', 'state'].includes(name) ? filterValues[value] || value : value}`).join(' · ');
+  if (state.phase === 'ready') document.title = state.pageCount > 1 ? `Saved reports · Page ${state.page} of ${state.pageCount} · NetGuard AI` : 'Saved reports · NetGuard AI';
   const warning = element('warnings');
   warning.textContent = state.warnings.join(' ');
   warning.hidden = !warning.textContent;
   element('retry').hidden = !state.error;
   element('refresh').hidden = !state.changed;
-  element('scroll-link').hidden = state.phase !== 'waiting';
-  element('page-hint').textContent = state.phase === 'ready' && !state.hasMore && state.items.length
-    ? state.pageCount > 1 ? 'End of this page. Choose another page to see more reports.' : 'All matching reports are shown.'
-    : 'Scroll to reveal reports one at a time, up to 24 on each page. Use Page Down or End with a keyboard.';
+  element('page-hint').textContent = state.phase === 'ready' && state.items.length
+    ? state.pageCount > 1 ? 'This page contains all of its reports. Choose another page to see more.' : 'All matching reports are on this page.'
+    : 'Each page contains up to 24 reports. Scrolling does not load another page.';
   syncManagement();
 }
 
 const feed = createHistoryFeed({ request, onChange: renderHistory });
 
-// A wheel burst, touch contact or non-repeating scroll key reveals one cached row.
-// Intentional scrolling is required initially; momentum never starts another page.
-let lastScrollY = window.scrollY;
-let gesture = null;
-let lastWheelAt = 0;
-let touchY = null;
-let touchGestureStarted = false;
-function beginGesture(source) { gesture = { source, used: false, expires: Date.now() + 1500 }; }
-function clearGesture() { gesture = null; lastWheelAt = 0; lastScrollY = window.scrollY; }
-function revealForGesture(actualDownwardScroll = false) {
-  const state = feed.getState();
-  if (operationBusy || dialog.open || !gesture || gesture.used || Date.now() > gesture.expires) return;
-  if (state.phase === 'waiting') {
-    if (!actualDownwardScroll || stage.getBoundingClientRect().top > window.innerHeight) return;
-  } else if (sentinel.getBoundingClientRect().top > window.innerHeight + 80) return;
-  gesture.used = true;
-  if (state.hasMore && !state.busy) void feed.reveal();
-}
-window.addEventListener('wheel', event => {
-  if (event.deltaY <= 0 || event.ctrlKey) { gesture = null; return; }
-  const now = Date.now();
-  if (gesture?.source !== 'wheel' || now - lastWheelAt > 300) beginGesture('wheel');
-  lastWheelAt = now;
-  gesture.expires = now + 1500;
-  revealForGesture();
-}, { passive: true });
-window.addEventListener('touchstart', event => {
-  touchY = event.touches[0]?.clientY ?? null;
-  touchGestureStarted = false;
-  gesture = null;
-}, { passive: true });
-window.addEventListener('touchmove', event => {
-  const nextY = event.touches[0]?.clientY;
-  if (touchY !== null && nextY < touchY) {
-    if (!touchGestureStarted) { beginGesture('touch'); touchGestureStarted = true; }
-    if (gesture?.source === 'touch') {
-      gesture.expires = Date.now() + 1500;
-      revealForGesture();
-    }
-  }
-  touchY = nextY ?? null;
-}, { passive: true });
-window.addEventListener('keydown', event => {
-  if (event.target?.matches('input, textarea, select, [contenteditable="true"]') || event.repeat || dialog.open) return;
-  if (['ArrowDown', 'PageDown', 'End'].includes(event.key)
-    || (event.key === ' ' && !event.shiftKey && !event.target?.matches('button'))) {
-    beginGesture('key');
-    revealForGesture();
-  }
-});
-window.addEventListener('scroll', () => {
-  const currentY = window.scrollY;
-  const scrollingDown = currentY > lastScrollY;
-  lastScrollY = currentY;
-  if (scrollingDown) revealForGesture(true);
-}, { passive: true });
-element('scroll-link').addEventListener('click', () => beginGesture('anchor'));
-element('retry').addEventListener('click', () => { if (!operationBusy) { clearGesture(); void feed.retry(); } });
+element('retry').addEventListener('click', () => { if (!operationBusy) { void feed.retry(); } });
 element('refresh').addEventListener('click', () => {
   if (operationBusy) return;
-  clearGesture();
   selection.clear();
-  feed.reset(feed.getState().filters);
+  feed.reset(feed.getState().filters, feed.getState().page);
+  void feed.load();
 });
 
 function openDelete(reports, trigger) {
@@ -295,7 +235,6 @@ function openDelete(reports, trigger) {
     return entry;
   }));
   element('delete-error').hidden = true;
-  clearGesture();
   syncManagement();
   dialog.showModal();
   element('delete-cancel').focus();
@@ -328,7 +267,6 @@ element('delete-confirm').addEventListener('click', async () => {
   if (operationBusy || !dialog.open || !pendingDelete.length) return;
   const targets = pendingDelete.map(target => ({ ...target }));
   operationBusy = true;
-  clearGesture();
   element('delete-error').hidden = true;
   syncManagement();
   let results;
@@ -361,7 +299,6 @@ element('undo-delete').addEventListener('click', async () => {
   if (operationBusy || feed.getState().busy || !lastUndo.length) return;
   const ids = [...lastUndo];
   operationBusy = true;
-  clearGesture();
   syncManagement();
   try {
     const receipt = await request('/api/reports/restore', {
@@ -400,21 +337,21 @@ filters.addEventListener('submit', event => {
     element('filter-error').focus();
     return;
   }
-  clearGesture();
   selection.clear();
   feed.reset(chosen);
+  void feed.load();
 });
 filters.addEventListener('reset', event => {
   if (operationBusy) { event.preventDefault(); return; }
   clearFilterError();
-  clearGesture();
   selection.clear();
-  window.setTimeout(() => feed.reset(selectedFilters()), 0);
+  window.setTimeout(() => { feed.reset(selectedFilters()); void feed.load(); }, 0);
 });
 if (resumed) {
   for (const [name, id] of [['q', 'query'], ['profile', 'profile'], ['state', 'state'], ['after', 'after'], ['before', 'before']]) element(id).value = resumed.filters[name] || '';
 }
 feed.reset(resumed?.filters, resumed?.page);
+void feed.load();
 recovery = startRecoveryBrowser({ document, request, isBusy: () => operationBusy || feed.getState().busy,
   setBusy: value => { operationBusy = value; syncManagement(); },
   onRestored: () => feed.reloadAfterDelete() });

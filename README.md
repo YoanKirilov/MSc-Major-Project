@@ -1,5 +1,22 @@
 # NetGuard AI (Network Assessor)
 
+Latest follow-up: [second scanner/UX comparison and verification](docs/competitive-round2-20261014.md).
+My devices has whole-inventory views for favourites, recognition labels, unfinished
+checks and review items. Label saves require a matching newer receipt. Certificate
+date explanations now use the recorded check time and complete evidence, not the
+date on which an old report is reopened; date validity is not a safety verdict.
+
+Latest implementation: [device-first experience and focused assessment](docs/competitive-improvements-20261014.md).
+My devices organises saved observations and separate room/favourite/recognition
+labels. Reports expose compatible changes, device/task shortcuts, feature groups
+and privacy-aware print/PDF/CSV previews. These do not turn saved observations
+into a live presence or safety verdict. Deep adds bounded SMB version/signing
+checks; optional periodic Light checking stays off until explicitly authorised
+and pauses after restart or a connection change. JSON storage is retained.
+Finish active jobs, restart the backend task and reload the browser for the new
+Python endpoints. Dated records below describe earlier versions, not missing
+current features or the final test totals.
+
 Current development: [12 October beginner-reading fixes](docs/readability-fixes-20261012.md),
 [eight UI/UX follow-ups](docs/ui-ux-followups-20261009.md),
 [UI/UX fixes and verification](docs/ui-ux-implementation-20261009.md),
@@ -8,10 +25,12 @@ Current development: [12 October beginner-reading fixes](docs/readability-fixes-
 [private JSON backup/restore](docs/storage-backups.md). Dated test logs describe the
 version tested at that time; see [testing status](docs/testing.md) for verification.
 
-The latest [report-management change](docs/report-management-20261013.md) bounds
-Saved reports to 24 entries per numbered page. Opening/searching still starts empty;
-scrolling reveals reports one by one without Show next report buttons. Select shown
-reports for individual/bulk deletion, confirm the named selection, and Undo the last
+The latest [viewport/list fix](docs/history-viewport-20261014.md) replaces gesture-gated
+reveal with a complete native list of at most 24 summaries per numbered page.
+Rows are available to scrolling, End, keyboard and browser Find immediately; a
+feature-detected viewport effect is decorative only. Pages never grow infinitely.
+Select this page chooses its eligible rows, including offscreen rows, but never
+another page. Select individual reports or a page for deletion, confirm the selection, and Undo the last
 acknowledged batch. Removal keeps a bounded private recovery copy; it is not secure
 erasure or immediate disk-space cleanup. Current verification/limits are recorded
 separately from the earlier presentation checks: the final offline gate passed
@@ -24,8 +43,9 @@ the browser to load both the new API and interface.
 
 The earlier same-day [combined design polish](docs/design-polish-20261013.md) adds clearer
 running/reconnecting messages, accessible task progress, inline Deep-address errors,
-spaced actions and simpler report recovery. Display preferences are reachable from
-every page and apply immediately in Settings. Recent-device choices have separate
+spaced actions and simpler report recovery. Display preferences apply immediately
+in Settings; the duplicate header shortcut and Pi-hole setup control were removed.
+Omitted legacy Pi-hole settings and historical evidence are preserved. Recent-device choices have separate
 saved-check context; its end-of-list next-report controls are superseded by the
 bounded report pages above. No scanner/provider/evidence contract
 changed, and this update was tested without live scans.

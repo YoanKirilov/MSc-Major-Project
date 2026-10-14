@@ -3,8 +3,46 @@ import assert from 'node:assert/strict';
 import { createHistoryFeed, HISTORY_PAGE_SIZE } from '../app/static/js/history-feed.mjs';
 import { historyContext, reportIdentity, reportDateLabel } from '../app/static/js/history-context.mjs';
 import { recordedUtcDay } from '../app/static/js/presentation.mjs';
+import { reportViewport } from '../app/static/js/history-viewport.mjs';
 
 const report = index => ({ scan_id: 'report-' + index, storage_status: 'ok', title: 'Report ' + index });
+
+function viewportSetup(mode = 'normal') {
+  const watched = new Set(), callbacks = {}, classes = new Set();
+  let callback, disconnected = 0;
+  const row = { contains: value => value === 'focused', classList: { add: name => classes.add(name), remove: name => classes.delete(name) } };
+  const list = { children: [row], ownerDocument: {activeElement: null}, addEventListener: (name, fn) => { callbacks[name] = fn; } };
+  const window = { addEventListener: (name, fn) => { callbacks[name] = fn; } };
+  if (mode !== 'absent') window.IntersectionObserver = class {
+    constructor(fn) { if (mode === 'throws') throw Error('Unavailable'); callback = fn; }
+    observe(row) { watched.add(row); }
+    unobserve(row) { watched.delete(row); }
+    disconnect() { disconnected += 1; watched.clear(); }
+  };
+  const viewport = reportViewport({window,list});
+  return { viewport,row,list,classes,watched,callbacks,emit: value => callback([{target:row,isIntersecting:value}]), disconnected: () => disconnected };
+}
+test('viewport observation adds one optional effect, never hides or removes a row', () => {
+  const app = viewportSetup(); app.viewport.update();
+  assert.equal(app.list.children.length,1); assert.equal(app.classes.size,0);
+  app.emit(false); assert.equal(app.classes.size,0);
+  app.emit(true); assert.equal(app.classes.has('history-reveal'),true); assert.equal(app.watched.size,0);
+  app.viewport.update(); assert.equal(app.watched.size,0);
+  app.callbacks.pagehide(); assert.ok(app.disconnected() > 0);
+});
+test('observer absence and constructor failure leave the complete ordinary list available', () => {
+  for (const mode of ['absent','throws']) {
+    const app = viewportSetup(mode); app.viewport.update();
+    assert.equal(app.list.children.length,1); assert.equal(app.classes.size,0);
+  }
+});
+test('keyboard focus cancels entry movement immediately, including before an observer callback', () => {
+  const app = viewportSetup(); app.viewport.update();
+  app.callbacks.focusin({target:{closest:()=>app.row}});
+  app.emit(true); assert.equal(app.classes.size,0); assert.equal(app.watched.size,0);
+  const focused = viewportSetup(); focused.list.ownerDocument.activeElement = 'focused'; focused.viewport.update(); focused.emit(true);
+  assert.equal(focused.classes.size,0);
+});
 
 test('same-title same-time reports have distinct identities with type, date, target and reference', () => {
   const first = { scan_id: '00000000-0000-4000-8000-000000000001', title: 'Repeated title', profile: 'light', created_at: '2026-10-13T23:25:14Z', target: { cidr: '192.168.56.0/24' } };
@@ -33,6 +71,7 @@ test('per-tab History context allowlists fields, expires, and tolerates blocked/
   assert.equal(context.read(), null);
   assert.equal(context.save({}, 0), false);
 });
+
 const page = (start, count = 24, total = 61, extra = {}) => ({
   items: Array.from({ length: count }, (_, i) => report(start + i)), total, ...extra,
 });
@@ -52,411 +91,169 @@ function setup(request = path => {
   });
   return { feed, calls, updates };
 }
-
-test('restored page stays empty until deliberate reveal and loads its original bounded offset', async () => {
+test('one request makes the complete current page accessible without another gesture', async () => {
   const { feed, calls } = setup();
-  feed.reset({ q: 'saved' }, 3);
-  assert.equal(calls.length, 0);
-  assert.equal(feed.getState().items.length, 0);
-  await feed.reveal();
-  assert.match(calls[0], /q=saved&offset=48&limit=24/);
-  assert.equal(feed.getState().items.length, 1);
-  assert.equal(feed.getState().page, 3);
-});
-
-test('opening history prepares zero reports without fetching a page or a total', async () => {
-  const { feed, calls, updates } = setup();
   feed.reset();
-  assert.equal(calls.length, 0);
-  assert.equal(feed.getState().items.length, 0);
-  assert.equal(feed.getState().pageItems.length, 0);
-  assert.equal(feed.getState().phase, 'waiting');
-  assert.equal(feed.getState().page, 1);
-  assert.equal(feed.getState().total, null);
-  assert.equal(updates.at(-1).render, 'replace');
-  await new Promise(resolve => setTimeout(resolve, 20));
-  assert.equal(calls.length, 0);
-});
-
-test('first deliberate demand fetches one bounded page and reveals only one row', async () => {
-  const { feed, calls, updates } = setup();
-  feed.reset();
-  await feed.more();
-  const state = feed.getState();
+  await feed.load();
+  assert.equal(calls.length, 1);
   assert.match(calls[0], /offset=0&limit=24$/);
-  assert.equal(calls.length, 1);
-  assert.equal(state.items.length, 1);
-  assert.equal(state.pageItems.length, 24);
-  assert.equal(state.revealedCount, 1);
-  assert.equal(state.pageSize, HISTORY_PAGE_SIZE);
-  assert.equal(state.pageCount, 3);
-  assert.equal(state.hasMoreWithinPage, true);
-  assert.equal(updates.at(-1).render, 'replace');
-  assert.equal(updates.at(-1).added.length, 1);
-});
-
-test('each later demand reveals one cached row without additional API calls, capped at 24', async () => {
-  const { feed, updates, calls } = setup();
-  feed.reset();
-  await feed.more();
-  for (let expectedCount = 2; expectedCount <= 24; expectedCount += 1) {
-    assert.equal(await feed.more(), true);
-    assert.equal(feed.getState().items.length, expectedCount);
-    assert.equal(updates.at(-1).render, 'append');
-    assert.equal(updates.at(-1).added.length, 1);
-    assert.equal(calls.length, 1);
-  }
-  assert.equal(feed.getState().hasMore, false);
-  assert.equal(feed.getState().hasMoreWithinPage, false);
-  assert.equal(await feed.more(), false);
   assert.equal(feed.getState().items.length, 24);
+  assert.equal(feed.getState().pageCount, 3);
+  assert.equal(feed.getState().phase, 'ready');
+  assert.equal(await feed.load(), false);
   assert.equal(calls.length, 1);
 });
-
-test('numbered page navigation uses real offsets and replaces rows with the new first row', async () => {
-  const { feed, updates, calls } = setup();
-  feed.reset();
-  await feed.more();
-  await feed.more();
-  assert.equal(await feed.goToPage(2), true);
-  assert.equal(calls.length, 2);
-  assert.match(calls[1], /offset=24&limit=24$/);
-  assert.equal(feed.getState().page, 2);
-  assert.equal(feed.getState().offset, 24);
-  assert.equal(feed.getState().pageEndOffset, 48);
-  assert.equal(feed.getState().revealedCount, 1);
-  assert.deepEqual(feed.getState().items.map(item => item.scan_id), ['report-24']);
-  assert.equal(updates.at(-1).render, 'replace');
-});
-
-test('the final partial page cannot reveal beyond its available rows', async () => {
+test('explicit numbered pages replace all rows with correct offsets, never append another page', async () => {
   const { feed, calls } = setup();
-  feed.reset();
-  await feed.more();
+  feed.reset(); await feed.load();
+  await feed.goToPage(2);
+  assert.equal(feed.getState().items[0].scan_id, 'report-24');
+  assert.equal(feed.getState().items.length, 24);
   await feed.goToPage(3);
-  for (let count = 2; count <= 13; count += 1) await feed.reveal();
   assert.equal(feed.getState().items.length, 13);
-  assert.equal(feed.getState().pageItems.length, 13);
-  assert.equal(feed.getState().pageEndOffset, 61);
-  assert.equal(feed.getState().hasMore, false);
-  assert.equal(await feed.reveal(), false);
-  assert.equal(calls.length, 2);
+  assert.equal(feed.getState().items[0].scan_id, 'report-48');
+  assert.deepEqual(calls.map(path => new URL(path, 'http://localhost').searchParams.get('offset')), ['0','24','48']);
 });
-
-test('invalid, current and out-of-range page numbers do not fetch or change visible rows', async () => {
+test('invalid, current, overlapping and out-of-range page requests do not fetch', async () => {
   const { feed, calls } = setup();
-  feed.reset();
-  await feed.more();
-  for (const number of [0, -1, 1, 4, 1.5, Infinity, Number.MAX_SAFE_INTEGER, '2']) {
-    assert.equal(await feed.goToPage(number), false);
-  }
-  assert.equal(calls.length, 1);
-  assert.equal(feed.getState().page, 1);
-  assert.equal(feed.getState().items.length, 1);
-});
-
-test('submitted filters are copied and reused by page navigation rather than unsubmitted input', async () => {
-  const input = { q: ' Kitchen TV ', state: 'completed', ignored: 'never send' };
-  const { feed, calls } = setup();
-  feed.reset(input);
-  input.q = 'Unsubmitted change';
-  assert.equal(calls.length, 0);
-  await feed.more();
-  await feed.more();
-  await feed.goToPage(2);
-  for (const path of calls) {
-    const params = new URL(path, 'http://localhost').searchParams;
-    assert.equal(params.get('q'), 'Kitchen TV');
-    assert.equal(params.get('state'), 'completed');
-    assert.equal(params.has('ignored'), false);
-    assert.equal(params.get('limit'), '24');
-  }
-});
-
-test('filter reset clears both visible reports and cached reports without fetching', async () => {
-  const { feed, calls } = setup();
-  feed.reset();
-  await feed.more();
-  feed.reset({ q: 'new' });
-  assert.equal(feed.getState().items.length, 0);
-  assert.equal(feed.getState().pageItems.length, 0);
-  assert.equal(feed.getState().phase, 'waiting');
-  assert.equal(feed.getState().offset, 0);
-  assert.equal(feed.getState().pageCount, 0);
-  assert.equal(calls.length, 1);
-  await new Promise(resolve => setTimeout(resolve, 20));
+  feed.reset(); await feed.load();
+  for (const n of [0,-1,1.5,'2',Infinity,Number.MAX_SAFE_INTEGER,4,1]) assert.equal(await feed.goToPage(n), false);
   assert.equal(calls.length, 1);
 });
-
-test('a filter reset ignores a late old page without repopulating the empty list', async () => {
+test('all submitted filters persist across pages, not unsubmitted mutations', async () => {
+  const { feed, calls } = setup();
+  const filters = { q:'living room', profile:'light', state:'completed', after:'2026-10-01' };
+  feed.reset(filters); filters.q = 'other';
+  await feed.load(); await feed.goToPage(2);
+  const query = new URL(calls[1], 'http://localhost').searchParams;
+  assert.equal(query.get('q'), 'living room');
+  assert.equal(query.get('offset'), '24');
+  assert.equal(query.get('after'), '2026-10-01');
+});
+test('saved page resumes as a complete bounded page and corrects a disappeared last page', async () => {
+  const { feed, calls } = setup();
+  feed.reset({ profile:'light' },3);
+  await feed.load();
+  assert.equal(feed.getState().items.length,13);
+  assert.match(calls[0], /offset=48&limit=24/);
+  const shrunk = setup(() => page(0, 1, 1));
+  shrunk.feed.reset({},3); await shrunk.feed.load();
+  assert.equal(shrunk.feed.getState().page,1);
+  assert.equal(shrunk.calls.length,2);
+});
+test('same generation has at most one in-flight request', async () => {
   const pending = deferred();
-  const { feed } = setup(path => path.includes('q=new') ? page(90, 1, 1) : pending.promise);
+  const { feed,calls } = setup(() => pending.promise);
   feed.reset();
-  const load = feed.more();
-  feed.reset({ q: 'new' });
-  pending.resolve(page(0));
-  assert.equal(await load, false);
-  assert.equal(feed.getState().items.length, 0);
-  assert.equal(feed.getState().phase, 'waiting');
-  await feed.more();
-  assert.deepEqual(feed.getState().items.map(item => item.scan_id), ['report-90']);
+  const load = feed.load();
+  assert.equal(await feed.load(),false);
+  assert.equal(await feed.goToPage(2),false);
+  assert.equal(calls.length,1);
+  pending.resolve(page(0)); await load;
+  assert.equal(feed.getState().items.length,24);
 });
-
-test('a late failure cannot replace a newer filter page or its cached reports', async () => {
-  const pending = deferred();
-  const { feed } = setup(path => path.includes('q=first') ? pending.promise : Promise.resolve(page(20, 1, 1)));
-  feed.reset({ q: 'first' });
-  const old = feed.more();
-  feed.reset({ q: 'second' });
-  await feed.more();
-  pending.reject(new Error('Old failure'));
-  assert.equal(await old, false);
-  assert.equal(feed.getState().error, '');
-  assert.equal(feed.getState().filters.q, 'second');
-  assert.deepEqual(feed.getState().pageItems.map(item => item.scan_id), ['report-20']);
+test('a late old search result or failure cannot replace the current filter page', async () => {
+  for (const fails of [false,true]) {
+    const pending = deferred();
+    const { feed } = setup(path => path.includes('q=old') ? pending.promise : page(20));
+    feed.reset({ q:'old' }); const old = feed.load();
+    feed.reset({ q:'new' }); await feed.load();
+    if (fails) pending.reject(Error('late outage')); else pending.resolve(page(0));
+    await old;
+    assert.equal(feed.getState().items[0].scan_id,'report-20');
+    assert.equal(feed.getState().error,'');
+  }
 });
-
-test('a failed first reveal is explicitly retried and never starts an automatic request loop', async () => {
+test('a failed page keeps existing rows and retries only on explicit request', async () => {
   let fail = true;
-  const { feed, calls } = setup(() => {
-    if (fail) throw new Error('Cannot load saved reports');
-    return page(0);
+  const { feed,calls } = setup(path => {
+    const offset = Number(new URL(path,'http://localhost').searchParams.get('offset'));
+    if (offset === 24 && fail) throw Error('Temporary outage');
+    return page(offset);
   });
-  feed.reset({ q: 'submitted' });
-  await feed.more();
-  assert.equal(feed.getState().items.length, 0);
-  assert.equal(feed.getState().phase, 'error');
-  assert.equal(await feed.more(), false);
-  assert.equal(calls.length, 1);
-  fail = false;
-  await feed.retry();
-  assert.equal(calls[0], calls[1]);
-  assert.equal(feed.getState().items.length, 1);
-});
-
-test('a page-switch failure keeps the old page available and retries the requested offset', async () => {
-  let fail = true;
-  const { feed, calls } = setup(path => {
-    if (path.includes('offset=24')) {
-      if (fail) throw new Error('Temporary local failure');
-      return page(24);
-    }
-    return page(0);
-  });
-  feed.reset();
-  await feed.more();
-  await feed.more();
-  assert.equal(await feed.goToPage(2), false);
-  assert.equal(feed.getState().items.length, 2);
-  assert.equal(feed.getState().page, 1);
-  assert.equal(feed.getState().retryMode, 'page');
-  assert.equal(await feed.more(), false);
-  fail = false;
-  await feed.retry();
-  assert.equal(calls[1], calls[2]);
-  assert.equal(feed.getState().page, 2);
-  assert.deepEqual(feed.getState().items.map(item => item.scan_id), ['report-24']);
-  assert.equal(feed.getState().error, '');
-});
-
-test('overlapping reveals and page-navigation demands share one in-flight request', async () => {
-  const pending = deferred();
-  const { feed, calls } = setup(() => pending.promise);
-  feed.reset();
-  const first = feed.more();
-  assert.equal(await feed.more(), false);
-  assert.equal(await feed.goToPage(2), false);
-  assert.equal(calls.length, 1);
-  pending.resolve(page(0));
-  await first;
-});
-
-test('duplicate rows are deduplicated before caching and warned about without looping', async () => {
-  const { feed, calls } = setup(() => page(0, 3, 3, { items: [report(0), report(0), report(1)] }));
-  feed.reset();
-  await feed.more();
-  await feed.more();
-  assert.deepEqual(feed.getState().items.map(item => item.scan_id), ['report-0', 'report-1']);
-  assert.equal(feed.getState().pageItems.length, 2);
-  assert.equal(feed.getState().changed, true);
-  assert.match(feed.getState().warnings.join(' '), /changed while you were browsing/);
-  assert.equal(await feed.more(), false);
-  assert.equal(calls.length, 1);
-});
-
-test('an unexpectedly empty page is warned about and cannot auto-repeat the request', async () => {
-  const { feed, calls } = setup(() => page(0, 0, 5));
-  feed.reset();
-  await feed.more();
-  assert.equal(feed.getState().items.length, 0);
-  assert.equal(feed.getState().hasMore, false);
-  assert.equal(feed.getState().changed, true);
-  assert.equal(await feed.more(), false);
-  assert.equal(calls.length, 1);
-});
-
-test('an unexpectedly short page is warned about rather than silently skipping missing rows', async () => {
-  const { feed, calls } = setup(() => page(0, 5, 61));
-  feed.reset();
-  await feed.more();
-  for (let count = 2; count <= 5; count += 1) await feed.more();
-  assert.equal(feed.getState().items.length, 5);
-  assert.equal(feed.getState().changed, true);
-  assert.match(feed.getState().warnings.join(' '), /changed while you were browsing/);
-  assert.equal(await feed.more(), false);
-  assert.equal(calls.length, 1);
-});
-
-test('a total change on a page switch is explicitly noted', async () => {
-  let total = 61;
-  const { feed } = setup(path => page(Number(new URL(path, 'http://localhost').searchParams.get('offset')), 24, total));
-  feed.reset();
-  await feed.more();
-  total = 62;
+  feed.reset(); await feed.load();
   await feed.goToPage(2);
-  assert.equal(feed.getState().total, 62);
-  assert.equal(feed.getState().changed, true);
+  assert.equal(feed.getState().items.length,24);
+  assert.equal(feed.getState().items[0].scan_id,'report-0');
+  assert.equal(feed.getState().phase,'error');
+  assert.equal(await feed.load(),false);
+  assert.equal(calls.length,2);
+  fail = false; await feed.retry();
+  assert.equal(feed.getState().items[0].scan_id,'report-24');
 });
-
-test('empty unreadable history is evaluated only after deliberate demand', async () => {
-  const { feed, calls } = setup(() => page(0, 0, 0, { unreadable_count: 2, warnings: ['Files preserved.'] }));
-  feed.reset({ profile: 'light' });
-  assert.equal(feed.getState().unreadableCount, 0);
-  assert.equal(calls.length, 0);
-  await feed.more();
-  assert.equal(feed.getState().total, 0);
-  assert.equal(feed.getState().pageCount, 0);
-  assert.equal(feed.getState().page, 1);
-  assert.equal(feed.getState().unreadableCount, 2);
-  assert.deepEqual(feed.getState().warnings, ['Files preserved.']);
+test('a failed initial request stops instead of automatically looping', async () => {
+  const { feed,calls } = setup(() => { throw Error('Unavailable'); });
+  feed.reset(); await feed.load(); await feed.load();
+  assert.equal(calls.length,1);
+  assert.equal(feed.getState().items.length,0);
+  assert.match(feed.getState().error,/Unavailable/);
 });
-
-test('invalid and oversized page responses are rejected without exposing any row', async () => {
-  for (const response of [{ items: [{}], total: 1 }, page(0, 25), page(0, 1, -1),
-    page(0, 1, 0), page(0, 1, 1, { warnings: 'invalid' }),
-    { items: [], total: '1' }, { items: [], total: Number.MAX_SAFE_INTEGER + 1 }]) {
-    const { feed } = setup(() => response);
-    feed.reset();
-    assert.equal(await feed.more(), false);
-    assert.equal(feed.getState().items.length, 0);
-    assert.equal(feed.getState().phase, 'error');
-    assert.match(feed.getState().error, /could not be read/);
+test('empty/no-match/unreadable states are finite and keep useful warnings', async () => {
+  for (const filters of [{},{ q:'nothing' }]) {
+    const { feed,calls } = setup(() => page(0,0,0,{ unreadable_count:1,warnings:['Files preserved.'] }));
+    feed.reset(filters); await feed.load();
+    assert.equal(feed.getState().items.length,0);
+    assert.equal(feed.getState().total,0);
+    assert.equal(feed.getState().unreadableCount,1);
+    assert.deepEqual(feed.getState().warnings,['Files preserved.']);
+    await feed.load(); assert.equal(calls.length,1);
   }
 });
-
-test('history page size is fixed at 24, never an unbounded list', () => {
-  assert.equal(HISTORY_PAGE_SIZE, 24);
-  for (const pageSize of [0, 1, 8, 25, 51, 1.5]) {
-    assert.throws(() => createHistoryFeed({ request() {}, onChange() {}, pageSize }), TypeError);
+test('duplicate and short page results are bounded, warned about and not silently chased', async () => {
+  const result = page(0); result.items[1] = result.items[0];
+  const { feed,calls } = setup(() => result);
+  feed.reset(); await feed.load();
+  assert.equal(feed.getState().items.length,23);
+  assert.equal(feed.getState().changed,true);
+  assert.ok(feed.getState().warnings.length);
+  assert.equal(calls.length,1);
+});
+test('invalid and oversized responses cannot partially expose a page', async () => {
+  for (const result of [null,{},page(0,25),page(0,24,-1),{items:[null],total:1},{items:[{scan_id:''}],total:1}]) {
+    const { feed } = setup(() => result);
+    feed.reset(); await feed.load();
+    assert.equal(feed.getState().phase,'error');
+    assert.equal(feed.getState().items.length,0);
   }
+  assert.throws(() => createHistoryFeed({ pageSize:25 }),/at most 24/);
 });
-
-test('state snapshots cannot mutate cached lists, revealed lists, filters or warning arrays', async () => {
-  const { feed } = setup();
-  feed.reset({ q: 'test' });
-  await feed.more();
-  const state = feed.getState();
-  state.pageItems.length = 0;
-  state.items.length = 0;
-  state.filters.q = 'different';
-  state.warnings.push('not real');
-  assert.equal(feed.getState().pageItems.length, 24);
-  assert.equal(feed.getState().items.length, 1);
-  assert.equal(feed.getState().filters.q, 'test');
-  assert.deepEqual(feed.getState().warnings, []);
-});
-
-test('deletion refresh reloads the visible page without reintroducing removed reports', async () => {
-  let records = [report(0), report(1), report(2), report(3)];
-  const { feed, calls } = setup(() => ({ items: records, total: records.length }));
-  feed.reset({ profile: 'light' });
-  await feed.more();
-  await feed.more();
-  records = records.filter(item => item.scan_id !== 'report-0');
-  await feed.reloadAfterDelete();
-  assert.equal(calls.length, 2);
-  assert.deepEqual(feed.getState().items.map(item => item.scan_id), ['report-1', 'report-2']);
-  assert.equal(feed.getState().total, 3);
-  assert.equal(feed.getState().revealedCount, 2);
-  assert.equal(feed.getState().filters.profile, 'light');
-  assert.equal(feed.getState().changed, false);
-});
-
-test('deleting the only report on the last page returns to the last remaining valid page', async () => {
+test('deletion refresh replaces the complete page and corrects a removed final page', async () => {
   let total = 25;
-  const { feed, calls } = setup(path => {
-    const offset = Number(new URL(path, 'http://localhost').searchParams.get('offset'));
-    return page(offset, Math.max(0, Math.min(24, total - offset)), total);
+  const { feed,calls } = setup(path => {
+    const offset = Number(new URL(path,'http://localhost').searchParams.get('offset'));
+    return page(offset, Math.max(0, Math.min(24,total-offset)),total);
   });
-  feed.reset();
-  await feed.more();
-  await feed.goToPage(2);
-  total = 24;
-  await feed.reloadAfterDelete();
-  assert.equal(feed.getState().page, 1);
-  assert.equal(feed.getState().pageCount, 1);
-  assert.equal(feed.getState().total, 24);
-  assert.deepEqual(feed.getState().items.map(item => item.scan_id), ['report-0']);
-  assert.match(calls[2], /offset=24&limit=24$/);
-  assert.match(calls[3], /offset=0&limit=24$/);
+  feed.reset(); await feed.load(); await feed.goToPage(2);
+  total = 24; await feed.reloadAfterDelete();
+  assert.equal(feed.getState().page,1);
+  assert.equal(feed.getState().items.length,24);
+  assert.equal(calls.length,4);
+  total = 0; await feed.reloadAfterDelete();
+  assert.equal(feed.getState().items.length,0);
+  assert.equal(feed.getState().page,1);
 });
-
-test('deleting all matching reports clears cache and rows and returns to page one', async () => {
-  let total = 25;
-  const { feed, calls } = setup(path => {
-    const offset = Number(new URL(path, 'http://localhost').searchParams.get('offset'));
-    return page(offset, Math.max(0, Math.min(24, total - offset)), total);
-  });
-  feed.reset();
-  await feed.more();
-  await feed.goToPage(2);
-  total = 0;
-  await feed.reloadAfterDelete();
-  assert.equal(feed.getState().page, 1);
-  assert.equal(feed.getState().pageCount, 0);
-  assert.equal(feed.getState().items.length, 0);
-  assert.equal(feed.getState().pageItems.length, 0);
-  assert.equal(feed.getState().hasMore, false);
-  assert.equal(calls.length, 3);
-});
-
-test('deletion refresh cancels a stale in-flight page request', async () => {
-  const pending = deferred();
+test('library correction is bounded to one retry even when results keep shrinking', async () => {
   let requests = 0;
-  const { feed } = setup(() => ++requests === 2 ? pending.promise : page(0, 2, 2));
-  feed.reset();
-  await feed.more();
-  const stale = feed.goToPage(1);
-  assert.equal(await stale, false);
-  const refresh = feed.reloadAfterDelete();
-  const newer = feed.reloadAfterDelete();
-  pending.resolve(page(100, 1, 1));
-  assert.equal(await refresh, false);
-  assert.equal(await newer, true);
-  assert.deepEqual(feed.getState().items.map(item => item.scan_id), ['report-0']);
+  const { feed } = setup(() => page(0,0,requests++ === 0 ? 30 : 1));
+  feed.reset({},3); await feed.load();
+  assert.equal(requests,2);
+  assert.equal(feed.getState().phase,'error');
 });
-
-test('deletion refresh does not defeat the initial no-report/no-fetch view', async () => {
-  const { feed, calls } = setup();
-  feed.reset();
-  assert.equal(await feed.reloadAfterDelete(), false);
-  assert.equal(calls.length, 0);
-  assert.equal(feed.getState().items.length, 0);
+test('deletion refresh fences stale in-flight results', async () => {
+  const pending = deferred(); let count = 0;
+  const { feed } = setup(() => ++count === 1 ? pending.promise : page(10));
+  feed.reset(); const old = feed.load();
+  await feed.reloadAfterDelete();
+  pending.resolve(page(0)); await old;
+  assert.equal(feed.getState().items[0].scan_id,'report-10');
 });
-
-test('shrinking totals correct an out-of-range page once, with no unbounded retry loop', async () => {
-  const { feed, calls } = setup(path => {
-    const offset = Number(new URL(path, 'http://localhost').searchParams.get('offset'));
-    if (calls.length === 1) return page(offset);
-    return calls.length === 2 ? page(48, 0, 25) : page(24, 0, 1);
-  });
-  feed.reset();
-  await feed.more();
-  assert.equal(await feed.goToPage(3), false);
-  assert.equal(calls.length, 3);
-  assert.equal(feed.getState().phase, 'error');
-  assert.match(feed.getState().error, /changed again/);
-  assert.equal(feed.getState().page, 1);
-  assert.equal(feed.getState().items.length, 1);
-  assert.equal(await feed.more(), false);
+test('state copies cannot mutate data, warnings or submitted filters', async () => {
+  const { feed } = setup();
+  feed.reset({q:'saved'}); await feed.load();
+  const state = feed.getState();
+  state.items.pop(); state.pageItems.pop(); state.warnings.push('extra'); state.filters.q = 'changed';
+  assert.equal(feed.getState().items.length,24);
+  assert.equal(feed.getState().pageItems.length,24);
+  assert.equal(feed.getState().filters.q,'saved');
+  assert.deepEqual(feed.getState().warnings,[]);
 });

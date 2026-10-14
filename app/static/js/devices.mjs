@@ -196,6 +196,26 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
     body.append(words);
     const featureEvidence = disclosure('Supporting feature details', 'device-supporting-details feature-technical', 'features');
     featureEvidence.append(text('p', 'Technical notes for the features listed above. A scanner label is a clue, not proof of the installed software or its safety.'));
+    const hostChecks = device.host_script_results || [];
+    const selectedSmbChecks = (data.policy?.selected_scripts || []).filter(name => ['smb-protocols', 'smb2-security-mode'].includes(name));
+    if (hostChecks.length || selectedSmbChecks.length) {
+      const help = { 'smb-protocols': 'File-sharing versions the device reported supporting',
+        'smb2-security-mode': 'Protection for file-sharing messages in the version checked',
+        'smb-os-discovery': 'Additional computer information reported through file sharing' };
+      const checks = text('section', '', 'feature-evidence');
+      checks.append(text('h4', 'Recorded device checks'));
+      checks.append(text('p', 'These are recorded replies, not a safety certificate. A missing reply does not mean a check passed. File-sharing message protection applies to the negotiated version, not every possible connection.'));
+      for (const check of hostChecks.slice(0, 32)) {
+        checks.append(text('h5', help[check.script_id] || `Additional check: ${check.script_id}`));
+        checks.append(text('p', `${check.output}${check.truncated ? ' (Recorded output was shortened; a complete result was not established.)' : ''}`));
+      }
+      for (const name of selectedSmbChecks.filter(name => !hostChecks.some(check => check.script_id === name)
+        && !services.some(service => service.script_results?.some(check => check.script_id === name)))) {
+        checks.append(text('p', `${help[name]}: no usable reply was recorded. The check may not have applied or returned a result; no pass is assumed.`));
+      }
+      if (hostChecks.length > 32) checks.append(text('p', `${hostChecks.length - 32} additional replies are retained in the saved technical evidence.`));
+      featureEvidence.append(checks);
+    }
     if (services.length) {
       const features = text('ul', '', 'device-features');
       services.forEach(service => {
@@ -299,7 +319,7 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
     }
     const information = text('div', '', 'device-info-disclosures');
     information.append(about);
-    if (services.length) information.append(featureEvidence);
+    if (services.length || hostChecks.length || selectedSmbChecks.length) information.append(featureEvidence);
     body.append(information);
     const eligibleServices = services.filter(service => service.cve_lookup_available
       || notesSnapshot?.cve_lookups?.some(item => item.service_id === service.service_id));

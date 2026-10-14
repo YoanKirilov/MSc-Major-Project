@@ -22,7 +22,7 @@ def guidance_updates(document: ScanDocument) -> dict:
         services = [
             service for service in document.services if service.device_id == device.device_id
         ]
-        for finding in evaluate_device(device, services):
+        for finding in evaluate_device(device, services, profile=document.policy.get("profile")):
             available[(finding.device_id, finding.service_id, finding.rule_id)] = finding
     updates = {}
     for saved in document.findings:

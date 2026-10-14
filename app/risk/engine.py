@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from uuid import UUID, uuid5
 
+from app.scanner.commands import DEEP_PROFILE
 from app.schemas.scan import EvidenceItem, Finding, FixedExplanation
 
 from .catalogue import RULE_CATALOGUE
+from .smb import configuration_observations
 
 SERVICE_RULES = {
     "telnet": "R01",
@@ -22,7 +24,37 @@ def service_name_key(name: str | None) -> str | None:
     return name.strip().lower()
 
 
-def evaluate_device(device, services, catalogue=None):
+def _finding(device, service, matched, rule, evidence):
+    return Finding(
+        finding_id=str(uuid5(UUID(service.service_id), f"{matched}:{rule['version']}")),
+        device_id=device.device_id,
+        service_id=service.service_id,
+        rule_id=matched,
+        rule_version=rule["version"],
+        title=rule["title"],
+        severity=rule["severity"],
+        confidence=rule["confidence"],
+        evidence=evidence,
+        limitations=rule["limitations"],
+        fixed_explanation=FixedExplanation(
+            meaning=rule["meaning"],
+            why_it_matters=rule["why_it_matters"],
+            recommended_steps=[action["text"] for action in rule["actions"]],
+            how_to_check=[action["verification"] for action in rule["actions"]],
+        ),
+        actions=[
+            {
+                "action_id": action["action_id"],
+                "text": action["text"],
+                "verification": action["verification"],
+            }
+            for action in rule["actions"]
+        ],
+        references=rule["references"],
+    )
+
+
+def evaluate_device(device, services, catalogue=None, *, profile=None):
     catalogue = catalogue or RULE_CATALOGUE
     results = []
     for service in services:
@@ -53,32 +85,17 @@ def evaluate_device(device, services, catalogue=None):
         ]
         if service.tunnel is not None:
             evidence.append(EvidenceItem(field="tunnel", value=service.tunnel))
-        finding = Finding(
-            finding_id=str(uuid5(UUID(service.service_id), f"{matched}:{rule['version']}")),
-            device_id=device.device_id,
-            service_id=service.service_id,
-            rule_id=matched,
-            rule_version=rule["version"],
-            title=rule["title"],
-            severity=rule["severity"],
-            confidence=rule["confidence"],
-            evidence=evidence,
-            limitations=rule["limitations"],
-            fixed_explanation=FixedExplanation(
-                meaning=rule["meaning"],
-                why_it_matters=rule["why_it_matters"],
-                recommended_steps=[action["text"] for action in rule["actions"]],
-                how_to_check=[action["verification"] for action in rule["actions"]],
-            ),
-            actions=[
-                {
-                    "action_id": action["action_id"],
-                    "text": action["text"],
-                    "verification": action["verification"],
-                }
-                for action in rule["actions"]
-            ],
-            references=rule["references"],
-        )
-        results.append(finding)
+        results.append(_finding(device, service, matched, rule, evidence))
+    if profile == DEEP_PROFILE:
+        for matched, service, facts in configuration_observations(device, services):
+            if matched in catalogue:
+                results.append(
+                    _finding(
+                        device,
+                        service,
+                        matched,
+                        catalogue[matched],
+                        [EvidenceItem(field=field, value=value) for field, value in facts],
+                    )
+                )
     return results

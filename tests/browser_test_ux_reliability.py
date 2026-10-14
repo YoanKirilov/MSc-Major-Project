@@ -8,7 +8,7 @@ from tests.browser_test_ui_ux import ui as _report_ui
 
 history_browser = history_cases.history_browser
 ui = _report_ui
-reveal = history_cases.reveal_with_keyboard
+wait_for_page = history_cases.wait_for_page
 pytestmark = [
     pytest.mark.browser,
     pytest.mark.skipif(os.getenv("RUN_BROWSER_TESTS") != "1", reason="Opt-in synthetic browser"),
@@ -21,8 +21,7 @@ def test_history_distinct_controls_context_and_recovery_survive_reload(history_b
     page, base, calls, controls = history_browser
     controls["reports"][0]["title"] = controls["reports"][1]["title"] = "Same title"
     page.goto(base + "/history")
-    reveal(page, 1)
-    reveal(page, 2)
+    wait_for_page(page)
     names = page.locator("[data-report-select]").evaluate_all(
         "nodes => nodes.map(node => node.getAttribute('aria-label'))"
     )
@@ -32,7 +31,7 @@ def test_history_distinct_controls_context_and_recovery_survive_reload(history_b
     page.locator("#history-delete-confirm").click()
     expect(page.locator("#history-feedback")).to_contain_text("1 report deleted")
     page.reload()
-    expect(page.locator("#history-list a")).to_have_count(0)
+    wait_for_page(page)
     expect(page.locator("#history-undo-delete")).to_be_hidden()
     count = len(calls)
     page.wait_for_timeout(100)
@@ -43,17 +42,15 @@ def test_history_distinct_controls_context_and_recovery_survive_reload(history_b
     page.locator("#recovery-list button").click()
     expect(page.locator("#recovery-status")).to_contain_text("notes restored")
     assert not controls["deleted"]
-    expect(page.locator("#history-list a")).to_have_count(0)
-    reveal(page, 1)
+    wait_for_page(page)
     page.locator('#history-pagination [data-page="2"]').first.click()
-    expect(page.locator("#history-list a")).to_contain_text("Saved report 25")
-    page.locator("[data-report-select]").check()
+    expect(page.locator("#history-list a").first).to_contain_text("Saved report 25")
+    page.locator("[data-report-select]").first.check()
     page.reload()
-    expect(page.locator("#history-list a")).to_have_count(0)
+    wait_for_page(page)
     expect(page.locator("#history-delete-selected")).to_be_disabled()
-    expect(page.locator("#history-status")).to_contain_text("Returning to page 2")
-    reveal(page, 1)
-    expect(page.locator("#history-list a")).to_contain_text("Saved report 25")
+    expect(page.locator("#history-status")).to_contain_text("Page 2 of 3")
+    expect(page.locator("#history-list a").first).to_contain_text("Saved report 25")
     assert calls[-1]["offset"] == ["24"]
 
 

@@ -1,8 +1,6 @@
 """Pure interpretation and bounded presentation of previously collected device facts."""
 
-import re
-from datetime import datetime, timezone
-
+from app.scanner.certificates import certificate_dates
 from app.scanner.names import clean_name
 from app.schemas.scan import DeviceDetail
 
@@ -22,7 +20,7 @@ FEATURES = {
 }
 
 
-def detail(device, kind, label, value, source, status="observed"):
+def detail(device, kind, label, value, source, status="observed", *, observed_at=None):
     if value is None:
         return
     value = clean_name(value) if kind in {"upnp", "netbios"} else str(value)
@@ -43,6 +41,7 @@ def detail(device, kind, label, value, source, status="observed"):
                 value=value,
                 source=source,
                 status=status,
+                **({"observed_at": observed_at} if observed_at is not None else {}),
             )
         )
     elif value and len(device.details) == 47:
@@ -81,6 +80,18 @@ def existing_details(device, services, observations):
         for key, value in observation.properties.items():
             detail(device, "mdns", f"Reported {key}", value, "mDNS", "advertised")
     for service in services:
+        certificate = certificate_dates(service)
+        if certificate is not None:
+            value, status = certificate
+            detail(
+                device,
+                "certificate",
+                f"Connection certificate dates (port {service.port})",
+                value,
+                "Nmap certificate dates · saved check",
+                status,
+                observed_at=service.observed_at,
+            )
         for script in service.script_results:
             if script.script_id == "http-title":
                 detail(
@@ -90,21 +101,3 @@ def existing_details(device, services, observations):
                     script.output,
                     "Nmap HTTP title",
                 )
-            elif script.script_id == "ssl-cert":
-                match = re.search(
-                    r"Not valid after:\s*(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)", script.output
-                )
-                if match:
-                    try:
-                        expiry = datetime.fromisoformat(match[1]).replace(tzinfo=timezone.utc)
-                    except ValueError:
-                        continue
-                    expired = expiry < datetime.now(timezone.utc)
-                    detail(
-                        device,
-                        "certificate",
-                        f"Certificate date (port {service.port})",
-                        f"{'Expired' if expired else 'Not expired'}; expiry: {match[1]} UTC. "
-                        "This does not verify trust, identity or overall security.",
-                        "Nmap certificate",
-                    )

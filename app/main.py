@@ -12,7 +12,10 @@ from filelock import FileLock, Timeout
 
 from .api import cves as cves_api
 from .api import demo as demo_api
+from .api import devices as devices_api
 from .api import library as library_api
+from .api import monitoring as monitoring_api
+from .api import report_export as report_export_api
 from .api import scans as scans_api
 from .api import session as session_api
 from .api import settings as settings_api
@@ -20,6 +23,7 @@ from .config import load_config, resolve_nmap_path
 from .demo.adapter import DemoFindingsAdapter
 from .demo.runs import DemoRunStore
 from .explanations import ExplanationService, OllamaExplanationProvider
+from .jobs.monitoring import MonitoringService
 from .jobs.supervisor import ScanSupervisor
 from .runtime_diagnostics import observe_asyncio_errors
 from .scanner.cve import NvdClient
@@ -112,9 +116,12 @@ async def owned_lifespan(app: FastAPI):
         app_config=config,
     )
     await app.state.supervisor.reconcile_incomplete()
+    app.state.monitoring = MonitoringService(app)
+    await app.state.monitoring.start()
     try:
         yield
     finally:
+        await app.state.monitoring.close()
         await app.state.supervisor.shutdown()
 
 
@@ -196,6 +203,10 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     async def history_page(request: Request):
         return templates.TemplateResponse(request=request, name="history.html", context={})
 
+    @app.get("/devices")
+    async def devices_page(request: Request):
+        return templates.TemplateResponse(request=request, name="devices.html", context={})
+
     @app.get("/scans/{scan_id}")
     async def scan_page(request: Request, scan_id: str):
         return templates.TemplateResponse(
@@ -205,8 +216,11 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     app.include_router(session_api.router)
     app.include_router(scans_api.router)
     app.include_router(library_api.router)
+    app.include_router(monitoring_api.router)
+    app.include_router(report_export_api.router)
     app.include_router(cves_api.router)
     app.include_router(settings_api.router)
     app.include_router(demo_api.router)
+    app.include_router(devices_api.router)
 
     return app

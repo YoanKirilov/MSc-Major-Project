@@ -1,11 +1,12 @@
 """Conservative comparisons against a bounded set of previous local reports."""
 
 from datetime import timedelta
+from uuid import UUID
 
 from app.scanner.names import add_name, normalise_mac
 from app.scanner.observations import detail
 from app.schemas.common import observation_time
-from app.schemas.scan import EarlierDevice, EarlierObservations
+from app.schemas.scan import ComparedService, DeviceComparison, EarlierDevice, EarlierObservations
 
 
 def earlier_observations(current, previous):
@@ -171,6 +172,12 @@ def compare_history(current, previous):
     )
     previous = [doc for _, doc in previous]
     for device in current.devices:
+        device.comparison = DeviceComparison(
+            current_created_at=current.created_at,
+            reason=(
+                "No reliably matched earlier check is available; this is not proof of no changes."
+            ),
+        )
         mac = normalise_mac(device.mac)
         matches = [
             (p, old)
@@ -182,6 +189,7 @@ def compare_history(current, previous):
         if any(sum(normalise_mac(d.mac) == mac for d in p.devices) > 1 for p, _ in matches) or (
             mac and sum(normalise_mac(d.mac) == mac for d in current.devices) > 1
         ):
+            device.comparison.reason = "Repeated adapter addresses prevent a reliable comparison."
             detail(
                 device,
                 "history",
@@ -219,6 +227,8 @@ def compare_history(current, previous):
             )
             continue
         last, old = matches[0]
+        device.comparison.source_scan_id = UUID(last.scan_id)
+        device.comparison.source_created_at = last.created_at
         restore_previous_name(device, matches, current.created_at)
         detail(
             device,
@@ -258,6 +268,7 @@ def compare_history(current, previous):
                 for key in ("profile_id", "tcp_ports", "udp_ports")
             ):
                 reasons.append("the scans used different profiles or port selections")
+            device.comparison.reason = "Not compared: " + "; ".join(reasons) + "."
             detail(
                 device,
                 "history",
@@ -270,6 +281,21 @@ def compare_history(current, previous):
             )
             continue
         before, after = ports(last, old), ports(current, device)
+        device.comparison.status = "available"
+        device.comparison.reason = (
+            "Same recorded adapter address and compatible completed checks; "
+            "not verified physical identity, an attack verdict or proof of a fix."
+        )
+        device.comparison.added_count = len(after - before)
+        device.comparison.not_observed_count = len(before - after)
+        device.comparison.added = [
+            ComparedService(protocol=proto, port=port)
+            for proto, port in sorted(after - before)[:200]
+        ]
+        device.comparison.not_observed = [
+            ComparedService(protocol=proto, port=port)
+            for proto, port in sorted(before - after)[:200]
+        ]
         detail(
             device,
             "history",

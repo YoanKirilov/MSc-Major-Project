@@ -70,6 +70,10 @@ def main():
         ["node", "tests/notes_ui.test.mjs"],
         ["node", "tests/nicknames_ui.test.mjs"],
         ["node", "tests/device_components_ui.test.mjs"],
+        ["node", "tests/report_insights_ui.test.mjs"],
+        ["node", "tests/report_export_ui.test.mjs"],
+        ["node", "tests/device_library_ui.test.mjs"],
+        ["node", "tests/monitoring_ui.test.mjs"],
         ["node", "tests/live_server_bridge.test.mjs"],
         *[
             ["node", "--check", str(path)]

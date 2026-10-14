@@ -1,5 +1,72 @@
 # Testing status
 
+## Second scanner/UX comparison — 14 October 2026
+
+[Research, changes and exact outcomes](competitive-round2-20261014.md): whole-
+inventory task views, stricter household-label receipts and recorded-time
+certificate interpretation. The new full gate passed 846 Python/six Windows link-
+privilege skips and 237 JavaScript tests; lint/177-file formatting/27 syntax checks
+passed. Offline installed-package checks passed seven pages/29 assets, dependencies
+and all 115 source/installed hashes. The wider Chromium/Firefox matrix passed 60
+cases with two stale-text assertions; all ten affected inventory cases passed after
+updating those assertions. Thus all 62 selected cases have passing coverage across
+matrix/retest, not a single clean 62-case run. An earlier artifact-folder setup
+failure ran no browser cases and is retained in the execution record.
+
+Fresh isolated Light completed 10/11 checks; one unreachable address after two
+attempts is honestly retained with a clear headline/retry. Deep this PC completed
+1/1, with the self-routing limitation. Replay matched 171 service rows/twelve
+findings and host-script output; two actual certificate interpretations and thirteen
+accepted AI records revalidated. One other item kept `not_simpler` fallback wording.
+Eight actual Chromium report viewport cases and live inventory view/reset passed.
+Normal reports were unchanged and the owned test backend stopped. No new probes,
+external CVE calls, Pi-hole or periodic execution were added/enabled. The normal
+backend needs a restart after active jobs finish to load the new view contract.
+Physical-phone/AT/participant comprehension and blocked WebKit remain unverified.
+
+## Device-first features and focused scan checks — 14 October 2026
+
+[The execution record](competitive-improvements-20261014.md) covers My devices,
+household annotations, comparisons/shortcuts/features, private print/CSV export,
+Deep SMB negotiation rules and opt-in app-running periodic Light checks. The
+combined offline gate passed 816 Python/six Windows link-privilege skips and 233
+JavaScript tests. Fifty-eight final Chromium/Firefox browser cases passed with no
+failures. Offline package checks passed seven pages/29 assets, clean dependencies
+and 114 identical source/installed files. No real reports were removed by UI tests.
+Earlier failed fixture/harness/format gates and the temporary approval-service
+failure are retained in the execution record. Fresh isolated Light completed 8/8
+device checks and this-PC Deep completed 1/1, with no scan errors. Raw replay matched
+141 service rows/twelve findings and saved host-script output; thirteen accepted AI
+records revalidated, with one clearly recorded `not_simpler` fallback among fourteen
+finished records. Eight actual Chromium report viewport cases passed; refresh kept
+both jobs and only two scans were submitted. Normal reports stayed byte-identical
+and the owned backend stopped. Deep's self-routing limitation remains explicit.
+Periodic checking stayed off; its scheduling tests are synthetic, not a live trial.
+The normal backend needs a restart after active jobs finish to load the new routes.
+Actual screen-reader/phone/participant checks remain pending; this is not WCAG
+conformance or proof that all users understand the wording.
+
+## Saved reports viewport follow-up — 14 October 2026
+
+[The latest execution record](history-viewport-20261014.md) supersedes the old
+empty-start/one-gesture-per-row presentation. The final offline gate passed 660
+Python/five Windows link-privilege skips, 186 JS, Ruff/159-file formatting and
+21 syntax checks. Revised tests enforce complete bounded pages, not obsolete
+reveal counts. The Chromium/Firefox matrix passed 76 cases and had two warning-
+fixture failures; both affected retests passed after correcting the synthetic
+response. Package verification passed six pages/22 assets, clean dependency
+checks and all 99 source/installed hashes. No real reports were deleted.
+
+The fresh isolated live pair finished: Light completed 8/10 device checks, with two
+unreachable targets honestly marked after two attempts each; this-PC Deep completed
+1/1. All 141 service records/eleven findings replayed, and thirteen AI records
+revalidated without rejected fields or fallbacks. Eight real Chromium report
+viewport cases passed. Refresh retained both jobs, only two scans were submitted,
+pre-existing normal reports stayed byte-identical and the owned backend stopped.
+The execution record separates these results from further UI recommendations and
+pending real AT/physical-device/participant usability. Earlier dated records retain
+their original tested policy.
+
 ## UI/UX fixes and verification — 14 October 2026
 
 [The implementation record](ui-ux-implementation-20261014.md) distinguishes code

@@ -20,9 +20,14 @@ def main():
     for name in (
         "app.jobs.enrichment",
         "app.scanner.observations",
+        "app.scanner.certificates",
         "app.profiling.history",
         "app.schemas.report_management",
         "app.storage.report_trash",
+        "app.storage.device_inventory",
+        "app.api.report_export",
+        "app.jobs.monitoring",
+        "app.risk.smb",
     ):
         module = import_module(name)
         assert Path(module.__file__).resolve().is_relative_to(installed), name
@@ -38,6 +43,7 @@ def main():
                 "/deep",
                 "/settings",
                 "/history",
+                "/devices",
                 "/scans/11111111-1111-1111-1111-111111111111",
             ):
                 response = client.get(route)
@@ -48,6 +54,8 @@ def main():
                 "/api/session", json={"token": manager.bootstrap_token}, headers={"Origin": base}
             )
             headers = {"Origin": base, "X-CSRF-Token": session.json()["csrf_token"]}
+            assert client.get("/api/devices").json()["items"] == []
+            assert client.get("/api/monitoring").json()["enabled"] is False
             created = client.post("/api/demo-runs", json={}, headers=headers)
             assert created.status_code == 201
             assert client.get("/api/demo-runs/" + created.json()["run_id"]).status_code == 200
@@ -60,6 +68,9 @@ def main():
                 target={"mode": "known_hosts", "hosts": ["192.168.56.10"]},
             )
             saved = client.portal.call(client.app.state.store.create_scan, report)
+            shared = client.get(f"/api/live-scans/{report.scan_id}/share").json()
+            assert shared["schema_version"] == 1
+            assert shared["privacy"]["include_identifiers"] is False
             listing = client.get("/api/reports?limit=24").json()
             item = listing["items"][0]
             assert item["scan_id"] == report.scan_id and item["deletable"] is True
@@ -94,7 +105,7 @@ def main():
                 url = "/static/" + asset.relative_to(installed / "static").as_posix()
                 assert client.get(url).status_code == 200, url
     print(
-        f"Installed wheel passed: six pages, {len(assets)} static assets "
+        f"Installed wheel passed: seven pages, {len(assets)} static assets "
         "and synthetic demo/report create/reopen/delete/Undo."
     )
 

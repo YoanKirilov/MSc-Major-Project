@@ -1,5 +1,59 @@
 # Implementation brief status
 
+## Second comparison and verification — 14 October 2026
+
+[Execution record](competitive-round2-20261014.md): implemented whole-inventory
+device views, explicit old-backend recovery, strictly newer matching label-save
+receipts and complete certificate date interpretation using saved observation time.
+Both profiles share enrichment 1.0.2; ports/scripts/risk priorities are unchanged.
+Verification passed 846 Python/237 JS, package/source matching and all 62 selected
+browser cases across the wider run and affected retest. The record preserves the
+setup failure and two corrected stale-text assertions instead of claiming one
+clean browser run. Fresh Light completed 10/11 checks (one unreachable address after
+two attempts), Deep 1/1; raw replay, AI validation, two real certificate explanations,
+live view/reset, data integrity and owned-backend cleanup passed. The normal backend
+still needs a restart for the new query contract. Real-reader/physical-device/AT
+evaluation remains pending, not certified by automated checks.
+
+## Device-first experience and focused scanning — 14 October 2026
+
+[Plan and execution](competitive-improvements-20261014.md): My devices, separate
+household labels, structured compatible comparisons, task/device shortcuts,
+feature-centric responses and private print/CSV previews are implemented. Deep
+adds bounded SMB version/signing evidence and specific reviewed findings. Optional
+app-running periodic Light checks require fresh scope permission and stay off by
+default; restart/network changes pause them. JSON storage and existing recovery
+controls remain. Current tests/live outcomes are recorded separately in the plan;
+this entry does not claim unperformed checks or human comprehension passed.
+
+Final verification: 816 Python/233 JavaScript and 58 Chromium/Firefox cases passed;
+packaged installation passed. The fresh isolated live pair completed Light 8/8
+and this-PC Deep 1/1 without scan errors. Replay matched 141 services/twelve
+findings/host-script replies. Thirteen accepted AI records revalidated; one other
+item kept a recorded plain-language fallback. Existing reports were unchanged and
+the owned backend stopped. The normal backend still requires a restart after
+active jobs finish for the new routes. Physical-device/AT/reader evaluation and a
+separately authorised live periodic-check trial remain pending.
+
+## Complete paged list and viewport enhancement — 14 October follow-up
+
+[The new record](history-viewport-20261014.md) supersedes empty-start and
+one-row-per-gesture presentation with an ordinary complete 24-summary page.
+IntersectionObserver decorates only; scrolling/End/focus/Find cannot strand
+unrendered reports. Numbered pagination and revision-safe Delete/Undo/Restore stay.
+Main navigation no longer duplicates Display preferences; choices remain in
+Settings. Pi-hole control/bindings are removed and its legacy field is omitted
+from saves rather than silently changed. Test and live evidence are in that record;
+[the research follow-up](ui-ux-recommendations-20261014-followup.md) distinguishes
+existing features from additional recommendations and pending AT/reader evaluation.
+
+Verification: 660 Python and 186 JavaScript tests passed; the Chromium/Firefox
+matrix passed 76 cases, with both warning-fixture failures passing after fixture
+correction. Offline package verification passed. Fresh isolated Light completed
+8/10 checks (two unreachable devices, not concealed); this-PC Deep completed 1/1.
+Raw replay matched 141 service records/eleven findings, and thirteen AI records
+revalidated. Existing normal reports were preserved and the test backend stopped.
+
 ## UI/UX reliability and recovery — 14 October 2026
 
 [Execution and verification](ui-ux-implementation-20261014.md) track the research

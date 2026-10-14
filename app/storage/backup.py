@@ -14,7 +14,7 @@ from filelock import FileLock
 MAX_BACKUP_BYTES = 3 * 1024 * 1024 * 1024
 MAX_FILES = 20000
 ALLOWED = re.compile(
-    r"(?:settings|nicknames)(?:\.previous)?\.json|nicknames\.recovery\.json|"
+    r"(?:settings|nicknames|device-labels|monitor)(?:\.previous)?\.json|nicknames\.recovery\.json|"
     r"nicknames\.corrupt-[0-9a-f]{32}\.json|"
     r"(?:scans|\.trash)/[0-9a-f-]{36}/(?:[a-z.]+\.json|\.removal-receipt\.json|annotations\.corrupt-[0-9a-f]{32}\.json|"
     r"raw/[a-zA-Z0-9.-]+\.xml|guidance/guidance-[0-9a-f-]{36}\.json)"
@@ -53,6 +53,10 @@ def files_to_backup(root):
             "nicknames.json",
             "nicknames.previous.json",
             "nicknames.recovery.json",
+            "device-labels.json",
+            "device-labels.previous.json",
+            "monitor.json",
+            "monitor.previous.json",
         } or re.fullmatch(r"nicknames\.corrupt-[0-9a-f]{32}\.json", path.name):
             candidates = [path]
         else:
@@ -131,7 +135,7 @@ def transfer(data_dir, destination, *, restore=False):
             "bytes": total,
             "verified": True,
             "note": (
-                "Live reports/settings/nicknames and recovery copies copied. "
+                "Live reports/settings/nicknames/household labels and recovery copies copied. "
                 "Demo runs, session secrets and locks "
                 "excluded. Source unchanged apart from its instance lock."
             ),

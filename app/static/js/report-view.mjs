@@ -3,6 +3,7 @@
 const filters = ['all', 'high', 'medium', 'low', 'informational'];
 const taskFilters = ['all', 'to_check', 'checked', 'need_help'];
 const sorts = ['priority', 'name', 'address'];
+const deviceFilters = ['all', 'unnamed', 'unfinished', 'review'];
 const boundedText = (value, limit) => typeof value === 'string' ? value.slice(0, limit) : '';
 
 export function validatedReadingState(value) {
@@ -12,6 +13,7 @@ export function validatedReadingState(value) {
     filter: filters.includes(value.filter) ? value.filter : 'all',
     tasks: taskFilters.includes(value.tasks) ? value.tasks : 'all',
     sort: sorts.includes(value.sort) ? value.sort : 'priority',
+    deviceFilter: deviceFilters.includes(value.deviceFilter) ? value.deviceFilter : 'all',
     reviewDevice: boundedText(value.reviewDevice, 80) || 'all',
     selected: boundedText(value.selected, 80),
     limit: Number.isInteger(value.limit) ? Math.min(254, Math.max(24, value.limit)) : 24,

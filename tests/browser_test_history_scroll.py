@@ -235,6 +235,9 @@ def history_browser(request, monkeypatch, tmp_path):
                                 "deletable": False,
                             }
                             payload["unreadable_count"] = 1
+                            payload["warnings"] = [
+                                "One saved report could not be read. Its files are preserved."
+                            ]
                         if controls["duplicate_offset"] == offset and len(payload["items"]) > 1:
                             payload["items"][1] = payload["items"][0]
                         if controls["hold_offset"] == offset:
@@ -263,361 +266,170 @@ def history_browser(request, monkeypatch, tmp_path):
         listener.close()
 
 
-def wait_for_scroll_frame(page):
-    """Native keyboard default actions require a painted scrollable frame."""
-    # Navigation's load event can precede the first painted scrollable frame.
-    # Native keys require that frame; never substitute a programmatic scroll.
-    page.evaluate(
-        "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
-    )
-
-
-def reveal_with_keyboard(page, expected_count=None):
-    """Use an ordinary native scrolling key, never programmatic loading."""
+def wait_for_page(page, count=24):
     from playwright.sync_api import expect
 
-    page.locator("#history-status").focus()
-    wait_for_scroll_frame(page)
-    page.keyboard.press("End")
-    if expected_count is not None:
-        try:
-            expect(page.locator("#history-list > li")).to_have_count(expected_count)
-        except AssertionError as exc:
-            state = page.evaluate(
-                """() => {
-                    const bounds = id => document.querySelector(`#history-${id}`)
-                        .getBoundingClientRect().toJSON();
-                    return ({
-                    ready: document.readyState,
-                    hasFocus: document.hasFocus(),
-                    dialogs: [...document.querySelectorAll('dialog')].map(dialog =>
-                        ({id: dialog.id, open: dialog.open})),
-                    scrollY, height: innerHeight,
-                    documentHeight: document.documentElement.scrollHeight,
-                    phase: document.querySelector('#history-scroll-stage').dataset.phase,
-                    status: document.querySelector('#history-status').textContent,
-                    stage: bounds('scroll-stage'),
-                    sentinel: bounds('sentinel'),
-                    focused: document.activeElement?.id,
-                    count: document.querySelectorAll('#history-list > li').length
-                }); }"""
-            )
-            raise AssertionError(
-                f"Expected {expected_count} report rows; history state: {state}"
-            ) from exc
+    expect(page.locator("#history-list > li")).to_have_count(count)
+    expect(page.locator("#history-scroll-stage")).to_have_attribute("data-phase", "ready")
 
 
-def test_zero_start_and_large_window_require_real_user_scroll(history_browser):
-    from playwright.sync_api import expect
-
-    page, base, calls, _ = history_browser
-    page.set_viewport_size({"width": 1280, "height": 2400})
-    page.goto(base + "/history")
-    expect(page.locator("#history-list a")).to_have_count(0)
-    page.wait_for_timeout(150)
-    assert not calls
-    page.locator("#history-query").focus()
-    assert page.evaluate("document.documentElement.scrollHeight > innerHeight")
-    page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
-    page.wait_for_timeout(150)
-    assert not calls
-    expect(page.locator("#history-list a")).to_have_count(0)
-    page.evaluate("window.scrollTo(0, 0)")
-    page.wait_for_timeout(50)
-    page.mouse.move(640, 450)
-    for _ in range(4):
-        page.mouse.wheel(0, 2000)
-        page.wait_for_timeout(150)
-        if calls:
-            break
-    expect(page.locator("#history-list a")).to_have_count(1)
-    expect(page.locator("#history-query")).to_be_focused()
-    assert len(calls) == 1
-    assert calls[0]["offset"] == ["0"]
-    assert calls[0]["limit"] == ["24"]
-    page.wait_for_timeout(450)
-    assert len(calls) == 1
-    page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
-    page.wait_for_timeout(100)
-    expect(page.locator("#history-list a")).to_have_count(1)
-    page.mouse.wheel(0, 500)
-    expect(page.locator("#history-list a")).to_have_count(2)
-    expect(page.locator("#history-query")).to_be_focused()
-    assert len(calls) == 1  # Further rows are revealed from the bounded cached page.
-
-
-def test_native_keyboard_scroll_reveals_rows_without_next_report_buttons(history_browser):
-    from playwright.sync_api import expect
-
-    page, base, calls, _ = history_browser
-    page.goto(base + "/history")
-    expect(page.locator("#history-list a")).to_have_count(0)
-    assert not calls
-    assert page.locator("#history-load-more, #history-load-more-end").count() == 0
-    reveal_with_keyboard(page, 1)
-    expect(page.locator("#history-status")).to_be_focused()
-    assert page.evaluate("scrollY > 0")
-    assert len(calls) == 1
-    page.wait_for_timeout(100)
-    reveal_with_keyboard(page, 2)
-    expect(page.locator("#history-status")).to_be_focused()
-    expect(page.locator("#history-list a").nth(1)).to_contain_text("Saved report 2")
-    assert len(calls) == 1
-
-
-def test_page_failure_keeps_reports_and_retries_submitted_filters(history_browser):
+@pytest.mark.parametrize("total", [0, 1, 23, 24, 25, 53])
+def test_complete_initial_page_has_no_gesture_requirement(history_browser, total):
     from playwright.sync_api import expect
 
     page, base, calls, controls = history_browser
+    controls["report_count"] = total
     page.goto(base + "/history")
-    reveal_with_keyboard(page, 1)
-    controls["fail_offset"] = 24
-    page.locator("#history-query").fill("Unsubmitted query")
-    page.locator('#history-pagination [data-page="2"]').first.click()
-    expect(page.locator("#history-status")).to_contain_text("already")
-    expect(page.locator("#history-list a")).to_have_count(1)
-    expect(page.locator("#history-list a")).to_contain_text("Saved report 1")
+    wait_for_page(page, min(total, 24))
+    assert len(calls) == 1 and calls[0]["limit"] == ["24"]
+    expect(page.locator("#history-pagination")).to_be_visible() if total > 24 else expect(
+        page.locator("#history-pagination")
+    ).to_be_hidden()
+    if total == 0:
+        expect(page.locator("#history-empty")).to_be_visible()
+    assert page.locator("#history-sentinel, #history-scroll-link").count() == 0
+
+
+def test_end_scrollbar_jump_find_and_resize_never_leave_unrendered_rows(history_browser):
+    from playwright.sync_api import expect
+
+    page, base, calls, _ = history_browser
+    page.goto(base + "/history")
+    wait_for_page(page)
+    page.locator("#history-status").focus()
+    page.keyboard.press("End")
+    page.wait_for_timeout(100)
+    assert len(calls) == 1
+    wait_for_page(page)
+    page.evaluate("window.scrollTo(0, 0)")
+    page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+    page.set_viewport_size({"width": 1440, "height": 1600})
+    wait_for_page(page)
+    # Ordinary native text exists independently of observation/scroll callbacks.
+    assert page.evaluate(
+        "document.querySelector('#history-list').innerText.includes('Saved report 24')"
+    )
+    row = page.locator("#history-list > li").last
+    row.locator("a").focus()
+    expect(row.locator("a")).to_be_focused()
+    assert row.evaluate("node => getComputedStyle(node).opacity") == "1"
+    assert row.get_attribute("hidden") is None
+    assert len(calls) == 1
+    expect(page.locator("#history-pagination-bottom")).to_be_visible()
+
+
+@pytest.mark.parametrize("observer", ["absent", "throws"])
+def test_observer_failure_only_removes_optional_animation(history_browser, observer):
+    from playwright.sync_api import expect
+
+    page, base, calls, _ = history_browser
+    page.add_init_script(
+        "window.IntersectionObserver = undefined"
+        if observer == "absent"
+        else "window.IntersectionObserver = class {constructor(){throw Error('unavailable')}}"
+    )
+    page.goto(base + "/history")
+    wait_for_page(page)
+    assert (
+        page.locator(
+            "#history-list [hidden], #history-list [inert], #history-list [aria-hidden=true]"
+        ).count()
+        == 0
+    )
+    for row in page.locator("#history-list > li").all():
+        assert row.evaluate("node => getComputedStyle(node).opacity") == "1"
+    page.locator("[data-report-select]").last.check()
+    expect(page.locator("#history-delete-selected")).to_be_enabled()
+    assert len(calls) == 1
+
+
+def test_initial_failure_stops_and_retry_is_explicit(history_browser):
+    from playwright.sync_api import expect
+
+    page, base, calls, controls = history_browser
+    controls["fail_offset"] = 0
+    page.goto(base + "/history")
     expect(page.locator("#history-retry")).to_be_visible()
-    assert "q" not in calls[-1]
+    page.keyboard.press("End")
+    page.wait_for_timeout(200)
+    assert len(calls) == 1
     controls["fail_offset"] = None
     page.locator("#history-retry").click()
+    wait_for_page(page)
+    assert len(calls) == 2
+
+
+def test_page_failure_preserves_complete_old_page_and_submitted_filters(history_browser):
+    from playwright.sync_api import expect
+
+    page, base, calls, controls = history_browser
+    page.goto(base + "/history")
+    wait_for_page(page)
+    controls["fail_offset"] = 24
+    page.locator('#history-pagination [aria-label="Page 2"]').click()
+    expect(page.locator("#history-retry")).to_be_visible()
+    expect(page.locator("#history-list a").first).to_contain_text("Saved report 1")
+    expect(page.locator("#history-list a")).to_have_count(24)
+    controls["fail_offset"] = None
+    page.locator("#history-retry").click()
+    wait_for_page(page)
     expect(page.locator("#history-list a").first).to_contain_text("Saved report 25")
     assert calls[-1]["offset"] == ["24"]
-    assert "q" not in calls[-1]
 
 
-def test_filter_reset_waits_for_fresh_scroll_and_failed_reveal_is_retryable(history_browser):
+def test_filter_no_matches_empty_and_unreadable_are_distinct(history_browser):
     from playwright.sync_api import expect
 
-    page, base, calls, controls = history_browser
+    page, base, _, controls = history_browser
     page.goto(base + "/history")
-    reveal_with_keyboard(page, 1)
-    controls["fail_query"] = "Saved report 53"
-    page.locator("#history-query").fill("Saved report 53")
+    wait_for_page(page)
+    page.locator("#history-query").fill("no-such-report")
     page.get_by_role("button", name="Search reports", exact=True).click()
-    expect(page.locator("#history-list a")).to_have_count(0)
-    expect(page.locator("#history-status")).to_contain_text("Filters are ready")
-    page.wait_for_timeout(150)
-    assert len(calls) == 1
-    reveal_with_keyboard(page)
-    expect(page.locator("#history-status")).to_contain_text("Synthetic local failure")
-    expect(page.locator("#history-list a")).to_have_count(0)
-    controls["fail_query"] = None
-    page.locator("#history-retry").click()
-    expect(page.locator("#history-list a")).to_have_count(1)
-    expect(page.locator("#history-list a")).to_contain_text("Saved report 53")
-    assert calls[-1]["offset"] == ["0"]
+    expect(page.locator("#history-status")).to_contain_text("No reports match")
+    expect(page.locator("#history-empty")).to_be_hidden()
     page.get_by_role("button", name="Clear filters", exact=True).click()
-    expect(page.locator("#history-list a")).to_have_count(0)
-    previous_calls = len(calls)
-    page.wait_for_timeout(150)
-    assert len(calls) == previous_calls
-    reveal_with_keyboard(page, 1)
-    assert "q" not in calls[-1]
+    wait_for_page(page)
+    controls["unreadable_offset"] = 0
+    page.get_by_role("button", name="Search reports", exact=True).click()
+    expect(page.locator("#history-warnings")).to_be_visible()
+    expect(page.locator("#history-list .status-warning")).to_be_visible()
 
 
-def test_mobile_one_at_a_time_reaches_the_end_without_overflow(history_browser):
-    from playwright.sync_api import expect
-
-    page, base, calls, controls = history_browser
-    controls["report_count"] = 3
-    page.set_viewport_size({"width": 320, "height": 844})
-    page.goto(base + "/history")
-    expect(page.locator("#history-list a")).to_have_count(0)
-    for count in (1, 2, 3):
-        reveal_with_keyboard(page, count)
-        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
-    expect(page.locator("#history-status")).to_contain_text("3")
-    assert len(calls) == 1
-    assert page.locator("#history-list a").evaluate_all(
-        "links => links.every(link => getComputedStyle(link).visibility === 'visible')"
-    )
-    reveal_with_keyboard(page, 3)
-    assert len(calls) == 1
-
-
-def test_changed_history_offers_refresh_without_duplicate_reports(history_browser):
-    from playwright.sync_api import expect
-
-    page, base, calls, controls = history_browser
-    controls["duplicate_offset"] = 0
-    page.goto(base + "/history")
-    reveal_with_keyboard(page, 1)
-    expect(page.locator("#history-warnings")).to_contain_text("changed while you were browsing")
-    expect(page.locator("#history-refresh")).to_be_visible()
-    page.locator("#history-query").fill("Unsubmitted query")
-    page.locator("#history-refresh").click()
-    expect(page.locator("#history-list a")).to_have_count(0)
-    previous_calls = len(calls)
-    page.wait_for_timeout(150)
-    assert len(calls) == previous_calls
-    controls["duplicate_offset"] = None
-    reveal_with_keyboard(page, 1)
-    assert calls[-1]["offset"] == ["0"]
-    assert "q" not in calls[-1]
-
-
-def test_wheel_burst_is_one_gesture_and_profile_markers_remain_semantic(history_browser):
-    from playwright.sync_api import expect
-
-    page, base, calls, _ = history_browser
-    page.goto(base + "/history")
-    reveal_with_keyboard(page, 1)
-    page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
-    page.mouse.move(640, 450)
-    for _ in range(5):
-        page.mouse.wheel(0, 400)
-        page.wait_for_timeout(20)
-    expect(page.locator("#history-list a")).to_have_count(2)
-    page.wait_for_timeout(450)
-    page.mouse.wheel(0, 400)
-    expect(page.locator("#history-list a")).to_have_count(3)
-    assert len(calls) == 1
-    assert page.locator("#history-list a").evaluate_all(
-        "links => links.map(link => link.dataset.profile)"
-    ) == ["light", "deep-tcp-v1", "unknown"]
-
-
-def test_held_scroll_key_does_not_reveal_multiple_reports(history_browser):
-    from playwright.sync_api import expect
-
-    page, base, calls, _ = history_browser
-    page.goto(base + "/history")
-    page.locator("#history-status").focus()
-    wait_for_scroll_frame(page)
-    assert not calls
-    page.keyboard.down("End")
-    expect(page.locator("#history-list a")).to_have_count(1)
-    for _ in range(3):
-        page.keyboard.down("End")
-    page.wait_for_timeout(450)
-    expect(page.locator("#history-list a")).to_have_count(1)
-    assert len(calls) == 1
-    page.keyboard.up("End")
-    page.keyboard.press("End")
-    expect(page.locator("#history-list a")).to_have_count(2)
-    assert len(calls) == 1
-
-
-def test_touch_contact_is_inert_and_each_downward_swipe_reveals_one(history_browser):
-    from playwright.sync_api import expect
-
-    page, base, calls, _ = history_browser
-    page.goto(base + "/history")
-
-    def touch(name, y):
-        page.evaluate(
-            """([name, y]) => {
-                const event = new Event(name);
-                Object.defineProperty(event, 'touches', { value: [{ clientY: y }] });
-                window.dispatchEvent(event);
-            }""",
-            [name, y],
-        )
-
-    # Synthetic event wiring is not a claim of physical touch-device verification.
-    touch("touchstart", 300)
-    page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
-    page.wait_for_timeout(100)
-    expect(page.locator("#history-list a")).to_have_count(0)
-    assert not calls
-    page.evaluate("window.scrollTo(0, 0)")
-    page.wait_for_timeout(50)
-    touch("touchstart", 300)
-    touch("touchmove", 200)
-    page.evaluate("window.scrollBy(0, 250)")
-    expect(page.locator("#history-list a")).to_have_count(1)
-    touch("touchmove", 100)
-    page.evaluate("window.scrollBy(0, 250)")
-    page.wait_for_timeout(100)
-    expect(page.locator("#history-list a")).to_have_count(1)
-    touch("touchstart", 300)
-    touch("touchmove", 200)
-    expect(page.locator("#history-list a")).to_have_count(2)
-    assert len(calls) == 1
-
-
-@pytest.mark.parametrize("outcome", ["empty", "no_match", "error"])
-def test_big_wheel_without_reports_keeps_feedback_visible_without_focus_theft(
-    history_browser, outcome
-):
-    from playwright.sync_api import expect
-
-    page, base, calls, controls = history_browser
-    if outcome == "empty":
-        controls["report_count"] = 0
-    elif outcome == "error":
-        controls["fail_offset"] = 0
-    page.goto(base + "/history")
-    if outcome == "no_match":
-        page.locator("#history-query").fill("A report that does not exist")
-        page.get_by_role("button", name="Search reports", exact=True).click()
-        expect(page.locator("#history-status")).to_contain_text("Filters are ready")
-    assert not calls
-    query = page.locator("#history-query")
-    query.focus()
-    page.mouse.move(640, 450)
-    for _ in range(4):
-        page.mouse.wheel(0, 5000)
-        page.wait_for_timeout(150)
-        if calls:
-            break
-    if outcome == "empty":
-        feedback = page.locator("#history-empty")
-        expect(feedback).to_contain_text("No saved reports yet")
-    else:
-        feedback = page.locator("#history-status")
-        expect(feedback).to_contain_text(
-            "No reports match your filters" if outcome == "no_match" else "Synthetic local failure"
-        )
-    page.wait_for_timeout(450)
-    bounds = feedback.bounding_box()
-    assert bounds is not None
-    assert bounds["y"] >= -1, bounds
-    assert bounds["y"] + bounds["height"] <= page.viewport_size["height"] + 1, bounds
-    expect(query).to_be_focused()
-    expect(page.locator("#history-list a")).to_have_count(0)
-    assert len(calls) == 1
-    expect(page.locator("#history-scroll-stage")).to_have_attribute(
-        "data-phase", "error" if outcome == "error" else "ready"
-    )
-
-
-def test_initial_page_loading_blocks_duplicate_scroll_requests(history_browser):
+def test_loading_blocks_duplicate_page_requests_and_selection(history_browser):
     from playwright.sync_api import expect
 
     page, base, calls, controls = history_browser
     controls["hold_offset"] = 0
     page.goto(base + "/history")
-    reveal_with_keyboard(page)
-    expect(page.locator("#history-list")).to_have_attribute("aria-busy", "true")
-    expect(page.locator("#history-list a")).to_have_count(0)
-    for _ in range(3):
-        page.keyboard.press("End")
+    expect(page.locator("#history-scroll-stage")).to_have_attribute("data-phase", "loading")
+    expect(page.locator("#history-select-all")).to_be_disabled()
+    page.keyboard.press("End")
+    page.mouse.wheel(0, 2000)
     page.wait_for_timeout(150)
     assert len(calls) == 1
     route, payload = controls["held_page"]
     controls["hold_offset"] = None
     route.fulfill(json=payload)
-    expect(page.locator("#history-list a")).to_have_count(1)
-    expect(page.locator("#history-status")).to_be_focused()
-    assert page.locator("#history-list").get_attribute("aria-busy") is None
-    assert len(calls) == 1
+    wait_for_page(page)
 
 
-def test_unreadable_report_keeps_focus_and_does_not_offer_deletion(history_browser):
+def test_profile_colours_hover_and_complete_page_work_on_phone(history_browser):
     from playwright.sync_api import expect
 
-    page, base, calls, controls = history_browser
-    controls["unreadable_offset"] = 0
+    page, base, calls, _ = history_browser
+    page.set_viewport_size({"width": 320, "height": 844})
     page.goto(base + "/history")
-    reveal_with_keyboard(page, 1)
-    warning = page.locator("#history-list > li").first
-    expect(warning).to_contain_text("could not be read")
-    expect(page.locator("#history-status")).to_be_focused()
-    expect(page.locator("#history-list a")).to_have_count(0)
-    assert warning.locator("[data-report-select], [data-report-delete]").count() == 0
-    reveal_with_keyboard(page, 2)
-    expect(page.locator("#history-list a")).to_have_count(1)
-    expect(page.locator("#history-list a")).to_contain_text("Saved report 2")
+    wait_for_page(page)
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
+    links = page.locator("#history-list a")
+    light = links.nth(0)
+    deep = links.nth(1)
+    normal = light.evaluate("node => getComputedStyle(node).color")
+    deep_colour = deep.evaluate("node => getComputedStyle(node).color")
+    assert normal != deep_colour
+    light.hover()
+    assert light.evaluate("node => getComputedStyle(node).color") == deep_colour
+    # Scroll to the last record once; no further input is needed to expose it.
+    links.last.scroll_into_view_if_needed()
+    expect(links.last).to_contain_text("Saved report 24")
     assert len(calls) == 1

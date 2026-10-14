@@ -1,9 +1,49 @@
 # Current architecture — updated 14 October 2026
 
+The [second comparison round](competitive-round2-20261014.md) adds allowlisted
+whole-inventory device views applied before search/pagination, with an echoed view
+contract. Unreadable household metadata fails label-based views explicitly; saved
+facts remain available through All devices. The client preserves drafts on
+unacknowledged or mismatched views/saves and requires a strictly newer matching
+save receipt. `scanner/certificates.py` interprets complete bounded saved ssl-cert
+date windows against service observation time. Enrichment version 1.0.2 applies to
+both scan profiles without new probes, priorities or retrospective report rewrites.
+
+The latest [device-first implementation](competitive-improvements-20261014.md)
+adds an authenticated bounded `/api/devices` projection of saved live observations.
+Unique adapter address plus authorised range groups records conservatively;
+unmatched/ledger-only observations stay distinct. `device-labels.json` stores
+revisioned household annotations separately, with locks, atomic backup and private
+transfer coverage. Reports preserve structured bounded comparison deltas alongside
+unchanged service evidence. Features view/shortcuts are presentation only.
+
+`/api/live-scans/{id}/share` is a read-only privacy projection. Identifiers/notes
+default off, redaction is bounded/fails closed, CSV escapes formula injection and
+print media excludes the underlying identifying report. Both accepted final
+wording and provenance are retained; original guidance remains technical evidence.
+
+Deep's public profile is still `deep-tcp-v1`; recorded coverage ID now distinguishes
+the SMB negotiation allowlist. `risk/smb.py` interprets only complete recognised
+endpoint-bound script replies. R08/R09 describe SMBv1 support and optional signing
+for the negotiated version, not proven exploits or Internet exposure. Ruleset
+1.3.0 and prompt 4.4.0 keep reviewed plain-language validation and fallback.
+
+`jobs/monitoring.py` owns opt-in app-running periodic Light checks, with revisioned
+`monitor.json`, local bounded events and an in-memory approved connection. Restart
+never restores probing authority. The normal submission helper revalidates the
+scope/context; supervisor admission rejects periodic work atomically when another
+scan/AI job is active. Delays defer, connection changes pause, and submission/close
+are bounded. Default-off inspection never starts probes. This is not an always-on
+service. Monitoring data is covered by the existing private backup allowlist.
+
+The execution record distinguishes final offline/browser/package/live evidence
+from historical sections below and pending human/assistive-technology evaluation.
+
 The [14 October implementation](ui-ux-implementation-20261014.md) adds keyed
 running-job actions, explicit zoned dates/UTC filter days, durable Settings save
-feedback and unsaved-state protection. Per-tab History filter/page context is
-restored without fetching or revealing any report initially; selection is cleared.
+feedback and unsaved-state protection. The later [viewport/list fix](history-viewport-20261014.md)
+restores per-tab History filter/page context into a complete fetched page; selection
+is cleared. The old empty-start and one-gesture-per-row policy is superseded.
 `history-context.mjs` owns bounded/expiring context and report identities;
 `recovery.mjs` owns explicitly requested recovery listing/Restore. The existing
 revision-safe archive machinery remains authoritative.
@@ -18,13 +58,21 @@ Theme follows the device only when opted in; explicit Dark/Light still win.
 See [the small component/state specification](ui-components.md) for shared rules
 and the actual assistive-technology/reader tasks that remain pending.
 
-The [report-management change](report-management-20261013.md) supersedes unbounded
-one-entry history and next-report buttons. The feed starts with zero rows/requests,
-fetches at most 24 reports on first intentional reveal, and exposes cached rows one
-at a time within the selected numbered page. Pagination replaces the page, not an
-ever-growing list. Filters still apply before server pagination; removal refreshes
-the current page and corrects a disappeared last page. Shown-page checkboxes and
-individual/bulk confirmation exclude hidden rows and clear across page/filter changes.
+The [report-management change](report-management-20261013.md) established bounded
+pages and safe removal; its initial gesture-gated presentation is superseded.
+`history-feed.mjs` loads the complete selected 24-summary page. `history-viewport.mjs`
+uses IntersectionObserver solely for optional decoration: no hidden/inert rows,
+missing-observer access dependency, artificial 100svh stage or scroll-driven data
+growth. Focus cancels row animation. Pagination replaces the page and never advances
+automatically. Filters apply across the library before pagination. Select this page
+includes eligible offscreen rows of this page only; selection clears across pages
+and filters. Removal still refreshes/corrects the current page safely.
+
+Main navigation has Scan, Saved reports and Settings; display choices remain in
+Settings without another global shortcut. Pi-hole UI bindings/control were removed.
+Settings saves omit its legacy field, so they do not silently alter configuration
+or erase historic observations. The optional backend implementation remains for
+compatibility/documentation. No scanner or evidence contract changed in this fix.
 
 Authenticated/CSRF report-removal and restore routes use bounded unique UUID batches
 and per-item receipts. Supervisor admission serializes removal with scan/AI retries;

@@ -8,8 +8,6 @@ const interfaceSelect = document.querySelector('#interface-select');
 const retainRawXml = document.querySelector('#retain-raw-xml');
 const mdnsEnabled = document.querySelector('#mdns-enabled');
 const mdnsStatus = document.querySelector('#mdns-status');
-const piholeEnabled = document.querySelector('#pihole-enabled');
-const piholeStatus = document.querySelector('#pihole-status');
 const aiStatus = document.querySelector('#ai-status');
 const saveButton = document.querySelector('#save-settings');
 const pageStatus = document.querySelector('#settings-status');
@@ -18,7 +16,7 @@ const errorMessage = document.querySelector('#settings-error-message');
 const errorList = document.querySelector('#settings-error-list');
 const reloadButton = document.querySelector('#reload-settings');
 const fieldErrors = { 'allowed-network': 'allowed-network-error', 'interface-select': 'interface-error',
-  'mdns-enabled': 'mdns-error', 'pihole-enabled': 'pihole-error' };
+  'mdns-enabled': 'mdns-error' };
 let revision = null;
 let generation = 0;
 let saving = false;
@@ -27,7 +25,7 @@ let dirty = false;
 function scannerValues() {
   return { allowed_network: scopeMode.value === 'automatic' ? null : allowedNetwork.value.trim() || null,
     interface: interfaceSelect.value || null, retain_raw_xml: retainRawXml.checked,
-    mdns_enabled: mdnsEnabled.checked, ai_enabled: true, pihole_enabled: piholeEnabled.checked };
+    mdns_enabled: mdnsEnabled.checked, ai_enabled: true };
 }
 function trackChanges() {
   dirty = Boolean(baseline) && baseline !== JSON.stringify(scannerValues());
@@ -159,15 +157,6 @@ async function loadSettings() {
       : settings.mdns_enabled
         ? 'Local device announcements are unavailable. Turn this option off before saving settings.'
         : 'Optional local device announcements are unavailable in this installation.';
-    piholeEnabled.checked = settings.pihole_enabled;
-    piholeEnabled.disabled = responses[1].status === 'fulfilled' && !status.pihole_configured && !settings.pihole_enabled;
-    piholeStatus.textContent = responses[1].status !== 'fulfilled'
-      ? 'Pi-hole configuration availability could not be checked. Your saved choice is unchanged; this page makes no Pi-hole connection.'
-      : status.pihole_configuration_error
-      ? `Pi-hole setup needs attention: ${status.pihole_configuration_error}`
-      : status.pihole_configured
-        ? 'Pi-hole details are configured; this page does not check the connection. When enabled, names are requested during an authorised scan. Missing names are possible and do not mean a device is absent.'
-        : 'Pi-hole is not configured. Set APP_PIHOLE_URL and APP_PIHOLE_PASSWORD_FILE (or APP_PIHOLE_PASSWORD) on the server, then restart the app. No Pi-hole connection is made by this page.';
     aiStatus.textContent = responses[1].status === 'fulfilled' ? ollamaStatusText(status) : 'Ollama availability could not be checked. Use Check Ollama again to retry.';
     saveButton.disabled = false;
     baseline = JSON.stringify(scannerValues());
@@ -227,7 +216,7 @@ form.addEventListener('submit', async (event) => {
     const message = error.message.toLowerCase();
     const field = /network range|allowed.network|ipv4|cidr/.test(message) ? 'allowed-network'
       : /interface|adapter/.test(message) ? 'interface-select'
-        : /mdns/.test(message) ? 'mdns-enabled' : /pi-hole|pihole/.test(message) ? 'pihole-enabled' : null;
+        : /mdns/.test(message) ? 'mdns-enabled' : null;
     showError(error.status === 409 ? `${error.message}. Your input is unchanged. Reload saved settings to use the latest version; reloading replaces unsaved changes.` : error.message,
       { field, reload: error.status === 409 });
   } finally {

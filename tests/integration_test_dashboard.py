@@ -73,6 +73,7 @@ def test_active_pages_load_all_static_assets_and_module_dependencies(tmp_path, m
             ("/scans/11111111-1111-1111-1111-111111111111", "scan.js"),
             ("/settings", "settings.js"),
             ("/history", "history.js"),
+            ("/devices", "device-library.js"),
         ]:
             page = client.get(route)
             assert page.status_code == 200

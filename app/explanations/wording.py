@@ -136,6 +136,10 @@ REVIEWED_WORDING = {
         "The scan did not establish which version of SMB file sharing is "
         "used, or who is allowed to use it."
     ),
+    "Shared-folder permissions and Internet exposure were not established by this scan.": (
+        "The scan did not check who can open shared folders or whether the service "
+        "can be reached from the Internet."
+    ),
     "The scan did not verify authentication or encryption settings.": (
         "The scan did not check sign-in requirements or settings for protecting messages."
     ),
@@ -229,6 +233,126 @@ REVIEWED_WORDING = {
         "Find out which feature uses the connection before changing settings."
     ): "Find out what this connection does before changing any settings.",
 }
+
+REVIEWED_WORDING.update(
+    {
+        "Older SMBv1 file sharing is supported": "Older file sharing answered (SMBv1)",
+        (
+            "This device accepted SMBv1, an older file-sharing protocol, during this local check."
+        ): "This device answered using SMBv1, an older way to share files on your local network.",
+        (
+            "SMBv1 lacks protections available in newer file-sharing versions. This scan did not "
+            "test whether any weakness can be exploited or which devices still use it."
+        ): (
+            "SMBv1 lacks protections found in newer ways to share files. The scan did not "
+            "test whether a weakness could be used or which devices still need it."
+        ),
+        (
+            "Support was observed at scan time on the associated local connection; this does "
+            "not establish Internet exposure."
+        ): (
+            "This result describes the local connection when scanned. It does not tell us "
+            "whether the feature can be reached from the Internet."
+        ),
+        (
+            "The check negotiated a protocol only; it did not sign in, inspect files, "
+            "or test an exploit."
+        ): (
+            "The check only asked which file-sharing version the device accepts. It did not "
+            "sign in, read files, or try to use a security weakness."
+        ),
+        "An incomplete or absent SMB result cannot establish that SMBv1 is disabled.": (
+            "If this check is missing or unfinished, it cannot tell us that SMBv1 is turned off."
+        ),
+        ("Check the device's manual or ask its owner whether older devices still require SMBv1."): (
+            "Check the manual or ask the owner whether any older device still needs "
+            "SMBv1 file sharing."
+        ),
+        ("Confirm those devices can use a newer file-sharing version before changing settings."): (
+            "Check that those devices can share files using a newer version "
+            "before changing settings."
+        ),
+        (
+            "Ask the owner or device maker how to turn off SMBv1 while keeping "
+            "newer file sharing available."
+        ): (
+            "Ask the owner or device maker how to turn off SMBv1 "
+            "and keep newer file sharing working."
+        ),
+        (
+            "After an authorised change, run another Deep check; a missing response "
+            "does not prove the setting changed."
+        ): (
+            "After a change approved by the owner, repeat the Deep check. A device not replying "
+            "does not prove that its setting changed."
+        ),
+        "SMB message signing is not required": (
+            "File sharing does not require message signing (SMB)"
+        ),
+        (
+            "During this check, the device did not require message signing "
+            "for the negotiated SMB version."
+        ): (
+            "For the SMB file-sharing version used in this check, the device did not require "
+            "messages to be signed."
+        ),
+        (
+            "Signing helps detect changes to file-sharing messages. A server that does not "
+            "require it may accept unsigned connections; this scan did not establish "
+            "whether ordinary connections are signed."
+        ): (
+            "Message signing helps detect changes to file-sharing messages. This device may "
+            "accept unsigned connections; the scan did not check whether the connections "
+            "you normally use are signed."
+        ),
+        (
+            "Only the negotiated SMB version was checked; other versions and client "
+            "settings were not established."
+        ): (
+            "Only the SMB version used in this check was assessed. Other versions and the "
+            "settings on connecting computers were not checked."
+        ),
+        "Signing concerns message integrity, not encryption or shared-folder permissions.": (
+            "Signing helps detect changed messages. It does not scramble file contents "
+            "or decide who can open shared folders."
+        ),
+        (
+            "This was a local negotiation check; no tampering, credential relay, "
+            "or Internet exposure was tested."
+        ): (
+            "This check stayed on your local network. It did not try changing messages, "
+            "misusing sign-in details, or reaching the device from the Internet."
+        ),
+        (
+            "Check the file-sharing settings or ask the device maker whether "
+            "SMB signing can be required."
+        ): (
+            "Check the settings or ask the device maker whether file sharing "
+            "can require SMB signing."
+        ),
+        (
+            "Check that the computers using the shared folders support signing "
+            "before changing this setting."
+        ): (
+            "Before changing this setting, check that the computers using your shared "
+            "folders can sign messages."
+        ),
+        (
+            "Ask the owner to enable required signing using the device maker's "
+            "instructions if supported."
+        ): (
+            "If the device supports it, ask the owner to require message signing "
+            "by following the device maker's instructions."
+        ),
+        (
+            "After an authorised change, confirm file sharing still works "
+            "and repeat the Deep check."
+        ): (
+            "After a change approved by the owner, check that file sharing still works "
+            "and run the Deep check again."
+        ),
+    }
+)
 
 
 def wording_choices(original: str) -> list[str]:

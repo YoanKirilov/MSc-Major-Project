@@ -6,7 +6,7 @@ import { reviewItemTitle } from '../app/static/js/presentation.mjs';
 import { findingDeviceOptions, repeatedUnknownReplies } from '../app/static/js/finding-list.mjs';
 
 const state = () => ({ version: 1, search: 'web', devices: 'display', filter: 'low', tasks: 'to_check',
-  sort: 'name', reviewDevice: 'all', selected: 'finding-1', limit: 48, open: ['device-details'], y: 987 });
+  sort: 'name', deviceFilter: 'all', reviewDevice: 'all', selected: 'finding-1', limit: 48, open: ['device-details'], y: 987 });
 
 test('reading state is isolated by report and tab and never persists evidence or edits', () => {
   const values = new Map();
@@ -43,6 +43,8 @@ test('stored filters, lengths, scroll and disclosure keys are bounded and allowl
   assert.equal(value.filter, 'all');
   assert.equal(value.tasks, 'all');
   assert.equal(value.sort, 'priority');
+  assert.equal(validatedReadingState({ ...state(), deviceFilter: 'unsafe' }).deviceFilter, 'all');
+  assert.equal(validatedReadingState({ ...state(), deviceFilter: 'unfinished' }).deviceFilter, 'unfinished');
   assert.equal(value.limit, 254);
   assert.equal(value.y, 0);
   assert.equal(value.open.length, 2048);

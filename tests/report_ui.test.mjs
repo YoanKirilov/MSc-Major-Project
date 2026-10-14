@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { shortcutMatches, renderReportInsights } from '../app/static/js/report-insights.mjs';
+import { bindReportExport } from '../app/static/js/report-export.mjs';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as presentation from '../app/static/js/presentation.mjs';
@@ -369,9 +371,9 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     const button = new Element('button'); button.className = 'filter-chip'; button.dataset.filter = filter;
     document.body.append(button);
   }
-  const context = vm.createContext({ document, window: { location: { pathname: '/scans/test' },
+  const context = vm.createContext({ document, request: () => { throw Error('Unexpected API request'); }, window: { location: { pathname: '/scans/test' },
     matchMedia: () => ({ matches: false, addEventListener() {} }) }, URL,
-    ...presentation, ...reportView, deviceResultEntries, renderDeviceComponents, renderFindingList,
+    ...presentation, ...reportView, shortcutMatches, renderReportInsights, bindReportExport, deviceResultEntries, renderDeviceComponents, renderFindingList,
     findingDeviceOptions, repeatedUnknownReplies, createTextEditor,
     createNicknameState, projectNicknames, createNoteState, checkStatus, projectNotes, partialScanTitle, createCvePanel, prioritise, formatServiceLabel: serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
   const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8')

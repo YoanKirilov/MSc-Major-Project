@@ -294,11 +294,17 @@ def test_certificate_date_is_not_a_security_verdict():
         443,
         "https",
         script_results=[
-            {"script_id": "ssl-cert", "output": "Not valid after: 2001-01-01T00:00:00"}
+            {
+                "script_id": "ssl-cert",
+                "output": "Not valid before: 2000-01-01T00:00:00\n"
+                "Not valid after: 2001-01-01T00:00:00",
+            }
         ],
     )
     existing_details(d, [s], [])
-    assert "Expired" in d.details[0].value and "does not verify" in d.details[0].value
+    assert "had expired when checked" in d.details[0].value
+    assert "Dates alone do not verify" in d.details[0].value
+    assert d.details[0].observed_at == s.observed_at
 
 
 @pytest.mark.asyncio

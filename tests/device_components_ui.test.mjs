@@ -39,6 +39,24 @@ const render = (data, options = {}) => {
   return { container, result: renderDeviceSummaries({ document, container, data, ...options }) };
 };
 
+test('host-level configuration replies are available once per device without implying safety', () => {
+  const data = fixture({policy:{selected_scripts:['smb-protocols','smb2-security-mode']},
+    devices:[{...baseDevice,host_script_results:[{script_id:'smb2-security-mode',output:'3.1.1: Message signing enabled and required',truncated:false}]}]});
+  const before = JSON.stringify(data);
+  const {container} = render(data);
+  assert.match(container.textContent, /Recorded device checks/);
+  assert.match(container.textContent, /negotiated version, not every possible connection/);
+  assert.match(container.textContent, /File-sharing versions.*no usable reply.*no pass is assumed/);
+  assert.equal((container.textContent.match(/Supporting feature details/g)||[]).length, 1);
+  assert.equal(JSON.stringify(data), before);
+});
+
+test('shortened host output stays technical evidence rather than a complete configuration verdict', () => {
+  const {container} = render(fixture({devices:[{...baseDevice,host_script_results:[{script_id:'smb-protocols',output:'dialects: SMBv1',truncated:true}]}]}));
+  assert.match(container.textContent, /complete result was not established/);
+  assert.match(container.textContent, /No review items were recorded.*not proof of safety/);
+});
+
 test('device identity, status and counts stay visible in a compact shared anatomy', () => {
   const data = fixture({ devices: [{ ...baseDevice }, { device_id: 'device-2', ip: '192.168.1.11' }] });
   const before = JSON.stringify(data);

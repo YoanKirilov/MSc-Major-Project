@@ -156,7 +156,8 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
             expect(page.locator("#network-status")).to_contain_text("could not be checked")
             page.locator(".settings-advanced").evaluate("element => element.open = true")
             expect(page.locator("#mdns-status")).to_contain_text("could not be checked")
-            expect(page.locator("#pihole-status")).to_contain_text("could not be checked")
+            expect(page.locator("#pihole-enabled")).to_have_count(0)
+            assert all("pihole_enabled" not in item for item in updates)
             fault["status"] = False
             fault["settings_get"] = True
             page.goto(base + "/settings")
@@ -169,8 +170,6 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
 
             page.goto(base + "/history")
             expect(page.locator("#history-list a")).to_have_count(0)
-            expect(page.locator("#history-status")).to_contain_text("Scroll down to reveal")
-            scroll_history_with_keyboard(page)
             expect(page.locator("#history-status")).to_contain_text("No saved reports yet")
             expect(page.locator("#history-empty")).to_be_visible()
             assert page.title().startswith("Saved reports")
@@ -195,7 +194,7 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
                         expect(page.locator("#save-settings")).to_be_enabled()
                     elif route == "/history":
                         expect(page.locator("#history-status")).to_contain_text(
-                            "Scroll down to reveal"
+                            "No saved reports yet"
                         )
                     else:
                         expect(page.locator("#scanLaunchButton")).to_be_enabled()

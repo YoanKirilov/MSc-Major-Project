@@ -76,7 +76,7 @@ def test_appearance_controls_replace_justification_and_persist_across_pages(ui):
         _assert_preferences(page, "light", "larger", True)
 
 
-def test_shared_display_link_keyboard_access_and_settings_choices_without_saving(ui, tmp_path):
+def test_settings_keeps_display_choices_without_duplicate_header_link(ui, tmp_path):
     from playwright.sync_api import expect
 
     page, base, reports = ui
@@ -94,19 +94,19 @@ def test_shared_display_link_keyboard_access_and_settings_choices_without_saving
     for route in ("/", "/history", f"/scans/{reports['zero'].scan_id}", "/settings"):
         _navigate(page, base + route)
         link = page.get_by_role("link", name="Display preferences", exact=True)
-        expect(link).to_have_count(1)
-        expect(link).to_have_attribute("href", "/settings#display-preferences")
+        expect(link).to_have_count(0)
         assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
     _navigate(page, base + "/")
-    page.get_by_role("link", name="Display preferences", exact=True).focus()
+    page.locator('nav[aria-label="Main navigation"]').get_by_role(
+        "link", name="Settings", exact=True
+    ).focus()
     page.keyboard.press("Enter")
-    page.wait_for_url(base + "/settings#display-preferences")
+    page.wait_for_url(base + "/settings")
     page.wait_for_load_state("networkidle")
     panel = page.locator("#display-preferences")
     expect(panel).to_be_visible()
-    expect(panel).to_be_focused()
+    page.get_by_label("Colour theme", exact=True).focus()
     expect(page.locator("#settings-form #themePreference")).to_have_count(0)
-    page.keyboard.press("Tab")
     expect(page.get_by_label("Colour theme", exact=True)).to_be_focused()
     page.get_by_label("Colour theme", exact=True).select_option("light")
     page.get_by_label("Text size", exact=True).select_option("larger")
@@ -364,7 +364,6 @@ def test_report_name_colour_keeps_scan_type_and_swaps_on_hover(ui):
             _navigate(page, base + "/history")
             page.locator("#history-profile").select_option(profile)
             page.get_by_role("button", name="Search reports", exact=True).click()
-            expect(page.locator("#history-list a")).to_have_count(0)
             scroll_history_with_keyboard(page)
             link = page.locator(f"#history-list a[data-profile='{profile}']").first
             expect(link).to_be_visible()

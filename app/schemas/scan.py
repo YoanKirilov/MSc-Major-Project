@@ -52,6 +52,23 @@ class DeviceDetail(StrictModel):
     observed_at: str = Field(default_factory=lambda: iso_z(utc_now()))
 
 
+class ComparedService(StrictModel):
+    protocol: Literal["tcp", "udp"]
+    port: int = Field(ge=1, le=65535)
+
+
+class DeviceComparison(StrictModel):
+    status: Literal["available", "not_compared"] = "not_compared"
+    source_scan_id: UUID | None = None
+    source_created_at: str | None = None
+    current_created_at: str
+    added: list[ComparedService] = Field(default_factory=list, max_length=200)
+    not_observed: list[ComparedService] = Field(default_factory=list, max_length=200)
+    added_count: int = Field(default=0, ge=0)
+    not_observed_count: int = Field(default=0, ge=0)
+    reason: str = Field(default="", max_length=600)
+
+
 class Device(StrictModel):
     device_id: str
     scan_id: str
@@ -73,6 +90,7 @@ class Device(StrictModel):
     host_script_results: list[ScriptEvidence] = Field(default_factory=list)
     profile: DeviceProfile = Field(default_factory=DeviceProfile)
     user_category: str | None = None
+    comparison: DeviceComparison | None = None
     observed_at: str = Field(default_factory=lambda: iso_z(utc_now()))
 
 

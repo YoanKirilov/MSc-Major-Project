@@ -529,8 +529,7 @@ input, select { max-width: 100%; min-width: 0; }
 .history-list a[data-profile="unknown"] { --report-name-colour: var(--text); --report-name-hover: var(--cyan); }
 .history-list a, .history-list a:visited { color: var(--report-name-colour, var(--text)); }
 .history-list a:is(:hover, :focus-visible) { color: var(--report-name-hover, var(--cyan)); border-color: currentColor; }
-.history-scroll-stage { min-height: 100vh; min-height: 100svh; scroll-margin-top: var(--space-4); }
-.history-scroll-stage[data-phase="error"], .history-scroll-stage[data-phase="ready"] { min-height: 0; }
+.history-scroll-stage { scroll-margin-top: var(--space-4); }
 .history-results > h2 { scroll-margin-top: var(--space-4); }
 .storage-details > summary { font-weight: 650; }
 .storage-details > button { margin-top: var(--space-3); }
@@ -641,4 +640,25 @@ html[data-reduce-motion="true"] :is(.primary-button, .scan-launch, .finding-card
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   :is(.primary-button, .scan-launch, .finding-card):hover { transform: none !important; }
+}
+.report-changes { margin-block: 1.5rem; }
+.report-changes ul, .feature-inventory ul { padding-inline-start: 1.4rem; }
+.report-changes li, .feature-inventory li { margin-block: .8rem; overflow-wrap: anywhere; }
+.report-changes p { max-width: 76ch; }
+.feature-inventory { margin-block: 1.25rem; }
+.feature-inventory button { margin-inline: .6rem; }
+.report-export-dialog { width: min(760px, calc(100vw - 2rem)); max-height: 85vh; overflow: auto; }
+.report-export-dialog label { display: flex; align-items: center; gap: .7rem; min-height: 44px; margin-block: .6rem; }
+.report-export-dialog input[type="checkbox"] { width: 1.25rem; height: 1.25rem; }
+.report-export-preview { overflow-wrap: anywhere; }
+@media print {
+  body:has(> #report-export-dialog[open]) > :not(#report-export-dialog) { display: none !important; }
+  body:has(> #report-export-dialog[open]) > #report-export-dialog {
+    --text: #111; --muted: #333; --surface: white; --surface-2: white;
+    --report-light: #146da5; --report-deep: #664099;
+    display: block; position: static; width: auto; max-width: none; max-height: none;
+    overflow: visible; margin: 0; border: 0; color: #111; background: white;
+  }
+  #report-export-dialog .report-export-controls { display: none !important; }
+  #report-export-dialog .report-export-content, #report-export-dialog .report-export-preview { overflow: visible; }
 }

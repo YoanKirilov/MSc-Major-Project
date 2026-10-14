@@ -4,12 +4,12 @@ Keep native HTML and the existing CSS tokens; no additional UI framework is need
 
 | Component | Contract |
 | --- | --- |
-| Shared navigation | Same Home, Saved reports, Settings and Display preferences links; current page and visible keyboard focus; skip link reaches main content. |
+| Shared navigation | Same Home, Saved reports and Settings links; display choices remain in Settings, not a duplicate global shortcut. Current page, visible keyboard focus and skip link reaching main content. |
 | Primary/secondary/danger actions | One clear main task per group; wrap with spacing on phones; product target 44 CSS pixels high. Danger does not rely on red alone. |
 | Feedback | Loading, empty, unavailable, success and unsaved states have plain text. Routine changes use status regions, actionable failures link to inputs. Do not move focus on every poll. |
 | Dialog | Native modal, named heading, safe default focus, Escape/cancel return focus; pending operations cannot submit twice. Deletion identifies the exact saved records. |
 | Scan overview | Stable job-ID rows/actions; status text updates in place. Pending cancellation remains pending. Disappearance moves focus only if that job held it. |
-| History | Empty until intentional reveal; one row per gesture, 24 per page; selection is only shown eligible rows. Restore search/page per tab without initial fetching or restoring selection. |
+| History | A complete native list of up to 24 summaries loads for the selected numbered page. No gesture gate or infinite growth. Observation decorates only; absent observer cannot hide content. Select this page includes eligible offscreen rows, never another page. Restore search/page context, never destructive selection. |
 | Dates | Saved UTC timestamps remain unchanged; visible timestamps include zone. UTC date filters are inclusive and each report exposes its matching filter date. |
 | Recovery | Explicit authenticated listing, bounded pages, revision-safe Restore, no purge; unknown POST outcomes are reconciled by reload, not automatically repeated. |
 | Wording | Short truthful source label; factual limitations stay visible. AI wording is not a second security test and Checked is not verified fixed. |

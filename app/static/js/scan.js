@@ -4,6 +4,8 @@ import { renderFindingList, findingDeviceOptions, repeatedUnknownReplies } from 
 import { createReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation } from './report-view.mjs?v=20261013-accessibility';
 import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from './devices.mjs?v=20261014-reliability';
 import { createCvePanel } from './cves.mjs?v=20261002-cve';
+import { shortcutMatches, renderReportInsights } from './report-insights.mjs?v=20261014-device-first';
+import { bindReportExport } from './report-export.mjs?v=20261014-device-first';
 import { createNoteState, checkStatus, projectNotes } from './notes.mjs?v=20261012-final-layout';
 import { createNicknameState, projectNicknames } from './nicknames.mjs?v=20261007-followup';
 import { recordedTimeLabel, localFeatureHelp, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261014-dates';
@@ -53,6 +55,7 @@ const reportFirstStep = document.querySelector('#report-first-step');
 const reportChecks = document.querySelector('#report-checks');
 let selectedFinding = null;
 let currentData = null;
+bindReportExport({ button: document.querySelector('#shareReportButton'), scanId, request, getData: () => currentData, document });
 let activeFilter = 'all';
 let searchTerm = '';
 let checklistSaving = false;
@@ -98,6 +101,7 @@ if (savedReading) {
   deviceSearchTerm = savedReading.devices.trim().toLowerCase();
   deviceLimit = savedReading.limit;
   document.querySelector('#deviceSort').value = savedReading.sort;
+  document.querySelector('#deviceQuickFilter').value = savedReading.deviceFilter;
   document.querySelector('#checklist-filter').value = savedReading.tasks;
   filterButtons.forEach(button => {
     const active = button.dataset.filter === activeFilter;
@@ -114,6 +118,7 @@ function rememberReading() {
     search: searchInput.value, devices: deviceSearchInput.value, filter: activeFilter,
     tasks: document.querySelector('#checklist-filter').value,
     sort: document.querySelector('#deviceSort').value, limit: deviceLimit,
+    deviceFilter: document.querySelector('#deviceQuickFilter').value,
     reviewDevice: reviewDevice.value,
     open: openDisclosureKeys(document), y: window.scrollY || 0 });
 }
@@ -142,7 +147,7 @@ function restoreReading() {
       notes.refresh();
     }
     const scroll = () => {
-      const anchors = ['first-action', 'devices-title', 'findings-title', 'next-title', 'changes-title'];
+      const anchors = ['first-action', 'what-changed', 'devices-title', 'findings-title', 'next-title', 'changes-title'];
       const anchor = window.location.hash?.slice(1);
       const navigation = window.performance?.getEntriesByType('navigation')[0]?.type;
       const returning = savedReading && ['reload', 'back_forward'].includes(navigation);
@@ -300,6 +305,22 @@ document.querySelector('#clearDeviceSearch').addEventListener('click', () => {
 document.querySelector('#deviceSort').addEventListener('change', () => {
   deviceLimit = 24;
   if (currentData) renderDevices(currentData);
+});
+document.querySelector('#deviceQuickFilter').addEventListener('change', () => {
+  deviceLimit = 24;
+  if (currentData) renderDevices(currentData);
+});
+document.querySelector('#resetDeviceFilters').addEventListener('click', () => {
+  deviceSearchInput.value = ''; deviceSearchTerm = ''; deviceLimit = 24;
+  document.querySelector('#deviceQuickFilter').value = 'all';
+  document.querySelector('#deviceSort').value = 'priority';
+  if (currentData) renderDevices(currentData);
+  deviceSearchInput.focus({ preventScroll: true });
+});
+document.querySelector('#needHelpShortcut').addEventListener('click', () => {
+  const control = document.querySelector('#checklist-filter');
+  control.value = 'need_help'; control.dispatchEvent(new Event('change'));
+  control.focus({ preventScroll: true });
 });
 document.querySelector('#showMoreDevices').addEventListener('click', () => {
   deviceLimit += 24;
@@ -779,7 +800,17 @@ function renderBeginnerGuide(data) {
 
 function deviceMatchesSearch(device, data) {
   const services = data.services.filter(item => item.device_id === device.device_id);
-  return matchesSearch(deviceSearchTerm, deviceSearchValues(device, services), device.ip);
+  return shortcutMatches(device, data, document.querySelector('#deviceQuickFilter').value)
+    && matchesSearch(deviceSearchTerm, deviceSearchValues(device, services), device.ip);
+}
+
+function showInsightDevice(ip) {
+  document.querySelector('#deviceQuickFilter').value = 'all';
+  deviceSearchInput.value = ip; deviceSearchTerm = ip; deviceLimit = 24;
+  renderDevices(currentData);
+  const group = [...deviceSummaries.querySelectorAll('.device-summary-group')].find(item => item.dataset.deviceIp === ip);
+  const detail = group?.querySelector('.device-summary');
+  if (detail) { detail.open = true; detail.querySelector('summary').focus(); }
 }
 
 function renderComparisons(data) {
@@ -1156,6 +1187,8 @@ function render(data) {
   renderAdvertisements(data);
   renderNextSteps(data);
   renderBeginnerGuide(data);
+  renderReportInsights({ document, data, onShowDevice: showInsightDevice });
+  document.querySelector('#shareReportButton').disabled = data.source !== 'live' || data.phase !== 'finished';
   simplifyButton.hidden = !['completed', 'partial', 'failed', 'cancelled'].includes(data.state)
     || (data.analysis_status === 'ready' && !pendingWording(data) && !outdatedAi && currentOverview(data));
   simplifyButton.disabled = preparing;

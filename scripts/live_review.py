@@ -53,6 +53,16 @@ def normal_public_check(run):
             restore_route="/api/reports/restore" in schema["paths"],
             recovery_route="/api/reports/recovery" in schema["paths"],
             capabilities_route="/api/report-capabilities" in schema["paths"],
+            device_inventory_route="/api/devices" in schema["paths"],
+            device_views_contract=any(
+                parameter.get("name") == "view"
+                for parameter in schema["paths"]
+                .get("/api/devices", {})
+                .get("get", {})
+                .get("parameters", [])
+            ),
+            share_route="/api/live-scans/{scan_id}/share" in schema["paths"],
+            monitoring_route="/api/monitoring" in schema["paths"],
         )
         mismatches = []
         for path in (ROOT / "app/static").rglob("*"):
@@ -340,6 +350,61 @@ def main():
                 (run / (profile + "-report-text.txt")).write_text(
                     page.locator("body").inner_text(), encoding="utf-8"
                 )
+                expect(page.locator("#changes-overview")).not_to_be_empty()
+                expect(page.locator("#shareReportButton")).to_be_enabled()
+                page.locator("#feature-inventory > summary").click()
+                expect(page.locator("#feature-inventory-list")).not_to_be_empty()
+                page.locator("#shareReportButton").click()
+                expect(page.locator("#report-export-dialog")).to_be_visible()
+                expect(page.locator("#report-export-dialog .report-export-preview")).to_be_visible(
+                    timeout=60000
+                )
+                page.get_by_role("button", name="Close preview", exact=True).click()
+            inventory = read_api(context, base + "/api/devices?limit=24")
+            if not inventory.ok:
+                raise RuntimeError("The live saved-device inventory could not be read")
+            inventory_data = inventory.json()
+            inventory_views = {}
+            for view in ("favourites", "not-recognised", "unfinished", "review"):
+                response = read_api(context, base + f"/api/devices?limit=24&view={view}")
+                if not response.ok or response.json().get("view") != view:
+                    raise RuntimeError("The saved-device API did not confirm an applied view")
+                inventory_views[view] = response.json()["total"]
+            device_page = context.new_page()
+            navigation = device_page.goto(base + "/devices")
+            if navigation is None or not navigation.ok:
+                raise RuntimeError("The live saved-device page could not be opened")
+            expect(device_page.locator("#device-library-status")).to_contain_text(
+                "Page", timeout=60000
+            )
+            device_page.get_by_role("combobox", name="Show saved devices").select_option(
+                "favourites"
+            )
+            device_page.get_by_role("button", name="Search devices", exact=True).click()
+            expect(device_page.locator("#device-library-empty")).to_be_visible(timeout=60000)
+            device_page.get_by_role("button", name="Reset search and view", exact=True).click()
+            expect(device_page.locator("#device-library-status")).to_contain_text(
+                "Page", timeout=60000
+            )
+            device_page.close()
+            monitor = read_api(context, base + "/api/monitoring")
+            if not monitor.ok or monitor.json().get("enabled"):
+                raise RuntimeError(
+                    "Periodic checks must remain disabled during this bounded live pair"
+                )
+            save(
+                run,
+                "feature-verification.json",
+                {
+                    "inventory_total": inventory_data["total"],
+                    "inventory_warnings": inventory_data["warnings"],
+                    "inventory_view_counts": inventory_views,
+                    "inventory_filter_browser_reset": True,
+                    "private_exports_opened": 2,
+                    "comparison_and_feature_sections_present": True,
+                    "monitoring_off_by_default": True,
+                },
+            )
             save(
                 run,
                 "browser-results.json",

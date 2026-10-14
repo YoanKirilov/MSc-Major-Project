@@ -86,16 +86,6 @@
           <p class="field-error" id="mdns-error" hidden></p>
         </div>
       </fieldset>
-      <fieldset class="form-section">
-        <legend>Names from Pi-hole (optional)</legend>
-        <p>Pi-hole is a separate service on your own network. It can supply names it already knows, but cannot identify every device.</p>
-        <div class="form-field checkbox-field">
-          <label for="pihole-enabled"><input type="checkbox" id="pihole-enabled" aria-describedby="pihole-status pihole-error" /> Use names from my Pi-hole</label>
-          <p id="pihole-status" class="field-hint" role="status"></p>
-          <p class="field-error" id="pihole-error" hidden></p>
-        </div>
-        <p class="field-hint">For configuration, see <code>docs/pihole-setup.md</code>. Imported names are context, not proof that a device is online or safe. This page does not contact Pi-hole.</p>
-      </fieldset>
     </details>
     <div class="form-actions">
       <button class="primary-button" type="submit" id="save-settings" disabled>Save settings</button>
@@ -104,5 +94,24 @@
     </div>
   </form>
 </section>
+<section class="card settings-card" aria-labelledby="monitor-title">
+  <h2 id="monitor-title">Optional periodic Light checks</h2>
+  <p>Repeat a Light check while this app is running. Off by default. This is not continuous protection: sleeping devices can be missed, and checks stop when the app closes or the connection changes. After a restart, you must authorise them again.</p>
+  <p>Stop periodic checks prevents future checks; use a running scan's Cancel scan button to stop a check already in progress.</p>
+  <p id="monitor-summary" role="status">Loading periodic-check settings…</p>
+  <form id="monitor-form">
+    <div class="form-field"><label for="monitor-interval">Time between checks</label>
+    <select id="monitor-interval"><option value="30">30 minutes</option><option value="60" selected>1 hour</option><option value="360">6 hours</option><option value="1440">24 hours</option></select></div>
+    <p id="monitor-scope"></p>
+    <label class="checkbox-field" for="monitor-authorised"><input type="checkbox" id="monitor-authorised" aria-describedby="monitor-scope monitor-error" /> I own or have permission to repeatedly check the network shown above</label>
+    <div class="form-actions">
+      <button id="monitor-start" class="secondary-button" type="submit" disabled>Enable periodic checks</button>
+      <button id="monitor-stop" class="secondary-button" type="button" disabled>Stop periodic checks</button>
+      <button id="monitor-reload" class="text-button" type="button">Reload periodic-check status</button>
+    </div>
+    <p id="monitor-error" class="field-error" role="status" hidden></p>
+  </form>
+  <details><summary>Recent local events</summary><p>These notices describe saved checks, not verified intrusions or repairs. No emails or external notifications are sent.</p><ol id="monitor-events"></ol></details>
+</section>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/settings.js?v=20261014-reliability"></script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/settings.js?v=20261014-reliability"></script><script type="module" src="/static/js/monitoring.js?v=20261014-periodic"></script>{% endblock %}

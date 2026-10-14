@@ -61,6 +61,7 @@
             <div class="hero-actions report-tools" role="group" aria-label="Report tools">
               <button class="secondary-button" id="runAgainButton" type="button" disabled>Run again</button>
               <button id="editReportTitle" class="text-button" type="button" disabled>Name this report</button>
+              <button id="shareReportButton" class="text-button" type="button" disabled>Print or export</button>
             </div>
           </div>
           <div class="score-card result-summary-card" aria-label="Scan coverage and review counts">
@@ -81,7 +82,7 @@
         <p id="report-interaction-status" class="sr-only" role="status" aria-live="polite"></p>
         <div id="report-content" hidden inert aria-busy="true">
           <nav class="report-jump-links" aria-label="Report sections">
-            <a href="#first-action">Start here</a><a href="#devices-title">Devices</a><a href="#findings-title">Review items</a><a href="#next-title">Tasks</a><a href="#changes-title">Supporting info</a>
+            <a href="#first-action">Start here</a><a href="#what-changed">What changed?</a><a href="#devices-title">Devices</a><a href="#findings-title">Review items</a><a href="#next-title">Tasks</a><a href="#changes-title">Supporting info</a>
           </nav>
           <section class="beginner-guide" aria-labelledby="guide-title">
             <h2 id="guide-title">Where to start</h2>
@@ -103,6 +104,12 @@
               <p>High means review first; Medium means review next; Low means lower priority. Review describes a feature whose safety this tool has not assessed. An answering service is not proof of a break-in; no flagged items is not proof of safety.</p>
             </details>
           </section>
+          <section class="report-changes card" id="what-changed" aria-labelledby="what-changed-title">
+            <h2 id="what-changed-title">What changed since earlier checks?</h2>
+            <p id="changes-overview"></p>
+            <p>Only compatible, completed checks of reliably matched observations are compared. Newly observed does not mean an intruder; not observed this time does not mean removed or repaired.</p>
+            <details><summary>View comparison dates and differences</summary><ul id="changes-list"></ul></details>
+          </section>
           <section class="device-section" aria-labelledby="devices-title">
             <div><p class="eyebrow">Devices in this report</p><h2 id="devices-title">Your devices</h2>
               <p>Use each address to match the device to your router's list. Reported names are clues, not verified identities; your own nickname does not change the scan facts.</p>
@@ -110,11 +117,14 @@
             <div class="report-toolbar">
               <div class="form-field"><label for="deviceSearchInput">Search devices</label><div class="search-box"><input id="deviceSearchInput" type="search" placeholder="Name, address or feature" autocomplete="off" /><button id="clearDeviceSearch" class="text-button" type="button">Clear</button></div></div>
               <div class="form-field"><label for="deviceSort">Order devices by</label><select id="deviceSort"><option value="priority">Review priority</option><option value="name">Name</option><option value="address">Network address</option></select></div>
+              <div class="form-field"><label for="deviceQuickFilter">Show devices</label><select id="deviceQuickFilter"><option value="all">All devices</option><option value="unnamed">Unnamed devices</option><option value="unfinished">Unfinished checks</option><option value="review">With items to review</option></select></div>
+              <button id="resetDeviceFilters" class="text-button" type="button">Reset device filters</button>
             </div>
             <p id="device-search-count" role="status"></p>
             <details class="scan-technical"><summary>How many devices have a reported name?</summary><p id="naming-coverage"></p></details>
             <div id="device-summaries" class="device-summaries"></div>
             <button id="showMoreDevices" class="secondary-button" type="button" hidden>Show more devices</button>
+            <details class="feature-inventory" id="feature-inventory"><summary>View by feature — web pages, file sharing and more</summary><p>This groups answering features from the whole saved report, independently of the device filters. Inferred names are qualified; announcements alone are not included. It is not a safety verdict.</p><ul id="feature-inventory-list"></ul></details>
             <details id="technical-devices" class="scan-technical">
               <summary>Technical device details — addresses, ports and check output</summary>
               <p>An announcement is not the same as a response to a service check. Scroll this table sideways on small screens.</p>
@@ -158,6 +168,7 @@
               <p>Marking Checked records your review, not a verified fix or a new security test.</p>
               <p id="checklist-notice" role="status"></p><p id="checklist-progress" role="status"></p>
               <label class="checklist-filter">Show review tasks<select id="checklist-filter"><option value="all">All statuses</option><option value="to_check">To check</option><option value="checked">Checked</option><option value="need_help">Need help</option></select></label>
+              <button id="needHelpShortcut" class="text-button" type="button">Show tasks where I need help</button>
               <div class="form-actions"><button id="expandReviewTasks" class="text-button" type="button" disabled>Expand available checklists</button><button id="collapseReviewTasks" class="text-button" type="button" disabled>Collapse available checklists</button></div>
               <p id="checklist-filter-count" role="status"></p><p id="checklist-empty" hidden>No tasks match this status. Choose All statuses to see every task.</p>
             </div>

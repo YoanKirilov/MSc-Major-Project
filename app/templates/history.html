@@ -41,29 +41,27 @@
 </section>
 <section class="history-results" aria-labelledby="history-results-title">
   <h2 id="history-results-title" tabindex="-1">Reports</h2>
-  <p id="history-status" class="status-message" role="status" tabindex="-1">Scroll down to reveal saved reports one at a time.</p>
+  <p id="history-status" class="status-message" role="status" tabindex="-1">Loading your saved reports…</p>
   <p id="history-warnings" class="status-message status-warning" role="status" hidden></p>
-  <div class="history-management" role="group" aria-label="Manage shown reports">
-    <label class="history-select-all"><input id="history-select-all" type="checkbox" disabled aria-describedby="history-selection-hint" /> Select shown reports</label>
+  <div class="history-management" role="group" aria-label="Manage reports on this page">
+    <label class="history-select-all"><input id="history-select-all" type="checkbox" disabled aria-describedby="history-selection-hint" /> Select this page</label>
     <button id="history-delete-selected" class="danger-button" type="button" disabled>Delete selected</button>
     <span id="history-selection-status" role="status">No reports selected.</span>
   </div>
-  <p id="history-selection-hint" class="field-hint">Select only the reports shown on this page. Running reports cannot be deleted.</p>
+  <p id="history-selection-hint" class="field-hint">Select this page chooses its eligible reports, including rows further down, up to 24. It never selects another page. Running reports cannot be deleted.</p>
   <p id="history-feedback" class="status-message" role="status" tabindex="-1"></p>
   <div class="history-feedback-actions">
     <button id="history-undo-delete" class="secondary-button" type="button" hidden>Undo last deletion</button>
     <button id="history-retry" class="secondary-button" type="button" hidden>Retry loading reports</button>
     <button id="history-refresh" class="secondary-button" type="button" hidden>Refresh reports</button>
-    <a id="history-scroll-link" href="#history-sentinel">Scroll to reports</a>
   </div>
   <nav id="history-pagination" class="history-pagination" aria-label="Report pages" hidden></nav>
   <div id="history-scroll-stage" class="history-scroll-stage">
     <div id="history-empty" class="empty-state" hidden><h3>No saved reports yet</h3><p>After an authorised scan finishes, its report is saved here.</p><a class="secondary-button" href="/">Set up a scan</a></div>
     <ul id="history-list" class="history-list" aria-labelledby="history-results-title"></ul>
-    <div id="history-sentinel" class="history-sentinel" aria-hidden="true"></div>
   </div>
   <nav id="history-pagination-bottom" class="history-pagination" aria-label="Report pages after the list" hidden></nav>
-  <p id="history-page-hint" class="field-hint">Scroll to reveal reports one at a time, up to 24 on each page. Use Page Down or End with a keyboard.</p>
+  <p id="history-page-hint" class="field-hint">Each page contains up to 24 reports. Scrolling does not load another page.</p>
 </section>
 <dialog id="history-delete-dialog" class="rescan-dialog history-delete-dialog" aria-labelledby="history-delete-title" aria-describedby="history-delete-help">
   <h2 id="history-delete-title">Delete selected reports?</h2>
@@ -93,4 +91,4 @@
   <p>Back up before removing old reports. Stop the app, then use its storage export command to copy reports, recovery copies, names and settings into a new private folder. Restore a backup into a new folder, never over existing evidence. See <code>docs/storage-backups.md</code> for commands. Backups contain private network details; do not publish them.</p>
 </details>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/history.js?v=20261014-reliability"></script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/history.js?v=20261014-paged-viewport"></script>{% endblock %}

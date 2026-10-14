@@ -184,8 +184,10 @@ class ScanSupervisor:
                     results.append(await trash.restore(trash_id, deadline=deadline))
         return results
 
-    async def start(self, scan_id: str) -> None:
+    async def start(self, scan_id: str, *, require_idle: bool = False) -> None:
         async with self._admission:
+            if require_idle and self.active_scan_count:
+                raise RuntimeError("SCAN_BUSY")
             if self.is_active(scan_id) or self.is_analysis_active(scan_id):
                 raise RuntimeError("SCAN_BUSY")
             if not self.has_capacity():
@@ -795,7 +797,7 @@ class ScanSupervisor:
                     add_name(device, identity.get("hostname"), "nmap_discovery", device.observed_at)
                 add_name(device, await self._local_hostname(ip), "reverse_dns", device.observed_at)
                 device.profile = device.profile.model_validate(classify_device(device, services))
-                findings = evaluate_device(device, services)
+                findings = evaluate_device(device, services, profile=document.policy.get("profile"))
 
                 def commit(current, device=device, services=services, findings=findings, ip=ip):
                     coverage = current.coverage.model_copy(deep=True)

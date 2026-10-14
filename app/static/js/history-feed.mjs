@@ -6,14 +6,14 @@ function submittedFilters(input = {}) {
     .filter(([, value]) => value));
 }
 
-/** Start empty. Fetch one bounded page on demand; reveal its reports one by one. */
+/** A complete semantic page, capped at 24. Scrolling never changes its data. */
 export function createHistoryFeed({ request, onChange, pageSize = HISTORY_PAGE_SIZE }) {
   if (pageSize !== HISTORY_PAGE_SIZE) throw new TypeError('History pages contain at most 24 reports');
   let generation = 0;
   let failedRequest = null;
   let state = { items: [], pageItems: [], page: 1, pageSize, pageCount: 0,
-    revealedCount: 0, offset: 0, pageEndOffset: 0, total: null, filters: {}, busy: false,
-    phase: 'idle', hasMore: false, hasMoreWithinPage: false, warnings: [],
+    offset: 0, pageEndOffset: 0, total: null, filters: {}, busy: false,
+    phase: 'idle', warnings: [],
     unreadableCount: 0, error: '', retryMode: null, changed: false, loadingPage: null };
 
   function snapshot() {
@@ -29,20 +29,19 @@ export function createHistoryFeed({ request, onChange, pageSize = HISTORY_PAGE_S
   function reset(filters = {}, page = 1) {
     generation += 1;
     failedRequest = null;
-    publish({ items: [], pageItems: [], page: Number.isSafeInteger(page) && page > 0 ? page : 1, pageCount: 0, revealedCount: 0,
+    publish({ items: [], pageItems: [], page: Number.isSafeInteger(page) && page > 0 ? page : 1, pageCount: 0,
       offset: 0, pageEndOffset: 0, total: null, filters: submittedFilters(filters), busy: false,
-      phase: 'waiting', hasMore: true, hasMoreWithinPage: false, warnings: [],
+      phase: 'waiting', warnings: [],
       unreadableCount: 0, error: '', retryMode: null, changed: false, loadingPage: null }, 'replace');
   }
 
-  async function loadPage(targetPage, revealCount = 1, afterDelete = false) {
+  async function loadPage(targetPage, afterDelete = false) {
     if (state.busy) return false;
     const current = ++generation;
     const filters = submittedFilters(state.filters);
     const previousTotal = state.total;
     failedRequest = null;
-    publish({ busy: true, phase: 'loading', error: '', retryMode: null, loadingPage: targetPage,
-      hasMore: false, hasMoreWithinPage: false });
+    publish({ busy: true, phase: 'loading', error: '', retryMode: null, loadingPage: targetPage });
     try {
       let requestedPage = targetPage;
       // A deletion or concurrent library change can invalidate the current last page.
@@ -74,19 +73,17 @@ export function createHistoryFeed({ request, onChange, pageSize = HISTORY_PAGE_S
           seen.add(item.scan_id);
           return true;
         });
-        const items = pageItems.slice(0, Math.max(1, Math.min(pageSize, revealCount)));
+        const items = [...pageItems];
         const expectedCount = Math.max(0, Math.min(pageSize, response.total - offset));
         const changed = pageItems.length !== response.items.length
           || response.items.length !== expectedCount
           || (!afterDelete && previousTotal !== null && response.total !== previousTotal);
         const warnings = new Set((response.warnings || []).filter(warning => typeof warning === 'string'));
         if (changed) warnings.add('The saved report list changed while you were browsing. Search again to refresh it.');
-        const hasMore = items.length < pageItems.length;
-        publish({ items, pageItems, page: requestedPage, pageCount, revealedCount: items.length,
+        publish({ items, pageItems, page: requestedPage, pageCount,
           offset: (requestedPage - 1) * pageSize,
           pageEndOffset: (requestedPage - 1) * pageSize + response.items.length,
-          total: response.total, filters, busy: false, phase: 'ready', hasMore,
-          hasMoreWithinPage: hasMore, warnings: [...warnings],
+          total: response.total, filters, busy: false, phase: 'ready', warnings: [...warnings],
           unreadableCount: response.unreadable_count || 0, error: '', retryMode: null,
           changed, loadingPage: null }, 'replace', items);
         return true;
@@ -94,23 +91,16 @@ export function createHistoryFeed({ request, onChange, pageSize = HISTORY_PAGE_S
       return false;
     } catch (error) {
       if (current !== generation) return false;
-      failedRequest = { targetPage, revealCount, afterDelete };
-      publish({ busy: false, phase: 'error', hasMore: false, hasMoreWithinPage: false,
+      failedRequest = { targetPage, afterDelete };
+      publish({ busy: false, phase: 'error',
         retryMode: 'page', loadingPage: null,
         error: error instanceof Error ? error.message : 'Saved reports could not be loaded.' });
       return false;
     }
   }
 
-  function reveal() {
-    if (state.busy || !state.hasMore) return Promise.resolve(false);
-    if (state.phase === 'waiting') return loadPage(state.page);
-    const added = state.pageItems.slice(state.revealedCount, state.revealedCount + 1);
-    if (!added.length) return Promise.resolve(false);
-    const items = [...state.items, ...added];
-    const hasMore = items.length < state.pageItems.length;
-    publish({ items, revealedCount: items.length, hasMore, hasMoreWithinPage: hasMore }, 'append', added);
-    return Promise.resolve(true);
+  function load() {
+    return state.phase === 'waiting' && !state.busy ? loadPage(state.page) : Promise.resolve(false);
   }
 
   function goToPage(page) {
@@ -122,23 +112,21 @@ export function createHistoryFeed({ request, onChange, pageSize = HISTORY_PAGE_S
   }
 
   function reloadAfterDelete() {
-    // Keep the initial zero-report view if deletion was triggered from elsewhere.
+    // A recovery action before a list request should not race that initial request.
     if (state.total === null && state.phase === 'waiting') return Promise.resolve(false);
     const page = state.page;
-    const count = Math.max(1, state.revealedCount);
     generation += 1;
     state = { ...state, busy: false };
-    return loadPage(page, count, true);
+    return loadPage(page, true);
   }
 
   return {
     reset,
-    more: reveal,
-    reveal,
+    load,
     goToPage,
     reloadAfterDelete,
     retry: () => failedRequest
-      ? loadPage(failedRequest.targetPage, failedRequest.revealCount, failedRequest.afterDelete)
+      ? loadPage(failedRequest.targetPage, failedRequest.afterDelete)
       : Promise.resolve(false),
     getState: snapshot,
   };

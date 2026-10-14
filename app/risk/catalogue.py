@@ -1,4 +1,4 @@
-RULESET_VERSION = "1.2.1"
+RULESET_VERSION = "1.3.0"
 
 RULE_CATALOGUE = {
     "R01": {
@@ -170,7 +170,9 @@ RULE_CATALOGUE = {
         ),
         "severity": "medium",
         "confidence": "medium",
-        "limitations": ["SMB version and permissions were not established by this scan."],
+        "limitations": [
+            "Shared-folder permissions and Internet exposure were not established by this scan."
+        ],
         "actions": [
             {
                 "action_id": "review_sharing",
@@ -189,7 +191,7 @@ RULE_CATALOGUE = {
                 "url": "https://learn.microsoft.com/en-us/windows-server/storage/file-server/smb-secure-traffic",
             }
         ],
-        "version": "1.1.0",
+        "version": "1.1.1",
         "rule_id": "R05",
     },
     "R06": {
@@ -253,5 +255,117 @@ RULE_CATALOGUE = {
         ],
         "version": "1.2.0",
         "rule_id": "R07",
+    },
+    "R08": {
+        "title": "Older SMBv1 file sharing is supported",
+        "meaning": (
+            "This device accepted SMBv1, an older file-sharing protocol, during this local check."
+        ),
+        "why_it_matters": (
+            "SMBv1 lacks protections available in newer file-sharing versions. This scan did not "
+            "test whether any weakness can be exploited or which devices still use it."
+        ),
+        "severity": "high",
+        "confidence": "medium",
+        "limitations": [
+            "Support was observed at scan time on the associated local connection; this does "
+            "not establish Internet exposure.",
+            "The check negotiated a protocol only; it did not sign in, inspect files, "
+            "or test an exploit.",
+            "An incomplete or absent SMB result cannot establish that SMBv1 is disabled.",
+        ],
+        "actions": [
+            {
+                "action_id": "check_smb1_dependencies",
+                "text": (
+                    "Check the device's manual or ask its owner whether older devices "
+                    "still require SMBv1."
+                ),
+                "verification": (
+                    "Confirm those devices can use a newer file-sharing version "
+                    "before changing settings."
+                ),
+            },
+            {
+                "action_id": "review_smb1_retirement",
+                "text": (
+                    "Ask the owner or device maker how to turn off SMBv1 while keeping "
+                    "newer file sharing available."
+                ),
+                "verification": (
+                    "After an authorised change, run another Deep check; a missing response "
+                    "does not prove the setting changed."
+                ),
+            },
+        ],
+        "references": [
+            {
+                "title": "Nmap SMB protocol negotiation check",
+                "url": "https://nmap.org/nsedoc/scripts/smb-protocols.html",
+            },
+            {
+                "title": "Microsoft guidance on retiring SMBv1",
+                "url": "https://learn.microsoft.com/en-us/windows-server/storage/file-server/troubleshoot/detect-enable-and-disable-smbv1-v2-v3",
+            },
+        ],
+        "version": "1.0.0",
+        "rule_id": "R08",
+    },
+    "R09": {
+        "title": "SMB message signing is not required",
+        "meaning": (
+            "During this check, the device did not require message signing "
+            "for the negotiated SMB version."
+        ),
+        "why_it_matters": (
+            "Signing helps detect changes to file-sharing messages. A server that does not "
+            "require it may accept unsigned connections; this scan did not establish "
+            "whether ordinary connections are signed."
+        ),
+        "severity": "medium",
+        "confidence": "medium",
+        "limitations": [
+            "Only the negotiated SMB version was checked; other versions and client "
+            "settings were not established.",
+            "Signing concerns message integrity, not encryption or shared-folder permissions.",
+            "This was a local negotiation check; no tampering, credential relay, "
+            "or Internet exposure was tested.",
+        ],
+        "actions": [
+            {
+                "action_id": "review_smb_signing",
+                "text": (
+                    "Check the file-sharing settings or ask the device maker whether "
+                    "SMB signing can be required."
+                ),
+                "verification": (
+                    "Check that the computers using the shared folders support signing "
+                    "before changing this setting."
+                ),
+            },
+            {
+                "action_id": "require_smb_signing_if_supported",
+                "text": (
+                    "Ask the owner to enable required signing using the device maker's "
+                    "instructions if supported."
+                ),
+                "verification": (
+                    "After an authorised change, confirm file sharing still works "
+                    "and repeat the Deep check."
+                ),
+            },
+        ],
+        "references": [
+            {
+                "title": "Nmap SMB signing negotiation check",
+                "url": "https://nmap.org/nsedoc/scripts/smb2-security-mode.html",
+            },
+            {
+                "title": "Microsoft guidance on SMB signing",
+                "url": "https://learn.microsoft.com/en-us/windows-server/storage/file-server/smb-signing",
+            },
+        ],
+        "version": "1.0.0",
+        "rule_id": "R09",
     },
 }
