@@ -1,12 +1,13 @@
 import { request } from './api.js?v=20261001-network-recovery';
-import { createTextEditor } from './editor.mjs?v=20261008-ui-ux';
+import { createTextEditor, createUnsavedChangesGuard } from './editor.mjs?v=20261015-edit-recovery';
 import { renderFindingList, findingDeviceOptions, repeatedUnknownReplies } from './finding-list.mjs?v=20261012-followups';
-import { createReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation } from './report-view.mjs?v=20261013-accessibility';
+import { createReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation, bindSupportingInformation } from './report-view.mjs?v=20261015-inclusive';
+import { readReportDeviceContext, resolveReportDeviceContext, resumeReportDeviceContext } from './report-device-context.mjs?v=20261015-inclusive';
 import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from './devices.mjs?v=20261014-reliability';
 import { createCvePanel } from './cves.mjs?v=20261002-cve';
-import { shortcutMatches, renderReportInsights } from './report-insights.mjs?v=20261014-device-first';
+import { renderReportInsights } from './report-insights.mjs?v=20261014-simpler-report';
 import { bindReportExport } from './report-export.mjs?v=20261014-device-first';
-import { createNoteState, checkStatus, projectNotes } from './notes.mjs?v=20261012-final-layout';
+import { createNoteState, checkStatus, projectNotes, confirmedTitleReceipt } from './notes.mjs?v=20261015-edit-recovery';
 import { createNicknameState, projectNicknames } from './nicknames.mjs?v=20261007-followup';
 import { recordedTimeLabel, localFeatureHelp, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261014-dates';
 import { partialScanTitle, prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261014-reliability';
@@ -64,12 +65,18 @@ const notes = createNoteState(snapshot => {
   projectNotes(document, snapshot, {
     disabled: checklistSaving || currentData?.phase !== 'finished', data: currentData,
     expandFiltered: revealFilteredTasks,
+    drafts: checklistDrafts,
   });
   revealFilteredTasks = false;
 });
+const checklistDrafts = new Map();
 const expandedDevices = new Map();
 const expandedSteps = new Map();
-const editor = createTextEditor(document);
+const reportLeaveGuard = createUnsavedChangesGuard(window);
+const editor = createTextEditor(document, { onChange: updateReportLeaveGuard });
+function updateReportLeaveGuard() {
+  reportLeaveGuard.update(editor.hasUnsavedChanges || checklistSaving || checklistDrafts.size > 0);
+}
 const deviceSearchInput = document.querySelector('#deviceSearchInput');
 let deviceSearchTerm = '';
 let deviceLimit = 24;
@@ -82,13 +89,16 @@ const retryReportLoad = document.querySelector('#retryReportLoad');
 retryReportLoad.addEventListener('click', () => { retryReportLoad.disabled = true; poll(); });
 const readingState = createReadingState(() => window.sessionStorage, scanId);
 const savedReading = readingState.load();
+const requestedDeviceContext = readReportDeviceContext(window.location.search);
+let resolvedDeviceContext = { status: 'none', message: '' };
+let contextDeviceId = '';
+let deviceProjection = null;
+const supportingInformation = bindSupportingInformation(document);
 document.addEventListener?.('click', event => {
-  if (!event.target?.closest?.('[data-glossary-link]')) return;
+  const link = event.target?.closest?.('[data-glossary-link]');
+  if (!link) return;
   event.preventDefault();
-  const glossary = document.querySelector('#report-glossary');
-  glossary.open = true;
-  glossary.scrollIntoView({ block: 'start', behavior: 'instant' });
-  glossary.querySelector('summary').focus({ preventScroll: true });
+  supportingInformation.open('glossary', link);
 });
 let readingRestored = false;
 let restoringReading = Boolean(savedReading);
@@ -101,7 +111,6 @@ if (savedReading) {
   deviceSearchTerm = savedReading.devices.trim().toLowerCase();
   deviceLimit = savedReading.limit;
   document.querySelector('#deviceSort').value = savedReading.sort;
-  document.querySelector('#deviceQuickFilter').value = savedReading.deviceFilter;
   document.querySelector('#checklist-filter').value = savedReading.tasks;
   filterButtons.forEach(button => {
     const active = button.dataset.filter === activeFilter;
@@ -118,7 +127,7 @@ function rememberReading() {
     search: searchInput.value, devices: deviceSearchInput.value, filter: activeFilter,
     tasks: document.querySelector('#checklist-filter').value,
     sort: document.querySelector('#deviceSort').value, limit: deviceLimit,
-    deviceFilter: document.querySelector('#deviceQuickFilter').value,
+    contextDeviceId,
     reviewDevice: reviewDevice.value,
     open: openDisclosureKeys(document), y: window.scrollY || 0 });
 }
@@ -146,16 +155,45 @@ function restoreReading() {
       });
       notes.refresh();
     }
+    const navigation = window.performance?.getEntriesByType('navigation')[0]?.type;
+    resolvedDeviceContext = resolveReportDeviceContext(currentData, requestedDeviceContext);
+    let revealDevice = null;
+    if (resolvedDeviceContext.status === 'available') {
+      contextDeviceId = resolvedDeviceContext.deviceId;
+      if (!resumeReportDeviceContext(requestedDeviceContext, savedReading, navigation)) {
+        const target = resolvedDeviceContext.device;
+        // The explicit link changes only reading context. Keep unrelated review
+        // and task filters; clear a device search only if it hides this target.
+        if (!deviceMatchesSearch(target, currentData)) {
+          deviceSearchInput.value = ''; deviceSearchTerm = '';
+        }
+        renderDevices(currentData);
+        const index = deviceProjection?.matching.findIndex(device => device.device_id === target.device_id) ?? -1;
+        if (index >= deviceLimit && index < 254) {
+          deviceLimit = Math.min(254, Math.ceil((index + 1) / 24) * 24);
+        }
+        expandedDevices.set(target.ip, true);
+        renderDevices(currentData);
+        revealDevice = [...deviceSummaries.querySelectorAll('.device-summary-group')]
+          .find(group => group.dataset.deviceId === target.device_id);
+        const detail = revealDevice?.querySelector('.device-summary');
+        if (detail) detail.open = true;
+        else setDeviceContextStatus('The selected device is outside the displayed device range. No other device was selected. Your saved report is still available.');
+      } else renderDevices(currentData);
+    } else setDeviceContextStatus(resolvedDeviceContext.message);
     const scroll = () => {
       const anchors = ['first-action', 'what-changed', 'devices-title', 'findings-title', 'next-title', 'changes-title'];
       const anchor = window.location.hash?.slice(1);
-      const navigation = window.performance?.getEntriesByType('navigation')[0]?.type;
       const returning = savedReading && ['reload', 'back_forward'].includes(navigation);
-      if (!returning && anchors.includes(anchor)) document.querySelector(`#${anchor}`)?.scrollIntoView({ block: 'start' });
+      reportContent.inert = false;
+      if (revealDevice) {
+        revealDevice.querySelector('.device-summary > summary')?.focus({ preventScroll: true });
+        revealDevice.scrollIntoView({ block: 'start', behavior: 'instant' });
+      } else if (!returning && anchors.includes(anchor)) document.querySelector(`#${anchor}`)?.scrollIntoView({ block: 'start' });
       else if (savedReading) window.scrollTo({ top: savedReading.y, behavior: 'instant' });
       restoringReading = false;
-      reportContent.inert = false;
       reportContent.dataset.readingReady = 'true';
+      rememberReading();
     };
     if (window.requestAnimationFrame) window.requestAnimationFrame(scroll);
     else scroll();
@@ -163,6 +201,17 @@ function restoreReading() {
   // Native disclosure layout and the sticky-nav offset must settle before scrolling.
   if (window.requestAnimationFrame) window.requestAnimationFrame(apply);
   else apply();
+}
+
+function setDeviceContextStatus(message) {
+  const notice = document.querySelector('#report-device-context-status');
+  if (!notice) return;
+  if (notice.textContent !== message) notice.textContent = message;
+  notice.hidden = !message;
+}
+
+function announceReportOperation(message) {
+  document.querySelector('#report-interaction-status').textContent = message;
 }
 
 function refreshNicknameProjection() {
@@ -208,67 +257,103 @@ function actionChecklist(finding, action) {
   const select = document.createElement('select');
   select.dataset.findingId = finding.finding_id;
   select.dataset.actionId = action.action_id;
-  const feedback = text('p', '', 'action-check-note');
-  feedback.setAttribute('role', 'status');
-  feedback.hidden = true;
+  const draftKey = JSON.stringify([finding.finding_id, action.action_id]);
+  const feedback = text('p', checklistDrafts.get(draftKey)?.message || '', 'action-check-note');
+  feedback.hidden = !feedback.textContent;
+  const retry = text('button', 'Save this choice', 'text-button');
+  retry.type = 'button';
+  retry.dataset.checklistRetry = 'true';
+  retry.hidden = !feedback.textContent;
   for (const [value, name] of [['to_check', 'To check'], ['checked', 'Checked'], ['need_help', 'Need help']]) {
     const option = text('option', name);
     option.value = value;
     select.append(option);
   }
-  select.value = checkStatus(notes.value, finding.finding_id, action.action_id);
+  select.value = checklistDrafts.get(draftKey)?.status || checkStatus(notes.value, finding.finding_id, action.action_id);
   select.disabled = !notes.value || checklistSaving || currentData?.phase !== 'finished';
-  select.addEventListener('change', async () => {
+  const saveChoice = async () => {
     if (!notes.value || checklistSaving) return;
-    const hadFocus = document.activeElement === select;
+    const desired = select.value;
+    const expectedRevision = notes.value.revision;
+    const hadFocus = document.activeElement === select || document.activeElement === retry;
     container.dataset.editing = 'true';
     checklistSaving = true;
+    updateReportLeaveGuard();
     document.querySelectorAll('.action-check select').forEach(control => { control.disabled = true; });
     const notice = document.querySelector('#checklist-notice');
     notice.textContent = 'Saving your checklist…';
+    checklistDrafts.set(draftKey, { status: desired, message: '' });
+    retry.hidden = true;
     feedback.hidden = false;
     feedback.textContent = notice.textContent;
     try {
-      notes.apply(await request(`/api/live-scans/${scanId}/action-checks`, {
+      const receipt = await request(`/api/live-scans/${scanId}/action-checks`, {
         method: 'PUT', body: JSON.stringify({ finding_id: finding.finding_id, action_id: action.action_id,
-          status: select.value, expected_revision: notes.value.revision }),
-      }));
+          status: desired, expected_revision: expectedRevision }),
+      });
+      if (!Number.isSafeInteger(receipt?.revision) || receipt.revision <= expectedRevision
+          || checkStatus(receipt, finding.finding_id, action.action_id) !== desired) {
+        throw new Error('The save response did not confirm your chosen status.');
+      }
+      checklistDrafts.delete(draftKey);
+      notes.apply(receipt);
       notice.textContent = 'Checklist saved. This records your review; the scan results have not changed.';
     } catch (error) {
       try { notes.apply(await request(`/api/live-scans/${scanId}/annotations`)); }
       catch { notes.apply(null); }
-      notice.textContent = `Your checklist change was not saved. ${error.message}${notes.value ? ' Latest notes loaded; review the saved status before trying again.' : ' Reload to reconnect to saved notes.'}`;
+      const rejected = Number.isInteger(error.status) && error.status >= 400 && error.status < 500;
+      const names = { to_check: 'To check', checked: 'Checked', need_help: 'Need help' };
+      notice.textContent = `${rejected ? 'Your checklist change was not saved.' : 'The checklist save could not be confirmed.'} ${error.message} Your choice, ${names[desired]}, is kept here as a draft.`
+        + (notes.value ? ` Latest saved status: ${names[checkStatus(notes.value, finding.finding_id, action.action_id)]}. Review it before choosing Save this choice.`
+          : ' Reload the saved report to reconnect before saving this choice.');
+      checklistDrafts.set(draftKey, { status: desired, message: notice.textContent });
+      retryReportLoad.hidden = false;
     } finally {
       checklistSaving = false;
       notes.refresh();
       feedback.textContent = notice.textContent;
-      if (hadFocus && document.activeElement === document.body && !select.disabled) select.focus({ preventScroll: true });
+      retry.hidden = !checklistDrafts.has(draftKey);
+      retry.disabled = !notes.value;
+      announceReportOperation(notice.textContent);
+      if (hadFocus && [document.body, retry].includes(document.activeElement) && !select.disabled) select.focus({ preventScroll: true });
       delete container.dataset.editing;
+      updateReportLeaveGuard();
     }
-  });
+  };
+  select.addEventListener('change', saveChoice);
+  retry.addEventListener('click', saveChoice);
   label.append(select);
-  container.append(label, feedback);
+  container.append(label, feedback, retry);
   return container;
 }
 
 document.querySelector('#editReportTitle').addEventListener('click', event => {
   if (!notes.value || checklistSaving) return;
   let expectedRevision = notes.value.revision;
+  let savedMessage = '';
   editor.open({
     title: 'Name this saved report', label: 'Your report title', maxLength: 100,
     value: notes.value.title || '', trigger: event.currentTarget,
     resolveTrigger: () => document.querySelector('#editReportTitle'),
     hint: 'Use up to 100 characters. Leave empty to remove your title. Scan observations are unchanged.',
+    onSaved: () => { if (savedMessage) announceReportOperation(savedMessage); },
     onSave: async value => {
       try {
-        notes.apply(await request(`/api/live-scans/${scanId}/title`, {
+        const receipt = await request(`/api/live-scans/${scanId}/title`, {
           method: 'PUT', body: JSON.stringify({ title: value, expected_revision: expectedRevision }),
-        }));
+        });
+        if (!confirmedTitleReceipt(receipt, expectedRevision, value) || !notes.apply(receipt)) {
+          throw new Error('The save response did not confirm your chosen title.');
+        }
         updateDocumentTitle();
+        savedMessage = receipt.title ? 'Your report title was saved. Scan results have not changed.'
+          : 'Your report title was removed. The saved scan and its results are unchanged.';
       } catch (error) {
         try { notes.apply(await request(`/api/live-scans/${scanId}/annotations`)); } catch { notes.apply(null); }
         if (notes.value) expectedRevision = notes.value.revision;
-        throw new Error(`Your title was not saved. ${error.message} ${notes.value ? 'Latest saved title: ' + (notes.value.title || '(no title)') + '. Review your draft before saving again.' : 'Reconnect before trying again.'}`);
+        updateDocumentTitle();
+        const rejected = [400, 401, 403, 404, 409, 422, 429].includes(error.status);
+        throw new Error(`${rejected ? 'Your title change was not saved.' : 'The title save could not be confirmed.'} ${error.message} Your draft is still here. ${notes.value ? 'Latest saved title: ' + (notes.value.title || '(no title)') + '. Review your draft before saving again.' : 'Reconnect before trying again.'}`);
       }
     },
   });
@@ -277,18 +362,6 @@ document.querySelector('#editReportTitle').addEventListener('click', event => {
 document.querySelector('#checklist-filter').addEventListener('change', () => {
   revealFilteredTasks = true;
   notes.refresh();
-});
-document.querySelector('#expandReviewTasks').addEventListener('click', () => {
-  document.querySelectorAll('.next-step-checklist').forEach(item => {
-    if (!item.closest('li')?.hidden) item.open = true;
-  });
-});
-document.querySelector('#collapseReviewTasks').addEventListener('click', () => {
-  document.querySelectorAll('.next-step-checklist').forEach(item => {
-    if (item.closest('li')?.hidden) return;
-    item.open = false;
-    expandedSteps.set(item.dataset.findingId, false);
-  });
 });
 deviceSearchInput.addEventListener('input', () => {
   deviceSearchTerm = deviceSearchInput.value.trim().toLowerCase();
@@ -305,22 +378,6 @@ document.querySelector('#clearDeviceSearch').addEventListener('click', () => {
 document.querySelector('#deviceSort').addEventListener('change', () => {
   deviceLimit = 24;
   if (currentData) renderDevices(currentData);
-});
-document.querySelector('#deviceQuickFilter').addEventListener('change', () => {
-  deviceLimit = 24;
-  if (currentData) renderDevices(currentData);
-});
-document.querySelector('#resetDeviceFilters').addEventListener('click', () => {
-  deviceSearchInput.value = ''; deviceSearchTerm = ''; deviceLimit = 24;
-  document.querySelector('#deviceQuickFilter').value = 'all';
-  document.querySelector('#deviceSort').value = 'priority';
-  if (currentData) renderDevices(currentData);
-  deviceSearchInput.focus({ preventScroll: true });
-});
-document.querySelector('#needHelpShortcut').addEventListener('click', () => {
-  const control = document.querySelector('#checklist-filter');
-  control.value = 'need_help'; control.dispatchEvent(new Event('change'));
-  control.focus({ preventScroll: true });
 });
 document.querySelector('#showMoreDevices').addEventListener('click', () => {
   deviceLimit += 24;
@@ -501,7 +558,7 @@ function showDetail(finding) {
   detailSignature = signature;
   detailPanel.replaceChildren();
   if (!finding) {
-    detailPanel.append(text('strong', 'No review item selected'), text('p', 'Select a review item to inspect what was observed and the suggested checks.'));
+    detailPanel.append(text('strong', 'No review item selected'), text('p', 'Choose a review item to read what we found and what you can check.'));
     return;
   }
   const config = severityConfig[finding.severity] || severityConfig.informational;
@@ -635,7 +692,7 @@ function renderFindings(data, { reveal = false, trigger = null } = {}) {
   const repeated = repeatedUnknownReplies(visible, data.services);
   const repeatedNote = document.querySelector('#repeated-replies-note');
   repeatedNote.hidden = repeated === 0;
-  repeatedNote.textContent = repeated ? `${repeated} items below record connection replies whose features could not be identified. Each numbered connection is listed separately; these are not confirmed software problems. The cause of the early closes is unknown. Do not disable protection just to clear these items.` : '';
+  repeatedNote.textContent = repeated ? `${repeated} items below show replies from features the scanner could not identify. Each numbered connection is listed separately. These replies do not confirm a software problem. We do not know why the connections closed early. Do not disable protection just to clear these items.` : '';
   if (!visible.length) {
     if (detailPanel.parentElement !== findingsList.parentElement) findingsList.parentElement.append(detailPanel);
     findingsList.replaceChildren(text('div', currentFindings.length
@@ -800,12 +857,10 @@ function renderBeginnerGuide(data) {
 
 function deviceMatchesSearch(device, data) {
   const services = data.services.filter(item => item.device_id === device.device_id);
-  return shortcutMatches(device, data, document.querySelector('#deviceQuickFilter').value)
-    && matchesSearch(deviceSearchTerm, deviceSearchValues(device, services), device.ip);
+  return matchesSearch(deviceSearchTerm, deviceSearchValues(device, services), device.ip);
 }
 
 function showInsightDevice(ip) {
-  document.querySelector('#deviceQuickFilter').value = 'all';
   deviceSearchInput.value = ip; deviceSearchTerm = ip; deviceLimit = 24;
   renderDevices(currentData);
   const group = [...deviceSummaries.querySelectorAll('.device-summary-group')].find(item => item.dataset.deviceIp === ip);
@@ -841,8 +896,8 @@ function renderComparisons(data) {
     else unavailable++;
   }
   document.querySelector('#comparison-summary').textContent = comparable || unavailable
-    ? `For the matching devices: ${comparable} service comparison${comparable === 1 ? ' is' : 's are'} available; ${unavailable} could not be compared reliably. Open each device's About this device details for recorded differences.`
-    : 'No saved comparison is available for these device results. A first scan or unmatched device can have no comparison; this does not mean nothing changed.';
+    ? `${comparable} matching device${comparable === 1 ? ' has' : 's have'} an earlier check to compare. ${unavailable} could not be compared. Open About this device for the differences and limits.`
+    : 'We could not compare these devices with an earlier completed check. This does not mean nothing changed.';
 }
 
 function renderDeviceSummaries(data) {
@@ -857,6 +912,20 @@ function renderDeviceSummaries(data) {
       || String(mode === 'name' ? deviceLabel(a) : a.ip).localeCompare(String(mode === 'name' ? deviceLabel(b) : b.ip), 'en', { numeric: true }),
     onEditNickname: editNickname, onRefreshName: refreshDeviceName, onViewFinding: openReviewItem,
   });
+  deviceProjection = projected;
+  if (resolvedDeviceContext.status === 'available') {
+    let visible = false;
+    for (const group of deviceSummaries.querySelectorAll('.device-summary-group')) {
+      const selected = group.dataset.deviceId === resolvedDeviceContext.deviceId;
+      group.classList.toggle('device-context-highlight', selected);
+      if (selected) {
+        visible = true;
+        group.querySelector('.device-summary > summary')?.setAttribute('aria-describedby', 'report-device-context-status');
+      }
+    }
+    setDeviceContextStatus(visible ? resolvedDeviceContext.message
+      : 'The device selected from My devices is not in this view. Clear the device search or show more devices to find it. The saved report is unchanged.');
+  }
   document.querySelector('#naming-coverage').textContent = projected.namingText;
   document.querySelector('#device-search-count').textContent = projected.countText;
   const more = document.querySelector('#showMoreDevices');
@@ -874,7 +943,7 @@ function nicknameFeedback(device, message) {
   if (!group) return;
   let feedback = group.querySelector('[data-nickname-status]');
   if (!feedback) {
-    feedback = text('p', '', 'status-message'); feedback.dataset.nicknameStatus = 'true'; feedback.setAttribute('role', 'status');
+    feedback = text('p', '', 'status-message'); feedback.dataset.nicknameStatus = 'true';
     group.querySelector('.device-name-tools').append(feedback);
   }
   feedback.textContent = message;
@@ -883,11 +952,13 @@ function nicknameFeedback(device, message) {
 function editNickname(device, trigger) {
   if (!nicknameState.available || nicknameSaving) return;
   let expectedRevision = nicknameState.value.revision;
+  let savedMessage = '';
   editor.open({
     title: 'Your nickname for this device', label: 'Your nickname', maxLength: 80,
     value: device.user_nickname || '', trigger, resolveTrigger: () => nicknameTrigger(device),
     resolveFallback: () => deviceSearchInput,
     hint: `Address: ${device.ip}. Use up to 80 characters; leave empty to remove. This is your label, not a detected or verified name. Reuse across scans requires a recent, unambiguous adapter match.`,
+    onSaved: () => { if (savedMessage) announceReportOperation(savedMessage); },
     onSave: async nickname => {
       if (!nicknameState.available) throw new Error('Reconnect to the saved names before editing. Your draft has not been saved.');
       nicknameSaving = true;
@@ -897,11 +968,12 @@ function editNickname(device, trigger) {
         const receipt = await request(`/api/live-scans/${scanId}/devices/${device.device_id}/nickname`, {
           method: 'PUT', body: JSON.stringify({ nickname, expected_revision: expectedRevision }),
         });
+        if (!Number.isSafeInteger(receipt?.nickname_revision) || receipt.nickname_revision <= expectedRevision
+            || !nicknameState.confirmRevision(receipt.nickname_revision)) throw new Error('The saved nickname version could not be confirmed.');
         committed = true;
-        if (!nicknameState.confirmRevision(receipt.nickname_revision)) throw new Error('The saved nickname version could not be confirmed.');
         render(await request(`/api/live-scans/${scanId}`));
-        nicknameFeedback(device, 'Your nickname was saved. Reported names and scan evidence are unchanged.');
-        status.textContent += ' Your nickname was saved; detected names and scan results are unchanged.';
+        savedMessage = 'Your nickname was saved. Reported names and scan evidence are unchanged.';
+        nicknameFeedback(device, savedMessage);
       } catch (error) {
         let loaded = false;
         try { loaded = adoptNicknameSnapshot(await request(`/api/live-scans/${scanId}/nicknames`)); }
@@ -910,7 +982,6 @@ function editNickname(device, trigger) {
         const result = committed ? 'Your nickname was saved, but its latest display could not be loaded.'
           : error.status === 409 ? 'Your nickname change was not saved.' : 'The nickname save could not be confirmed.';
         const message = `${result} ${error.message}${loaded ? ' Latest nicknames loaded; review them before trying again.' : ' Reload to reconnect before editing.'}`;
-        status.textContent = message;
         nicknameFeedback(device, message);
         throw new Error(message);
       } finally {
@@ -1031,6 +1102,7 @@ function renderAdvertisements(data) {
   const deviceAddresses = new Set(deviceResultEntries(data).map(device => device.ip));
   const observations = (data.observations || []).filter(item => item.source === 'mdns' && !deviceAddresses.has(item.ip));
   mdnsSection.hidden = observations.length === 0;
+  supportingInformation.refresh();
   mdnsList.replaceChildren();
   observations.forEach(item => {
     const features = { _http: 'a device web page', _https: 'an encrypted device web page',

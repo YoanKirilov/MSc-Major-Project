@@ -87,11 +87,11 @@ export function coverageSummary(data) {
   const remaining = unfinishedDeviceCount(data);
   if (!total && !active) {
     return discover
-      ? 'No devices answered discovery. Device security could not be assessed.'
-      : 'No device checks finished. Device security could not be assessed.';
+      ? 'No devices answered the search for devices. We could not check their security.'
+      : 'No device checks finished. We could not check device security.';
   }
   const mdnsOnly = (c.targets || []).filter((target) => target.discovery_sources?.includes('mdns') && !target.discovery_sources.includes('nmap')).length;
-  const scope = discover ? `${total} device${total === 1 ? '' : 's'} found during discovery${mdnsOnly ? `, including ${mdnsOnly} seen only through mDNS announcements` : ''}.` : `${total} device address${total === 1 ? ' was' : 'es were'} selected.`;
+  const scope = discover ? `${total} device${total === 1 ? '' : 's'} found${mdnsOnly ? `. Of these, ${mdnsOnly} ${mdnsOnly === 1 ? 'was' : 'were'} seen only through mDNS, a device's announcement that it is on the network` : ''}.` : `${total} device address${total === 1 ? ' was' : 'es were'} selected.`;
   return `${scope} ${finished} device check${finished === 1 ? '' : 's'} finished.`
     + (remaining ? ` ${remaining} ${active ? 'still pending' : 'did not finish'}.` : '');
 }
@@ -99,10 +99,10 @@ export function coverageSummary(data) {
 export function emptyFindingMessage(data) {
   if (['queued', 'running'].includes(data.state)) return 'Checks are still running. Review items are not final.';
   if (data.state !== 'completed') {
-    return 'Scan incomplete. No review items were recorded from the checks that finished. This does not establish that the devices are secure.';
+    return 'Scan incomplete. No review items were recorded from the checks that finished. Unfinished checks cannot tell us whether the devices are safe.';
   }
   if (!data.coverage?.service_completed_count) return 'No devices were assessed. Their security could not be checked.';
-  return 'No issues were flagged by the selected checks. Other services and security settings were not fully assessed.';
+  return 'These selected checks found no items to review. Other features and security settings were not fully checked. This does not prove the devices are safe.';
 }
 
 export function usableAiRecord(record, data) {
@@ -143,28 +143,28 @@ export function aiExplanationNote(data) {
   const rejected = [...records, data.report_explanation].filter(Boolean).reduce((total, record) => total + Object.keys(record.rejected_fields || {}).length, 0);
   const count = records.filter((record) => usableAiRecord(record, data)).length;
   if (data.phase === 'analysis') return 'Ollama is preparing your plain-language report.';
-  if (outdated) return 'Older AI wording is hidden because it predates the current validation checks. Reviewed rule-based guidance is shown where needed; prepare this saved report again to update its AI wording.';
-  if (rejected) return 'Some explanations are simplified; other parts use reviewed rule-based guidance because their AI wording could not be accepted. Retry remaining wording without scanning again.';
-  if (data.analysis_status === 'failed') return 'The scan observations are saved, but the AI explanation did not finish. Retry report preparation; no new scan is needed.';
+  if (outdated) return 'Older AI wording is hidden because it was prepared before the current wording checks. Reviewed guidance prepared without AI is shown where needed. Prepare this saved report again to update its AI wording; no new scan is needed.';
+  if (rejected) return 'Some explanations are simplified. Other parts use reviewed guidance prepared without AI because the AI wording did not pass the app\'s checks. Retry the remaining wording without scanning again.';
+  if (data.analysis_status === 'failed') return 'Your scan results are saved, but the AI explanation did not finish. Reviewed guidance fills any missing AI explanations. Retry the explanations; no new scan is needed.';
   const reviewed = (record) => record?.content && record.prompt_version === data.guidance_status?.ai_prompt_version
     && !Object.keys(record.rejected_fields || {}).length
     && (record.status === 'ready' || record.fallback_reason === 'not_simpler');
   if (data.analysis_status === 'ready' && reviewed(data.report_explanation)
       && (data.findings || []).every((finding) => records.some((record) => record.finding_id === finding.finding_id && reviewed(record)))) {
     const total = data.findings?.length || 0;
-    return `Ollama reviewed the report overview and ${total} review item${total === 1 ? '' : 's'}. Accepted AI wording is shown; parts without an accepted alternative use reviewed guidance. Original wording remains available in details.`;
+    return `Ollama reviewed the report overview and ${total} review item${total === 1 ? '' : 's'}. AI wording is shown where it passed the app's checks. Other parts use reviewed guidance prepared without AI. Original wording remains available in details.`;
   }
-  if (count) return `Local AI selected reviewed wording for ${count} review item${count === 1 ? '' : 's'}; remaining wording is rule-based.`;
-  if (records.some((record) => record.fallback_reason === 'provider_timeout')) return 'The local AI timed out. Rule-based guidance is shown.';
+  if (count) return `Local AI wording passed the app's checks for ${count} review item${count === 1 ? '' : 's'}. Other wording uses reviewed guidance prepared without AI.`;
+  if (records.some((record) => record.fallback_reason === 'provider_timeout')) return 'The local AI timed out. Reviewed guidance prepared without AI is shown.';
   if (records.some((record) => ['provider_unavailable', 'provider_not_configured'].includes(record.fallback_reason))) {
-    return 'Local AI was unavailable. Rule-based guidance is shown.';
+    return 'Local AI was unavailable. Reviewed guidance prepared without AI is shown.';
   }
   if (records.some((record) => ['ai_limit_reached', 'ai_request_limit'].includes(record.fallback_reason))) {
-    return 'The AI request limit was reached. Rule-based guidance is shown.';
+    return 'The AI request limit was reached. Reviewed guidance prepared without AI is shown.';
   }
   return records.length
-    ? 'No reviewed alternative wording was accepted. Rule-based guidance is shown.'
-    : 'AI has not been used for this report. Rule-based guidance is shown.';
+    ? 'No reviewed alternative AI wording was accepted. Reviewed guidance prepared without AI is shown.'
+    : 'AI has not been used for this report. Reviewed guidance prepared without AI is shown.';
 }
 
 export function progressAnnouncement(data, deep = data.policy?.profile === 'deep-tcp-v1') {

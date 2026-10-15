@@ -322,8 +322,9 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             page.wait_for_url("**/scans/*", timeout=15000)
             expect(page.locator("#result-title")).to_have_text("Your local scan is ready.")
             expect(page.locator("#resultsSummary")).to_contain_text("review item")
-            page.locator("#explanation-about > summary").click()
+            page.locator('[data-supporting-topic="explanations"]').click()
             expect(page.locator("#ai-report-source")).to_contain_text("Local AI contributed")
+            page.locator("#closeSupportingInfo").click()
             expect(page.locator("#report-content")).to_be_visible()
             expect(
                 page.locator("#device-summaries .device-summary-group > .device-summary")
@@ -410,10 +411,11 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
                 page.locator("#simplifyButton").click()
             assert retried.value.status == 202, retried.value.text()
             expect(page.locator("#ai-report-notice")).to_be_hidden(timeout=15000)
-            page.locator("#explanation-about > summary").click()
+            page.locator('[data-supporting-topic="explanations"]').click()
             expect(page.locator("#ai-report-source")).to_contain_text(
                 "Local AI contributed", timeout=15000
             )
+            page.locator("#closeSupportingInfo").click()
             assert len(scanned) == count
             # Both profiles pass through the same detail collector and renderer.
             deep = page.evaluate("""async () => {

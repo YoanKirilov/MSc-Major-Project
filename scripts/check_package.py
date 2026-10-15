@@ -2,10 +2,24 @@
 
 import argparse
 import os
+import shutil
 import subprocess
 import venv
 from pathlib import Path
 from uuid import uuid4
+
+
+def source_snapshot(root: Path, destination: Path) -> Path:
+    """Never let stale checkout build/lib files reintroduce removed modules."""
+    destination.mkdir(parents=True, exist_ok=False)
+    for name in ("pyproject.toml", "README.md"):
+        shutil.copy2(root / name, destination / name)
+    shutil.copytree(
+        root / "app",
+        destination / "app",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+    )
+    return destination
 
 
 def main(argv=None):
@@ -30,6 +44,7 @@ def main(argv=None):
     run = root / ".test-artifacts" / f"package-{uuid4().hex[:10]}"
     run.mkdir(parents=True)
     print(f"Package verification artifacts: {run}", flush=True)
+    source = source_snapshot(root, run / "source")
 
     def environment_python(name):
         environment = run / name
@@ -55,7 +70,7 @@ def main(argv=None):
     wheels = run / "wheels"
     subprocess.run(
         [str(builder), "-m", "build", "--no-isolation", "--wheel", "--outdir", str(wheels)],
-        cwd=root,
+        cwd=source,
         check=True,
     )
     python = environment_python("venv")

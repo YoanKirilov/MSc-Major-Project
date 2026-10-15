@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% set active_page = 'devices' %}
 {% block title %}My devices · NetGuard AI{% endblock %}
-{% block styles %}<link rel="stylesheet" href="/static/css/device-library.css?v=20261014-household" />{% endblock %}
+{% block styles %}<link rel="stylesheet" href="/static/css/device-library.css?v=20261015-inclusive" />{% endblock %}
 {% block content %}
 <header class="page-heading">
   <p class="eyebrow">Your household records</p>
   <h1>My devices</h1>
-  <p>Find devices recorded in saved scans, their earlier reports and your own household labels. Opening this page does not start a scan.</p>
-  <p class="device-library-caution">These are saved observations, not a check of which devices are connected now. A matching address or name does not verify a device's identity or safety.</p>
+  <p>Find a device in your saved scans, open its reports or add your own labels. Opening this page does not start a scan.</p>
+  <p class="device-library-caution">This list uses saved results. It does not show which devices are connected now. A matching address or name does not confirm a device's identity or safety.</p>
 </header>
 <section class="card" aria-label="Find a saved device">
   <form id="device-library-search" class="device-library-search">
@@ -25,7 +25,7 @@
         <option value="unfinished">With unfinished checks</option>
         <option value="review">With items to review</option>
       </select>
-      <p id="device-library-view-help" class="field-hint">Choose a view, then press Search devices. It applies across saved records, not just this page. Recognition is your label, not a safety check.</p>
+      <p id="device-library-view-help" class="field-hint">Choose a view, then press Search devices. This searches all saved records included here, not just this page. Marking a device as recognised is your label, not a safety check.</p>
     </div>
     <div class="form-actions">
       <button class="primary-button" type="submit">Search devices</button>
@@ -33,7 +33,7 @@
       <button id="device-library-reload" class="secondary-button" type="button">Reload saved labels</button>
     </div>
   </form>
-  <p id="device-library-applied" class="field-hint"></p>
+  <p id="device-library-applied" class="field-hint action-hint"></p>
   <p id="device-library-drafts" class="status-message" role="status"></p>
 </section>
 <section class="device-library-results" aria-labelledby="device-library-heading">
@@ -53,8 +53,8 @@
   <nav id="device-library-pages" class="history-pagination" aria-label="Device pages" hidden></nav>
   <ul id="device-library-list" class="device-library-list" aria-labelledby="device-library-heading"></ul>
   <nav id="device-library-pages-bottom" class="history-pagination" aria-label="Device pages after the list" hidden></nav>
-  <p class="field-hint">Each page contains up to 24 devices. Scrolling does not load another page. Household labels are your information, not new scan evidence.</p>
+  <p class="field-hint">Each page shows up to 24 devices. Use the page buttons to see more. Your household labels do not change the scan results.</p>
 </section>
 <noscript><p class="status-message status-warning">JavaScript is needed to load saved devices and edit household labels. No scan is started by this page.</p></noscript>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/device-library.js?v=20261014-device-views"></script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/device-library.js?v=20261015-inclusive"></script>{% endblock %}

@@ -1,5 +1,12 @@
 // Mutable report notes, not scan facts. Keep projection updates in place so
 // adopting a full snapshot never destroys focus, filters or expanded evidence.
+export function confirmedTitleReceipt(snapshot, previousRevision, requestedTitle) {
+  return Number.isSafeInteger(previousRevision) && previousRevision >= 1
+    && Number.isSafeInteger(snapshot?.revision) && snapshot.revision > previousRevision
+    && typeof requestedTitle === 'string' && typeof snapshot.title === 'string'
+    && snapshot.title === requestedTitle.trim();
+}
+
 export function createNoteState(project) {
   let current = null;
   let newestRevision = 0;
@@ -37,7 +44,7 @@ export function reviewProgress(data, notes) {
   return counts;
 }
 
-export function projectNotes(document, notes, { disabled = false, data = null, expandFiltered = true } = {}) {
+export function projectNotes(document, notes, { disabled = false, data = null, expandFiltered = true, drafts = null } = {}) {
   document.querySelector('#report-user-title').textContent = notes?.title || '';
   document.querySelector('#editReportTitle').disabled = !notes || disabled;
   const notice = document.querySelector('#annotation-notice');
@@ -46,16 +53,22 @@ export function projectNotes(document, notes, { disabled = false, data = null, e
   notice.hidden = !notice.textContent;
   const filter = document.querySelector('#checklist-filter')?.value || 'all';
   document.querySelectorAll('.action-check select').forEach(control => {
-    control.value = checkStatus(notes, control.dataset.findingId, control.dataset.actionId);
+    const key = JSON.stringify([control.dataset.findingId, control.dataset.actionId]);
+    const draft = drafts?.get(key);
+    control.value = draft?.status || checkStatus(notes, control.dataset.findingId, control.dataset.actionId);
     control.disabled = !notes || disabled;
     const row = control.closest('.action-check');
+    const retry = row.querySelector?.('[data-checklist-retry]');
+    if (retry) { retry.hidden = !draft?.message; retry.disabled = !notes || disabled; }
+    const feedback = row.querySelector?.('.action-check-note');
+    if (feedback && draft?.message) { feedback.textContent = draft.message; feedback.hidden = false; }
     // Never hide a focused control as its status changes; the filter applies on
     // the user's next filter change or subsequent rendering, not mid-edit.
     const task = control.closest('.review-task');
     // The global task filter is scoped to the complete task list. A selected
     // review item's recommendations always remain available in its detail panel.
     row.hidden = false;
-    if (task) task.hidden = filter !== 'all' && control.value !== filter
+    if (task) task.hidden = !draft && filter !== 'all' && control.value !== filter
       && document.activeElement !== control && row.dataset.editing !== 'true';
   });
   const tasks = [...document.querySelectorAll('#nextStepsList .review-task')];
@@ -84,10 +97,6 @@ export function projectNotes(document, notes, { disabled = false, data = null, e
   if (filteredCount) filteredCount.textContent = tasks.length
     ? `${visibleTasks} of ${tasks.length} review tasks available${filter === 'all' ? '' : ' in this status filter'}. ${visibleTasks ? 'Open a Review tasks heading to read and record an action.' : 'Choose All statuses to see the other tasks.'}`
     : 'No review tasks were recorded. This is not a safety verdict.';
-  for (const id of ['#expandReviewTasks', '#collapseReviewTasks']) {
-    const button = document.querySelector(id);
-    if (button) button.disabled = visibleTasks === 0;
-  }
   const empty = document.querySelector('#checklist-empty');
   if (empty) empty.hidden = visibleTasks > 0 || filter === 'all';
   document.querySelectorAll('[data-note-panel]').forEach(panel => panel.updateNotes?.(notes));

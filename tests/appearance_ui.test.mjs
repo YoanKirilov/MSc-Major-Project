@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../app/static/js/appearance.js', import.meta.url), 'utf8');
+const displayControls = readFileSync(new URL('../app/templates/includes/display-controls.html', import.meta.url), 'utf8');
 function setup({ raw = null, blocked = false, media = false, systemLight = false, loading = false } = {}) {
   const values = new Map(raw === null ? [] : [['netguard-appearance-v1', raw]]);
   const writes = [], windowEvents = {}, documentEvents = {}, controls = new Map();
@@ -17,9 +18,10 @@ function setup({ raw = null, blocked = false, media = false, systemLight = false
     createElement: () => ({ setAttribute(name, value) { this[name] = value; } }),
     addEventListener: (name, callback) => { documentEvents[name] = callback; },
   };
-  for (const id of ['themePreference', 'textSizePreference', 'motionPreference']) {
+  for (const id of ['themePreference', 'textSizePreference']) {
     controls.set(id, { value: '', events: [], addEventListener(name, callback) { this.events.push(callback); } });
   }
+  controls.set('appearance-feedback', { textContent: '' });
   const window = {
     get localStorage() {
       if (blocked) throw new Error('Storage denied');
@@ -50,18 +52,19 @@ const plain = value => JSON.parse(JSON.stringify(value));
 test('appearance initializes before paint without saving or reading any scan data', () => {
   const app = setup({ loading: true });
   assert.deepEqual(app.document.documentElement.dataset, { theme: 'dark', textSize: 'standard', reduceMotion: 'false' });
-  assert.deepEqual(plain(app.api.getAppearancePreferences()), { theme: 'dark', textSize: 'standard', motion: 'device' });
+  assert.deepEqual(plain(app.api.getAppearancePreferences()), { theme: 'dark', textSize: 'standard' });
   assert.equal(app.writes.length, 0);
   assert.equal(app.controls.get('themePreference').events.length, 0);
   app.documentEvents.DOMContentLoaded();
   assert.equal(app.controls.get('themePreference').events.length, 1);
 });
 
-test('saved light theme is adopted before the stylesheet or report data loads', () => {
+test('saved light theme is adopted before paint while removed movement choice is ignored', () => {
   const app = setup({ raw: JSON.stringify({ version: 1, theme: 'light', textSize: 'larger', motion: 'reduce' }), loading: true });
   assert.equal(app.document.documentElement.dataset.theme, 'light');
   assert.equal(app.document.documentElement.dataset.textSize, 'larger');
-  assert.equal(app.document.documentElement.dataset.reduceMotion, 'true');
+  assert.equal(app.document.documentElement.dataset.reduceMotion, 'false');
+  assert.equal(Object.hasOwn(app.api.getAppearancePreferences(), 'motion'), false);
   assert.equal(app.writes.length, 0);
 });
 
@@ -69,8 +72,8 @@ test('appearance persists only versioned allowlisted choices, never evidence or 
   const app = setup();
   app.api.applyAppearancePreferences({ theme: 'light', textSize: 'larger', motion: 'reduce', token: 'secret', devices: ['private'] });
   assert.equal(app.writes.length, 1);
-  assert.deepEqual(JSON.parse(app.writes[0]), { version: 1, theme: 'light', textSize: 'larger', motion: 'reduce' });
-  assert.doesNotMatch(app.writes[0], /secret|private|token|devices/);
+  assert.deepEqual(JSON.parse(app.writes[0]), { version: 1, theme: 'light', textSize: 'larger' });
+  assert.doesNotMatch(app.writes[0], /secret|private|token|devices|motion/);
   app.api.applyAppearancePreferences({ theme: 'light' });
   assert.equal(app.writes.length, 1);
   const snapshot = app.api.getAppearancePreferences();
@@ -86,7 +89,7 @@ test('invalid, unsupported, oversized or blocked storage cannot prevent displayi
   blocked.api.applyAppearancePreferences({ theme: 'light' });
   assert.equal(blocked.document.documentElement.dataset.theme, 'light');
   assert.equal(blocked.options.notices.length, 1);
-  assert.equal(blocked.options.notices[0].role, 'status');
+  assert.equal(blocked.options.notices[0].role, undefined);
   blocked.api.bindAppearancePreferences();
   assert.equal(blocked.options.notices.length, 1);
 });
@@ -101,9 +104,37 @@ test('controls are bound once and changing a native selection updates display wi
   assert.equal(app.document.documentElement.dataset.theme, 'light');
   assert.equal(app.writes.length, 1);
   assert.equal(app.controls.get('textSizePreference').value, 'standard');
+  assert.match(app.controls.get('appearance-feedback').textContent, /applied and remembered/);
 });
 
-test('device reduced-motion preference always wins and changing it updates the current page', () => {
+test('blocked preference edits have one live feedback message and persistent non-live help', () => {
+  const app = setup({ blocked: true });
+  const control = app.controls.get('themePreference');
+  control.value = 'system';
+  control.events[0]();
+  assert.equal(app.api.getAppearancePreferences().theme, 'system');
+  assert.match(app.controls.get('appearance-feedback').textContent, /applied on this page.*could not remember/);
+  assert.equal(app.options.notices.length, 1);
+  assert.equal(app.options.notices[0].role, undefined);
+  assert.equal((displayControls.match(/role="status"/g) || []).length, 1);
+  assert.match(displayControls, /id="appearance-feedback"[^>]*aria-atomic="true"/);
+});
+
+test('Settings and the report render the same native display choices', () => {
+  for (const name of ['settings.html', 'scan.html']) {
+    const html = readFileSync(new URL(`../app/templates/${name}`, import.meta.url), 'utf8');
+    assert.match(html, /include "includes\/display-controls\.html"/);
+    assert.doesNotMatch(html, /<select id="(?:themePreference|textSizePreference)"/);
+    assert.match(html, /set display_preferences_note = '[a-z-]+'/);
+  }
+  for (const choice of ['dark', 'light', 'system']) assert.match(displayControls, new RegExp(`option value="${choice}"`));
+  for (const id of ['themePreference', 'textSizePreference']) {
+    assert.match(displayControls, new RegExp(`<label for="${id}">`));
+    assert.equal((displayControls.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1);
+  }
+});
+
+test('movement follows device automatically and legacy app choices cannot override it', () => {
   const app = setup({ media: true });
   assert.equal(app.document.documentElement.dataset.reduceMotion, 'true');
   app.api.applyAppearancePreferences({ motion: 'device' });
@@ -112,6 +143,10 @@ test('device reduced-motion preference always wins and changing it updates the c
   app.motion.change();
   assert.equal(app.document.documentElement.dataset.reduceMotion, 'false');
   app.api.applyAppearancePreferences({ motion: 'reduce' });
+  app.motion.change();
+  assert.equal(app.document.documentElement.dataset.reduceMotion, 'false');
+  assert.equal(app.writes.length, 0);
+  app.motion.matches = true;
   app.motion.change();
   assert.equal(app.document.documentElement.dataset.reduceMotion, 'true');
 });
@@ -145,7 +180,7 @@ test('subscribers cannot mutate internal choices or break another subscriber', (
 test('all page shells initialize appearance before the stylesheet without inline scripting', () => {
   for (const file of ['base.html', 'dashboard.html', 'scan.html']) {
     const html = readFileSync(new URL(`../app/templates/${file}`, import.meta.url), 'utf8');
-    const boot = html.indexOf('<script src="/static/js/appearance.js?v=20261014-reliability"></script>');
+    const boot = html.indexOf('<script src="/static/js/appearance.js?v=20261015-inclusive"></script>');
     assert.ok(boot >= 0 && boot < html.indexOf('<link rel="stylesheet"'));
   }
 });
@@ -159,8 +194,10 @@ test('display choices stay in Settings without a duplicate global navigation sho
   assert.match(section, /tabindex="-1"/);
   assert.match(section, /Changes apply straight away, without pressing Save settings/);
   assert.doesNotMatch(section, /<form\b|<details\b/);
-  for (const id of ['themePreference', 'textSizePreference', 'motionPreference']) {
-    assert.equal((section.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1);
-    assert.match(section, new RegExp(`<label for="${id}">`));
+  for (const id of ['themePreference', 'textSizePreference']) {
+    assert.equal((displayControls.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1);
+    assert.match(displayControls, new RegExp(`<label for="${id}">`));
   }
+  assert.doesNotMatch(section, /motionPreference|Movement on screen/);
+  assert.match(section, /reduced-motion setting is respected automatically/);
 });

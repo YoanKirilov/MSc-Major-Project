@@ -9,8 +9,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Plain-language results from your saved local network checks." />
     <title>Scan report — NetGuard AI</title>
-    <script src="/static/js/appearance.js?v=20261014-reliability"></script>
-    <link rel="stylesheet" href="/static/css/app.css?v=20261014-reliability" />
+    <script src="/static/js/appearance.js?v=20261015-inclusive"></script>
+    <link rel="stylesheet" href="/static/css/app.css?v=20261015-inclusive" />
   </head>
   <body class="scan-results-page">
     <div class="page-shell">
@@ -51,7 +51,7 @@
             <div id="scan-problems" class="status-message" hidden></div>
             <p id="self-check-notice" class="self-check-notice" hidden></p>
             <p id="ai-report-notice" class="status-message" role="status" hidden></p>
-            <p id="annotation-notice" class="status-message" role="status" hidden></p>
+            <p id="annotation-notice" class="status-message" hidden></p>
             <p id="report-user-title"></p>
             <div class="report-recovery-actions" role="group" aria-label="Recover the report or unfinished checks">
               <button class="secondary-button" id="retryReportLoad" type="button" hidden>Reload saved report</button>
@@ -82,7 +82,7 @@
         <p id="report-interaction-status" class="sr-only" role="status" aria-live="polite"></p>
         <div id="report-content" hidden inert aria-busy="true">
           <nav class="report-jump-links" aria-label="Report sections">
-            <a href="#first-action">Start here</a><a href="#what-changed">What changed?</a><a href="#devices-title">Devices</a><a href="#findings-title">Review items</a><a href="#next-title">Tasks</a><a href="#changes-title">Supporting info</a>
+            <a href="#first-action">Start here</a><a href="#devices-title">Devices</a><a href="#findings-title">Review items</a><a href="#next-title">Tasks</a><a href="#what-changed">What changed?</a><a href="#changes-title">Supporting info</a>
           </nav>
           <section class="beginner-guide" aria-labelledby="guide-title">
             <h2 id="guide-title">Where to start</h2>
@@ -101,14 +101,8 @@
             </details>
             <details class="first-action-help"><summary>What was checked, and what do priorities mean?</summary>
               <p id="report-checks"></p><p id="scan-computer-coverage" hidden></p>
-              <p>High means review first; Medium means review next; Low means lower priority. Review describes a feature whose safety this tool has not assessed. An answering service is not proof of a break-in; no flagged items is not proof of safety.</p>
+              <p>High means review first; Medium means review next; Low means lower priority. Review describes a feature whose safety this tool has not assessed. A reply from a feature is not proof of a break-in. No review items does not prove everything is safe.</p>
             </details>
-          </section>
-          <section class="report-changes card" id="what-changed" aria-labelledby="what-changed-title">
-            <h2 id="what-changed-title">What changed since earlier checks?</h2>
-            <p id="changes-overview"></p>
-            <p>Only compatible, completed checks of reliably matched observations are compared. Newly observed does not mean an intruder; not observed this time does not mean removed or repaired.</p>
-            <details><summary>View comparison dates and differences</summary><ul id="changes-list"></ul></details>
           </section>
           <section class="device-section" aria-labelledby="devices-title">
             <div><p class="eyebrow">Devices in this report</p><h2 id="devices-title">Your devices</h2>
@@ -117,14 +111,13 @@
             <div class="report-toolbar">
               <div class="form-field"><label for="deviceSearchInput">Search devices</label><div class="search-box"><input id="deviceSearchInput" type="search" placeholder="Name, address or feature" autocomplete="off" /><button id="clearDeviceSearch" class="text-button" type="button">Clear</button></div></div>
               <div class="form-field"><label for="deviceSort">Order devices by</label><select id="deviceSort"><option value="priority">Review priority</option><option value="name">Name</option><option value="address">Network address</option></select></div>
-              <div class="form-field"><label for="deviceQuickFilter">Show devices</label><select id="deviceQuickFilter"><option value="all">All devices</option><option value="unnamed">Unnamed devices</option><option value="unfinished">Unfinished checks</option><option value="review">With items to review</option></select></div>
-              <button id="resetDeviceFilters" class="text-button" type="button">Reset device filters</button>
             </div>
             <p id="device-search-count" role="status"></p>
+            <p id="report-device-context-status" class="status-message" role="status" aria-live="polite" hidden></p>
             <details class="scan-technical"><summary>How many devices have a reported name?</summary><p id="naming-coverage"></p></details>
             <div id="device-summaries" class="device-summaries"></div>
             <button id="showMoreDevices" class="secondary-button" type="button" hidden>Show more devices</button>
-            <details class="feature-inventory" id="feature-inventory"><summary>View by feature — web pages, file sharing and more</summary><p>This groups answering features from the whole saved report, independently of the device filters. Inferred names are qualified; announcements alone are not included. It is not a safety verdict.</p><ul id="feature-inventory-list"></ul></details>
+            <details class="feature-inventory" id="feature-inventory"><summary>View by feature — web pages, file sharing and more</summary><p>This groups the features that replied during this scan. It includes the whole report, even when you search for a device. Possible feature names are marked as unconfirmed. Announcements without a reply are not included. This is not a safety verdict.</p><ul id="feature-inventory-list"></ul></details>
             <details id="technical-devices" class="scan-technical">
               <summary>Technical device details — addresses, ports and check output</summary>
               <p>An announcement is not the same as a response to a service check. Scroll this table sideways on small screens.</p>
@@ -151,7 +144,7 @@
                 <select id="reviewDevice" aria-describedby="review-filter-help"><option value="all">All devices</option></select>
               </div>
             </div>
-            <p class="field-hint" id="review-filter-help">Choose a device to read its results one at a time. These filters affect review items only; the device list and your review tasks remain available below.</p>
+            <p class="field-hint" id="review-filter-help">Choose a device to read its review items. Your device list and review tasks are not hidden by these filters.</p>
             <div class="filter-row" aria-label="Filter review items by priority">
               <button class="filter-chip active" type="button" data-filter="all" aria-pressed="true">All <span id="count-all">0</span></button>
               <button class="filter-chip" type="button" data-filter="high" aria-pressed="false">High <span id="count-high">0</span></button>
@@ -166,30 +159,48 @@
             <div><p class="eyebrow">Your own checklist</p><h2 id="next-title">Your review tasks</h2>
               <p>All suggested actions are listed here. Confirm the device and whether you use its feature before changing settings. Ask its owner or maker if unsure.</p>
               <p>Marking Checked records your review, not a verified fix or a new security test.</p>
-              <p id="checklist-notice" role="status"></p><p id="checklist-progress" role="status"></p>
-              <label class="checklist-filter">Show review tasks<select id="checklist-filter"><option value="all">All statuses</option><option value="to_check">To check</option><option value="checked">Checked</option><option value="need_help">Need help</option></select></label>
-              <button id="needHelpShortcut" class="text-button" type="button">Show tasks where I need help</button>
-              <div class="form-actions"><button id="expandReviewTasks" class="text-button" type="button" disabled>Expand available checklists</button><button id="collapseReviewTasks" class="text-button" type="button" disabled>Collapse available checklists</button></div>
-              <p id="checklist-filter-count" role="status"></p><p id="checklist-empty" hidden>No tasks match this status. Choose All statuses to see every task.</p>
+              <p id="checklist-notice"></p><p id="checklist-progress"></p>
+              <div class="checklist-filter"><label for="checklist-filter">Show review tasks</label><select id="checklist-filter"><option value="all">All statuses</option><option value="to_check">To check</option><option value="checked">Checked</option><option value="need_help">Need help</option></select></div>
+              <p id="checklist-filter-count"></p><p id="checklist-empty" hidden>No tasks match this status. Choose All statuses to see every task.</p>
             </div>
             <ol class="steps-list" id="nextStepsList"></ol>
           </section>
+          <section class="report-changes card" id="what-changed" aria-labelledby="what-changed-title">
+            <h2 id="what-changed-title">What changed since earlier checks?</h2>
+            <p id="changes-overview"></p>
+            <p>We compare only finished checks that tested the same things and could be matched to the same device. A feature recorded for the first time does not mean an intruder. A feature not recorded this time does not mean the device was removed or a problem was fixed.</p>
+            <details><summary>View comparison dates and differences</summary><ul id="changes-list"></ul></details>
+          </section>
           <section class="comparison-section" aria-labelledby="changes-title">
             <h2 id="changes-title">Supporting information</h2>
-            <div class="supporting-grid">
-              <details id="report-comparisons"><summary>Compare with earlier scans</summary>
-                <p id="comparison-summary"></p><p>Not observed does not mean removed or fixed. Only compatible completed checks can be compared.</p>
+            <p>Choose a topic to read more without losing your place in the report.</p>
+            <div class="supporting-topics" role="group" aria-label="Supporting information topics">
+              <button class="secondary-button" type="button" data-supporting-topic="comparisons" aria-haspopup="dialog" aria-controls="supportingInfoDialog">Earlier device observations</button>
+              <button class="secondary-button" type="button" data-supporting-topic="announcements" aria-haspopup="dialog" aria-controls="supportingInfoDialog" hidden>Device announcements</button>
+              <button class="secondary-button" type="button" data-supporting-topic="technical" aria-haspopup="dialog" aria-controls="supportingInfoDialog">Technical scan details</button>
+              <button class="secondary-button" type="button" data-supporting-topic="explanations" aria-haspopup="dialog" aria-controls="supportingInfoDialog">How we explained the results</button>
+              <button class="secondary-button" type="button" data-supporting-topic="glossary" aria-haspopup="dialog" aria-controls="supportingInfoDialog">Explain technical words</button>
+              <button class="secondary-button" type="button" data-supporting-topic="accessibility" aria-haspopup="dialog" aria-controls="supportingInfoDialog">Text and colour preferences</button>
+            </div>
+            <dialog id="supportingInfoDialog" class="supporting-dialog" aria-labelledby="supportingInfoTitle">
+              <div class="supporting-dialog-header"><h2 id="supportingInfoTitle" tabindex="-1" autofocus>Supporting information</h2><button id="closeSupportingInfo" class="secondary-button" type="button">Close</button></div>
+              <div class="form-field"><label for="supportingInfoTopic">Choose information</label><select id="supportingInfoTopic">
+                <option value="comparisons">Earlier device observations</option><option value="announcements" disabled>Device announcements</option><option value="technical">Technical scan details</option><option value="explanations">How we explained the results</option><option value="glossary">Explain technical words</option><option value="accessibility">Text and colour preferences</option>
+              </select></div>
+              <div class="supporting-dialog-content" tabindex="0" role="region" aria-label="Selected supporting information">
+              <section id="report-comparisons" data-supporting-panel="comparisons" aria-labelledby="supporting-comparisons-title" hidden><h3 id="supporting-comparisons-title">Earlier device observations</h3>
+                <p id="comparison-summary"></p><p>A feature not recorded this time does not mean a device was removed or a problem was fixed. We compare only finished checks that tested the same things.</p>
                 <p>Matched comparisons are in each device's <strong>About this device</strong> details.</p><a href="#devices-title">Go to devices to view their comparisons</a>
                 <details id="earlier-devices"><summary>Seen earlier, not matched this time</summary><p id="earlier-devices-note"></p><ul id="earlier-devices-list"></ul></details>
-              </details>
-              <section id="mdns-section" aria-labelledby="mdns-title" hidden><details><summary id="mdns-title">Other recorded device announcements</summary><p>Matched announcements appear with their device. These unverified claims do not establish a service response or a security problem.</p><ul id="mdns-list"></ul></details></section>
-              <details class="scan-technical"><summary>Technical scan details</summary><p id="result-technical"></p></details>
-              <details id="explanation-about" class="explanation-about"><summary>How we explained the results</summary>
+              </section>
+              <section data-supporting-panel="announcements" hidden><section id="mdns-section" aria-labelledby="mdns-title" hidden><h3 id="mdns-title">Other recorded device announcements</h3><p>Matched announcements appear with their device. These unverified claims do not establish a service response or a security problem.</p><ul id="mdns-list"></ul></section></section>
+              <section data-supporting-panel="technical" aria-labelledby="supporting-technical-title" hidden><h3 id="supporting-technical-title">Technical scan details</h3><p id="result-technical"></p></section>
+              <section id="explanation-about" class="explanation-about" data-supporting-panel="explanations" aria-labelledby="supporting-explanations-title" hidden><h3 id="supporting-explanations-title">How we explained the results</h3>
                 <div id="overview-help"></div>
                 <p id="ai-report-source"></p><p id="ai-report-model"></p><p id="guidance-notice"></p><div id="guidance-archives"></div>
                 <button id="refreshGuidanceButton" class="text-button" type="button" hidden>Refresh saved guidance</button><a href="/settings">AI settings</a>
-              </details>
-              <details class="scan-technical" id="report-glossary"><summary>Explain the words in this report</summary>
+              </section>
+              <section id="report-glossary" data-supporting-panel="glossary" aria-labelledby="supporting-glossary-title" hidden><h3 id="supporting-glossary-title">Explain the words in this report</h3>
                 <dl><dt>Service or feature</dt><dd>Something a device offers that other devices may contact, such as file sharing. Answering a check is not automatically a security problem or evidence of use.</dd>
                   <dt>IP address</dt><dd>A device's address on this network. It can change and does not verify its identity.</dd>
                   <dt>Port, TCP and UDP</dt><dd>A port is a numbered connection point for a device feature. TCP and UDP are ways devices exchange information. Seeing one does not, by itself, mean a security problem.</dd>
@@ -198,26 +209,20 @@
                   <dt>Encryption</dt><dd>Protection that scrambles information while it travels.</dd>
                   <dt>Evidence strength</dt><dd>How strongly the recorded facts support an observation, not how safe a device is.</dd>
                   <dt>Device not identified</dt><dd>No usable name was found. This does not mean an intruder; check your router's list or ask the person who set up the network.</dd></dl>
-              </details>
-              <details class="reading-options"><summary>Accessibility preferences</summary>
-                <div class="form-field"><label for="themePreference">Colour theme</label>
-                  <select id="themePreference" aria-describedby="accessibility-preferences-note"><option value="dark">Dark</option><option value="light">Light</option></select>
-                </div>
-                <div class="form-field"><label for="textSizePreference">Text size</label>
-                  <select id="textSizePreference" aria-describedby="accessibility-preferences-note"><option value="standard">Standard</option><option value="larger">Larger</option></select>
-                </div>
-                <div class="form-field"><label for="motionPreference">Movement on screen</label>
-                  <select id="motionPreference" aria-describedby="motion-preference-help"><option value="device">Device settings</option><option value="reduce">Reduce movement</option></select>
-                  <p id="motion-preference-help">Reduced movement from your device settings is always respected.</p>
-                </div>
+              </section>
+              <section class="reading-options" data-supporting-panel="accessibility" aria-labelledby="supporting-accessibility-title" hidden><h3 id="supporting-accessibility-title">Text and colour preferences</h3>
+                {% set display_preferences_note = 'accessibility-preferences-note' %}
+                {% include "includes/display-controls.html" %}
+                <p>Reduced movement from your device settings is always respected.</p>
                 <p id="accessibility-preferences-note">These preferences apply to this browser, not your scan results. If this browser cannot save them, they last until you leave or reload the page.</p>
-              </details>
-            </div>
+              </section>
+              </div>
+            </dialog>
           </section>
         </div>
       </main>
       {% include "includes/shared-footer.html" %}
     </div>
-    <script type="module" src="/static/js/scan.js?v=20261014-reliability"></script>
+    <script type="module" src="/static/js/scan.js?v=20261015-edit-recovery"></script>
   </body>
 </html>

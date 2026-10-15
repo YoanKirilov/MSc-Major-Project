@@ -140,6 +140,7 @@ def test_delayed_nicknames_conflicts_and_mobile_checklists(tmp_path, monkeypatch
             assert writes[0]["expected_revision"] == 1
             # A rejected second-tab write reloads a fresh snapshot, never retries the write.
             mode = "conflict"
+            coverage_text = page.locator("#result-status").inner_text()
             page.get_by_role("button", name="Edit or remove your nickname", exact=True).focus()
             page.keyboard.press("Enter")
             page.locator("#annotationEditorInput").fill("Rejected label")
@@ -168,10 +169,13 @@ def test_delayed_nicknames_conflicts_and_mobile_checklists(tmp_path, monkeypatch
             expect(page.locator("#device-summaries summary").first).to_contain_text(
                 "Other tab label"
             )
-            expect(page.locator("#result-status")).to_contain_text("was not saved")
-            expect(page.locator("#result-status")).to_contain_text("Latest nicknames loaded")
+            # Edit failures belong to the active modal, not the scan-coverage text.
+            expect(page.locator("#result-status")).to_have_text(coverage_text)
             expect(page.locator("#annotationEditorInput")).to_have_value("Rejected label")
             expect(page.locator("#annotationEditorStatus")).to_contain_text("not saved")
+            expect(page.locator("#annotationEditorStatus")).to_contain_text(
+                "Latest nicknames loaded"
+            )
             page.locator("#annotationEditorCancel").click()
             expect(
                 page.get_by_role("button", name="Edit or remove your nickname", exact=True)

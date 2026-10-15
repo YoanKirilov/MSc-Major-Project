@@ -140,10 +140,16 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                 ]:
                     page.goto(base + route)
                     expect(page.locator(selector)).to_be_visible()
+                    if route.startswith("/scans/"):
+                        expect(page.locator("#report-content")).to_have_attribute(
+                            "data-reading-ready", "true"
+                        )
                     if route == "/settings":
                         expect(page.locator("#save-settings")).to_be_enabled()
                     elif route == "/history":
-                        expect(page.locator("#history-list a")).to_have_count(0)
+                        # A complete ordinary page is accessible immediately;
+                        # viewport entry only adds a reduced-motion-safe effect.
+                        expect(page.locator("#history-list a")).to_have_count(2)
                         expect(page.locator("#history-list")).not_to_have_attribute(
                             "aria-busy", "true"
                         )
@@ -228,10 +234,12 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
             page.set_viewport_size({"width": 320, "height": 568})
             page.goto(base + f"/scans/{scan_id}")
             expect(page.locator("#first-action")).to_be_visible()
+            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
             device_card = page.locator("#device-summaries .device-summary-group > details").first
             expect(device_card).not_to_have_attribute("open", "")
             collapsed_height = page.evaluate("document.documentElement.scrollHeight")
             device_card.locator("summary").first.focus()
+            expect(device_card.locator("summary").first).to_be_focused()
             page.keyboard.press("Enter")
             expect(device_card).to_have_attribute("open", "")
             assert page.evaluate("document.documentElement.scrollHeight") > collapsed_height
@@ -273,6 +281,9 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                 touch.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
                 touch.goto(base + f"/scans/{scan_id}")
                 expect(touch.locator("#first-action")).to_be_visible()
+                expect(touch.locator("#report-content")).to_have_attribute(
+                    "data-reading-ready", "true"
+                )
                 touch.locator("#runAgainButton").tap()
                 expect(touch.get_by_role("dialog")).to_be_visible()
                 touch.get_by_role("button", name="Same device", exact=True).tap()

@@ -13,29 +13,27 @@ pytestmark = [
 
 
 @pytest.mark.parametrize("width", [320, 390, 1440])
-def test_report_shortcuts_and_feature_view_keep_all_saved_facts(ui, width):
+def test_report_simple_search_and_feature_view_keep_all_saved_facts(ui, width):
     from playwright.sync_api import expect
 
     page, report = _open(ui, size=(width, 844))
     expect(page.locator("#changes-overview")).to_contain_text("not available")
     expect(page.locator("#shareReportButton")).to_be_enabled()
     total = page.locator(".device-summary-group").count()
-    page.get_by_label("Show devices", exact=True).select_option("unfinished")
+    expect(page.locator("#deviceQuickFilter")).to_have_count(0)
+    page.get_by_role("searchbox", name="Search devices", exact=True).fill("192.168.56.231")
     expect(page.locator(".device-summary-group")).to_have_count(1)
     expect(page.locator(".device-summary-group")).to_contain_text("could not finish")
-    page.get_by_role("button", name="Reset device filters").click()
+    page.get_by_role("button", name="Clear", exact=True).click()
     expect(page.locator(".device-summary-group")).to_have_count(total)
-    page.get_by_label("Show devices", exact=True).select_option("unnamed")
-    expect(page.locator(".device-summary-group")).to_have_count(2)
     page.locator("#feature-inventory > summary").click()
     expect(page.locator("#feature-inventory-list")).to_contain_text("File sharing")
     page.locator("#feature-inventory-list").get_by_role(
         "button", name="View this device"
     ).first.click()
-    expect(page.get_by_label("Show devices", exact=True)).to_have_value("all")
     expect(page.locator(".device-summary-group")).to_have_count(1)
     expect(page.locator(".device-summary")).to_have_attribute("open", "")
-    page.get_by_role("button", name="Show tasks where I need help").click()
+    page.get_by_label("Show review tasks", exact=True).select_option("need_help")
     expect(page.locator("#checklist-filter")).to_have_value("need_help")
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     assert len(report.services) == 13

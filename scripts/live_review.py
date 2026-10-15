@@ -386,12 +386,29 @@ def main():
             expect(device_page.locator("#device-library-status")).to_contain_text(
                 "Page", timeout=60000
             )
+            device_page.get_by_role("combobox", name="Show saved devices").select_option("review")
+            device_page.get_by_role("button", name="Search devices", exact=True).click()
+            card = device_page.locator(".device-library-card").first
+            expect(card).to_be_visible(timeout=60000)
+            return_key = card.get_attribute("data-device-key")
+            card.get_by_text("Open recorded reports", exact=True).click()
+            card.get_by_role("link").first.click()
+            expect(device_page.locator("#report-content")).to_have_attribute(
+                "data-reading-ready", "true", timeout=60000
+            )
+            device_page.get_by_role("link", name="My devices", exact=True).click()
+            expect(device_page.get_by_role("combobox", name="Show saved devices")).to_have_value(
+                "review"
+            )
+            device_page.wait_for_function(
+                "key => document.activeElement?.closest('.device-library-card')"
+                "?.dataset.deviceKey === key",
+                arg=return_key,
+            )
             device_page.close()
             monitor = read_api(context, base + "/api/monitoring")
-            if not monitor.ok or monitor.json().get("enabled"):
-                raise RuntimeError(
-                    "Periodic checks must remain disabled during this bounded live pair"
-                )
+            if monitor.status != 404:
+                raise RuntimeError("The removed periodic-check API must not be available")
             save(
                 run,
                 "feature-verification.json",
@@ -400,9 +417,10 @@ def main():
                     "inventory_warnings": inventory_data["warnings"],
                     "inventory_view_counts": inventory_views,
                     "inventory_filter_browser_reset": True,
+                    "inventory_report_return_context": True,
                     "private_exports_opened": 2,
                     "comparison_and_feature_sections_present": True,
-                    "monitoring_off_by_default": True,
+                    "periodic_checks_removed": True,
                 },
             )
             save(

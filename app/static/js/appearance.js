@@ -2,9 +2,9 @@
 (function (window, document) {
   'use strict';
   const key = 'netguard-appearance-v1';
-  const defaults = { theme: 'dark', textSize: 'standard', motion: 'device' };
-  const choices = { theme: ['dark', 'light', 'system'], textSize: ['standard', 'larger'], motion: ['device', 'reduce'] };
-  const controls = { theme: 'themePreference', textSize: 'textSizePreference', motion: 'motionPreference' };
+  const defaults = { theme: 'dark', textSize: 'standard' };
+  const choices = { theme: ['dark', 'light', 'system'], textSize: ['standard', 'larger'] };
+  const controls = { theme: 'themePreference', textSize: 'textSizePreference' };
   const listeners = new Set();
   const bound = new WeakSet();
   let storageAvailable = true;
@@ -33,7 +33,9 @@
     const root = document.documentElement;
     root.dataset.theme = preferences.theme === 'system' ? deviceTheme?.matches ? 'light' : 'dark' : preferences.theme;
     root.dataset.textSize = preferences.textSize;
-    root.dataset.reduceMotion = String(preferences.motion === 'reduce' || Boolean(deviceMotion?.matches));
+    // Motion follows the device automatically. Ignore the removed legacy app
+    // preference without discarding a person's saved theme or text size.
+    root.dataset.reduceMotion = String(Boolean(deviceMotion?.matches));
     for (const [name, id] of Object.entries(controls)) {
       const control = document.getElementById(id);
       if (control) control.value = preferences[name];
@@ -43,7 +45,8 @@
       const notice = document.createElement('p');
       notice.id = 'appearance-storage-notice';
       notice.className = 'status-message';
-      notice.setAttribute('role', 'status');
+      // This is persistent help, not another live message for the same change.
+      // A deliberate preference edit is announced once by appearance-feedback.
       notice.textContent = 'Your display choices work on this page, but this browser could not remember them for later.';
       options.append(notice);
     }

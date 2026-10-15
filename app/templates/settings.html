@@ -10,22 +10,9 @@
 <section id="display-preferences" class="card settings-card reading-options display-preferences" aria-labelledby="display-preferences-heading" tabindex="-1">
   <h2 id="display-preferences-heading">Display preferences</h2>
   <p id="display-preferences-note">Choose how NetGuard looks in this browser. Changes apply straight away, without pressing Save settings, and do not change your scan results.</p>
-  <div class="display-preferences-grid">
-    <div class="form-field">
-      <label for="themePreference">Colour theme</label>
-      <select id="themePreference" aria-describedby="display-preferences-note"><option value="dark">Dark</option><option value="light">Light</option><option value="system">Use device theme</option></select>
-    </div>
-    <div class="form-field">
-      <label for="textSizePreference">Text size</label>
-      <select id="textSizePreference" aria-describedby="display-preferences-note"><option value="standard">Standard</option><option value="larger">Larger</option></select>
-    </div>
-    <div class="form-field">
-      <label for="motionPreference">Movement on screen</label>
-      <select id="motionPreference" aria-describedby="display-motion-help"><option value="device">Device settings</option><option value="reduce">Reduce movement</option></select>
-    </div>
-  </div>
-  <p id="display-motion-help" class="field-hint">Your device's reduced-motion setting is always respected. These choices are remembered in this browser when browser storage is available.</p>
-  <p id="appearance-feedback" class="status-message" role="status"></p>
+  {% set display_preferences_note = 'display-preferences-note' %}
+  {% include "includes/display-controls.html" %}
+  <p class="field-hint">These choices are remembered in this browser when browser storage is available. Your device's reduced-motion setting is respected automatically.</p>
 </section>
 <section class="card settings-card" aria-label="App settings">
   <div id="settings-errors" class="error-summary" role="alert" tabindex="-1" hidden>
@@ -94,24 +81,5 @@
     </div>
   </form>
 </section>
-<section class="card settings-card" aria-labelledby="monitor-title">
-  <h2 id="monitor-title">Optional periodic Light checks</h2>
-  <p>Repeat a Light check while this app is running. Off by default. This is not continuous protection: sleeping devices can be missed, and checks stop when the app closes or the connection changes. After a restart, you must authorise them again.</p>
-  <p>Stop periodic checks prevents future checks; use a running scan's Cancel scan button to stop a check already in progress.</p>
-  <p id="monitor-summary" role="status">Loading periodic-check settings…</p>
-  <form id="monitor-form">
-    <div class="form-field"><label for="monitor-interval">Time between checks</label>
-    <select id="monitor-interval"><option value="30">30 minutes</option><option value="60" selected>1 hour</option><option value="360">6 hours</option><option value="1440">24 hours</option></select></div>
-    <p id="monitor-scope"></p>
-    <label class="checkbox-field" for="monitor-authorised"><input type="checkbox" id="monitor-authorised" aria-describedby="monitor-scope monitor-error" /> I own or have permission to repeatedly check the network shown above</label>
-    <div class="form-actions">
-      <button id="monitor-start" class="secondary-button" type="submit" disabled>Enable periodic checks</button>
-      <button id="monitor-stop" class="secondary-button" type="button" disabled>Stop periodic checks</button>
-      <button id="monitor-reload" class="text-button" type="button">Reload periodic-check status</button>
-    </div>
-    <p id="monitor-error" class="field-error" role="status" hidden></p>
-  </form>
-  <details><summary>Recent local events</summary><p>These notices describe saved checks, not verified intrusions or repairs. No emails or external notifications are sent.</p><ol id="monitor-events"></ol></details>
-</section>
 {% endblock %}
-{% block scripts %}<script type="module" src="/static/js/settings.js?v=20261014-reliability"></script><script type="module" src="/static/js/monitoring.js?v=20261014-periodic"></script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/js/settings.js?v=20261014-reliability"></script>{% endblock %}

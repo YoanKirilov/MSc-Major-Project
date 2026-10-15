@@ -36,7 +36,7 @@
       <button class="secondary-button" type="reset">Clear filters</button>
     </div>
   </form>
-  <p id="history-date-help" class="field-hint">Both dates include the whole UTC day. Report times use your browser's timezone; each row shows the UTC filter date to use here.</p>
+  <p id="history-date-help" class="field-hint action-hint">Date filters use UTC, a shared world time. Both dates include the whole day. Reports show your browser's local time and the UTC date to use in these filters.</p>
   <p id="history-applied-filters" class="field-hint"></p>
 </section>
 <section class="history-results" aria-labelledby="history-results-title">
@@ -48,7 +48,7 @@
     <button id="history-delete-selected" class="danger-button" type="button" disabled>Delete selected</button>
     <span id="history-selection-status" role="status">No reports selected.</span>
   </div>
-  <p id="history-selection-hint" class="field-hint">Select this page chooses its eligible reports, including rows further down, up to 24. It never selects another page. Running reports cannot be deleted.</p>
+  <p id="history-selection-hint" class="field-hint">Select this page chooses up to 24 reports on this page, including those further down. It never selects another page. Reports still running cannot be selected or deleted.</p>
   <p id="history-feedback" class="status-message" role="status" tabindex="-1"></p>
   <div class="history-feedback-actions">
     <button id="history-undo-delete" class="secondary-button" type="button" hidden>Undo last deletion</button>

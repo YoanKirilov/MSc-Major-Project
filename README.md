@@ -1,5 +1,29 @@
 # NetGuard AI (Network Assessor)
 
+Latest UI follow-up: [edit recovery and confirmed title saves](docs/ui-ux-review2-20261015.md).
+Unsaved report edits and failed checklist drafts receive conditional browser leave
+protection. Title confirmations require a matching newer response; uncertain saves
+retain the draft. The browser guard is best-effort, not persistent draft storage.
+
+Inclusive interface follow-up: [implementation and verification](docs/inclusive-ui-implementation-20261015.md).
+Reports use clearer wording and can open the exact device chosen in My devices.
+Device cards put recognition, last checks and review needs first; detailed history
+remains available. Settings and reports share theme/text choices, and save feedback
+avoids duplicate live updates. The home layout and Supporting information dialog
+are retained. Actual screen-reader/physical-phone and inclusive reader sessions
+remain evaluation work, not certified results.
+
+Latest Settings simplification: [periodic-check removal](docs/periodic-removal-20261014.md).
+Scans run only when explicitly requested; periodic checking and its settings/API
+have been removed. Existing saved reports and legacy scheduling files are not
+deleted. Display preferences retain colour theme and text size; reduced motion
+follows the device automatically, without an extra switch.
+
+Latest follow-up: [third comparison and verification](docs/competitive-round3-20261014.md).
+My devices remembers this tab's applied search, view, page and reading position
+when returning from a report. It does not save drafts or scan permission. Optional
+Windows-name checks reject ambiguous replies and retain no logged-in usernames.
+
 Latest follow-up: [second scanner/UX comparison and verification](docs/competitive-round2-20261014.md).
 My devices has whole-inventory views for favourites, recognition labels, unfinished
 checks and review items. Label saves require a matching newer receipt. Certificate
@@ -11,8 +35,8 @@ My devices organises saved observations and separate room/favourite/recognition
 labels. Reports expose compatible changes, device/task shortcuts, feature groups
 and privacy-aware print/PDF/CSV previews. These do not turn saved observations
 into a live presence or safety verdict. Deep adds bounded SMB version/signing
-checks; optional periodic Light checking stays off until explicitly authorised
-and pauses after restart or a connection change. JSON storage is retained.
+checks. The briefly introduced periodic-check feature has since been removed;
+scanning is user-initiated. JSON storage is retained.
 Finish active jobs, restart the backend task and reload the browser for the new
 Python endpoints. Dated records below describe earlier versions, not missing
 current features or the final test totals.
@@ -89,8 +113,9 @@ entries. Light report titles are blue, Deep titles purple, and hover/focus swaps
 those colours. [The earlier home/history record](docs/home-history-ux-20261012.md)
 preserves the superseded eight-entry implementation.
 
-Accessibility preferences now offers Dark/Light appearance, larger text and reduced
-movement, replacing paragraph alignment. Report prose is naturally left aligned.
+Accessibility preferences offer Dark/Light appearance and larger text, replacing
+paragraph alignment. The separate movement switch has been removed; the device's
+reduced-motion setting applies automatically. Report prose is naturally left aligned.
 Display choices are remembered separately from evidence and applied across this
 browser; device-level reduced motion is always respected. Both palettes include
 readable component surfaces and profile/severity colours.

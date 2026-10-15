@@ -164,7 +164,7 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
                 )
             expect(page.get_by_role("searchbox", name="Search devices", exact=True)).to_be_visible()
             expect(page.get_by_role("searchbox", name="Search review items")).to_be_visible()
-            page.locator("#report-comparisons > summary").click()
+            page.locator('[data-supporting-topic="comparisons"]').click()
             expect(page.locator("#comparison-summary")).to_contain_text("could not be compared")
             expect(page.locator("#comparison-list")).to_have_count(0)
             page.get_by_role("link", name="Go to devices to view their comparisons").click()
@@ -210,8 +210,15 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             stale_status.select_option("need_help")
             expect(other.locator("#checklist-notice")).to_contain_text("not saved")
             expect(other.locator("#detailPanel .action-check").first).to_contain_text("not saved")
-            expect(stale_status).to_have_value("checked")
-            stale_status.select_option("need_help")
+            # A rejected save retains the user's draft, while clearly showing the
+            # latest saved value. Retry is explicit; reloading must not erase input.
+            expect(stale_status).to_have_value("need_help")
+            expect(other.locator("#detailPanel .action-check").first).to_contain_text(
+                "Latest saved status: Checked"
+            )
+            other.locator("#detailPanel .action-check").first.get_by_role(
+                "button", name="Save this choice", exact=True
+            ).click()
             expect(stale_status).to_have_value("need_help")
             expect(other.locator("#checklist-notice")).to_contain_text("Checklist saved")
             page.reload()
@@ -448,13 +455,17 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             page.locator("#scope-mode").select_option("manual")
             page.locator("#allowed-network").fill("192.168.0.0/24")
             page.get_by_role("button", name="Save settings", exact=True).click()
-            page.wait_for_url(base + "/")
+            expect(page.locator("#settings-status")).to_contain_text(
+                "Network and scanner settings saved"
+            )
             page.goto(base + "/settings")
             expect(page.locator("#scope-mode")).to_have_value("manual")
             expect(page.locator("#allowed-network")).to_have_value("192.168.0.0/24")
             page.locator("#scope-mode").select_option("automatic")
             page.get_by_role("button", name="Save settings", exact=True).click()
-            page.wait_for_url(base + "/")
+            expect(page.locator("#settings-status")).to_contain_text(
+                "Network and scanner settings saved"
+            )
             assert store._load_settings().allowed_network is None
             assert not errors and not scans
             browser.close()

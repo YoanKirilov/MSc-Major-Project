@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { shortcutMatches, renderReportInsights } from '../app/static/js/report-insights.mjs';
+import { renderReportInsights } from '../app/static/js/report-insights.mjs';
 import { bindReportExport } from '../app/static/js/report-export.mjs';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -8,9 +8,10 @@ import * as presentation from '../app/static/js/presentation.mjs';
 import { createCvePanel } from '../app/static/js/cves.mjs';
 import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from '../app/static/js/devices.mjs';
 import * as reportView from '../app/static/js/report-view.mjs';
+import * as reportDeviceContext from '../app/static/js/report-device-context.mjs';
 import { renderFindingList, findingDeviceOptions, repeatedUnknownReplies } from '../app/static/js/finding-list.mjs';
-import { createTextEditor } from '../app/static/js/editor.mjs';
-import { createNoteState, checkStatus, projectNotes, reviewProgress } from '../app/static/js/notes.mjs';
+import { createTextEditor, createUnsavedChangesGuard } from '../app/static/js/editor.mjs';
+import { createNoteState, checkStatus, projectNotes, reviewProgress, confirmedTitleReceipt } from '../app/static/js/notes.mjs';
 import { createNicknameState, projectNicknames } from '../app/static/js/nicknames.mjs';
 import { unfinishedDeviceCount, partialScanTitle } from '../app/static/js/report.mjs';
 import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from '../app/static/js/report.mjs';
@@ -212,6 +213,61 @@ test('incomplete and empty scans do not imply a successful clean assessment', ()
   assert.match(emptyFindingMessage({ state: 'running' }), /still running/);
 });
 
+test('plain report wording keeps completed, unfinished and zero-result limits without changing evidence', () => {
+  const deepFreeze = value => {
+    if (value && typeof value === 'object') {
+      Object.values(value).forEach(deepFreeze); Object.freeze(value);
+    }
+    return value;
+  };
+  for (const state of ['completed', 'partial', 'failed', 'cancelled']) {
+    const finished = state === 'completed' ? 2 : 1;
+    const data = deepFreeze({ state, phase: 'finished', target: { mode: 'discover' },
+      policy: { network_context: { address: '192.168.56.2' } },
+      devices: [{ device_id: 'unknown', ip: '192.168.56.3' }],
+      services: [{ service_id: 'web', device_id: 'unknown', port: 80, protocol: 'tcp', name: 'http', state: 'open', detection_method: 'probed' }],
+      findings: [{ finding_id: 'f', severity: 'high', evidence: [{ value: 'Original technical reply' }] }],
+      coverage: { discovered_count: 2, candidate_count: 254, service_completed_count: finished,
+        targets: [{ ip: '192.168.56.2', service_status: 'completed' }, { ip: '192.168.56.3', discovery_status: 'observed', service_status: state === 'completed' ? 'completed' : 'timed_out' }] } });
+    const before = JSON.stringify(data);
+    const summary = completedCheckSummary(data);
+    if (state === 'completed') {
+      assert.match(summary, /All selected device checks finished \(2 devices\)/);
+      assert.match(summary, /not a full security assessment/);
+    } else {
+      assert.match(summary, /1 device check finished.*1 did not finish/);
+      assert.doesNotMatch(summary, /All selected/);
+      assert.match(emptyFindingMessage(data), /Scan incomplete.*Unfinished checks/);
+    }
+    assert.match(presentation.namingCoverage(data.devices), /1 without a detected name.*missing name does not mean an intruder/);
+    assert.match(presentation.webPageInstructions(data.devices[0], data.services[0]), /permission.*address bar.*not a confirmed settings.*Do not enter passwords.*HTTP.*Do not bypass certificate warnings/);
+    assert.equal(JSON.stringify(data), before);
+  }
+  const zero = { state: 'completed', target: { mode: 'discover' }, coverage: { discovered_count: 0, service_completed_count: 0 } };
+  assert.match(coverageSummary(zero), /No devices answered.*could not check their security/);
+  assert.match(emptyFindingMessage(zero), /No devices were assessed/);
+  assert.match(emptyFindingMessage({ ...zero, coverage: { service_completed_count: 2 } }), /no items to review.*not fully checked.*does not prove/);
+});
+
+test('plain AI status names the source and recovery without claiming a model review', () => {
+  for (const [reason, outcome] of [['provider_timeout', /timed out/], ['provider_unavailable', /unavailable/], ['provider_not_configured', /unavailable/], ['ai_limit_reached', /limit/]]) {
+    const data = { explanations: [{ fallback_reason: reason }] };
+    const before = JSON.stringify(data);
+    const notice = aiExplanationNote(data);
+    assert.match(notice, outcome);
+    assert.match(notice, /Reviewed guidance prepared without AI/);
+    assert.doesNotMatch(notice, /Ollama reviewed|AI wording passed/);
+    assert.equal(JSON.stringify(data), before);
+  }
+  const failed = aiExplanationNote({ analysis_status: 'failed' });
+  assert.match(failed, /results are saved.*AI explanation did not finish.*Reviewed guidance.*Retry.*no new scan is needed/);
+  const partiallyPrepared = aiExplanationNote({ analysis_status: 'failed', guidance_status: { ai_prompt_version: '3.0.0' },
+    explanations: [{ status: 'ready', source: 'ai', prompt_version: '3.0.0', content: { meaning: 'Accepted AI text.' } }, { fallback_reason: 'provider_timeout' }] });
+  assert.match(partiallyPrepared, /fills any missing AI explanations/);
+  assert.doesNotMatch(partiallyPrepared, /without AI is shown|shown instead|AI has not been used/);
+  assert.match(aiExplanationNote({}), /AI has not been used.*without AI/);
+});
+
 test('old AI records cannot be displayed as currently validated guidance', () => {
   const data = { guidance_status: { ai_prompt_version: '3.0.0' } };
   const record = { status: 'ready', source: 'ai', content: {}, prompt_version: '2.0.0' };
@@ -373,8 +429,8 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   }
   const context = vm.createContext({ document, request: () => { throw Error('Unexpected API request'); }, window: { location: { pathname: '/scans/test' },
     matchMedia: () => ({ matches: false, addEventListener() {} }) }, URL,
-    ...presentation, ...reportView, shortcutMatches, renderReportInsights, bindReportExport, deviceResultEntries, renderDeviceComponents, renderFindingList,
-    findingDeviceOptions, repeatedUnknownReplies, createTextEditor,
+    ...presentation, ...reportView, ...reportDeviceContext, renderReportInsights, bindReportExport, deviceResultEntries, renderDeviceComponents, renderFindingList,
+    findingDeviceOptions, repeatedUnknownReplies, createTextEditor, createUnsavedChangesGuard, confirmedTitleReceipt,
     createNicknameState, projectNicknames, createNoteState, checkStatus, projectNotes, partialScanTitle, createCvePanel, prioritise, formatServiceLabel: serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
   const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\npoll\(\);\s*$/, '');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDeviceLibrary, validateDevicePage, validDeviceLabels } from '../app/static/js/device-library-model.mjs';
+import { createDeviceLibrary, deviceReportHref, validateDevicePage, validDeviceLabels } from '../app/static/js/device-library-model.mjs';
 
 const key = index => `d-${index.toString(16).padStart(64, '0')}`;
 const labels = (room = '', favourite = false, recognised = false) => ({ room, favourite, recognised });
@@ -35,6 +35,29 @@ test('a complete bounded 24-device page loads once without scroll-driven paging'
   const url = new URL(app.calls[0].path, 'http://localhost');
   assert.equal(url.searchParams.get('limit'), '24');
   assert.equal(url.searchParams.get('offset'), '0');
+});
+
+test('saved-report links carry the exact bounded device ID as reading context only', () => {
+  for (const id of ['recorded-device', '00000000-0000-4000-8000-000000000002', 'legacy device/#?&', 'x'.repeat(200)]) {
+    const report = { ...device().reports[0], device_id: id };
+    const before = JSON.stringify(report);
+    const link = new URL(deviceReportHref(report), 'http://localhost');
+    assert.equal(link.pathname, `/scans/${report.scan_id}`);
+    assert.equal(link.searchParams.get('device'), id);
+    assert.deepEqual([...link.searchParams.keys()], ['device']);
+    assert.equal(link.hash, '#devices-title');
+    assert.equal(JSON.stringify(report), before);
+  }
+});
+
+test('missing or unusable device identities open the full saved report without inventing a target', () => {
+  for (const id of [null, undefined, '', ' ', ' leading', 'trailing ', 'x'.repeat(201), 'a\nb', 'a\u200bb', 'a\u202eb', 'a\u2028b', 'a\u00adb', 42]) {
+    const report = { ...device().reports[0], device_id: id };
+    assert.equal(deviceReportHref(report), `/scans/${report.scan_id}`);
+  }
+  for (const scan_id of ['../settings', 'javascript:alert(1)', null, undefined, ['00000000-0000-4000-8000-000000000001']]) {
+    assert.equal(deviceReportHref({ scan_id, device_id: 'valid' }), null);
+  }
 });
 
 test('search and explicit numbered pages address the whole server collection', async () => {

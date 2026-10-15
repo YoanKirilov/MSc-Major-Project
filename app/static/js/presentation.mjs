@@ -37,7 +37,7 @@ export function localFeatureHelp(device, service, data) {
       check: 'On a Windows computer you own, search Settings for Advanced sharing settings and review File and printer sharing. Check whether you intentionally share files or a printer. Leave settings unchanged if you are unsure.',
     },
     'microsoft-ds': {
-      meaning: 'This response is consistent with file or printer sharing. An answering connection does not reveal which files are shared or who can access them.',
+      meaning: 'This reply is consistent with file or printer sharing. It does not show which files are shared or who can access them.',
       check: 'On a Windows computer you own, review Advanced sharing settings and the Sharing tab of any folder you deliberately shared. Do not enable sharing to test this result or change permissions without understanding who needs access.',
     },
     'vmware-auth': {
@@ -63,7 +63,7 @@ export function localFeatureHelp(device, service, data) {
   return { ...help, limitation: self
     ? 'This is a check from the computer to itself. It does not establish whether another device or someone on the internet can connect.'
     : windowsFeature
-      ? 'The service name is a scanner observation, not verified operating-system identity. The Windows steps apply only if this is a Windows computer you own.'
+      ? 'This scanner label does not confirm that the device runs Windows. Follow the Windows steps only for a Windows computer you own.'
       : 'The scanner label is a clue, not proof of the device identity, installed software or safety.' };
 }
 
@@ -72,8 +72,8 @@ export function scanComputerCoverage(data) {
   if (data.phase !== 'finished' || data.target?.mode !== 'discover' || !address) return '';
   const target = data.coverage?.targets?.find(item => item.ip === address);
   if (!target) return ''; // A subnet scan may intentionally exclude this address.
-  if (target.service_status === 'completed') return 'The computer running NetGuard was included in these selected checks. A self-check does not establish what another device can reach.';
-  if (target.discovery_status === 'observed') return 'The computer running NetGuard was discovered, but its selected device checks did not finish. Its remaining features were not assessed.';
+  if (target.service_status === 'completed') return 'The computer running NetGuard was included in these selected checks. This was a self-check: it does not show whether another device can connect.';
+  if (target.discovery_status === 'observed') return 'The computer running NetGuard was found, but its selected device checks did not finish. Its remaining features were not checked.';
   return 'The computer running NetGuard was not discovered in this Light scan and was not included in its device checks. This is not a safety verdict. You can set up a separate Deep scan of this computer; it will not start automatically.';
 }
 export function recordedDeviceRole(device, data) {
@@ -82,7 +82,7 @@ export function recordedDeviceRole(device, data) {
   if (context.address === device.ip) return 'Computer that ran this scan';
   const gateways = context.connection?.Gateways;
   return Array.isArray(gateways) && gateways.includes(device.ip)
-    ? 'Network gateway — the connection used to reach other networks when this scan started (recorded route, not a verified device name)' : '';
+    ? 'Network gateway — used to reach other networks when this scan started. This recorded role does not confirm the device name.' : '';
 }
 
 export function matchesSearch(query, values, deviceAddress) {
@@ -159,8 +159,8 @@ export function webPageInstructions(device, service) {
       || !Number.isInteger(service.port) || service.port < 1 || service.port > 65535) return '';
   const scheme = service.name === 'https' || service.tunnel === 'ssl' ? 'https' : 'http';
   const address = `${scheme}://${device.ip}:${service.port}/`;
-  return `Only after you recognise this device and have permission, type ${address} into your browser's address bar, not its search box. `
-    + 'This is its starting page, not a confirmed settings or sign-in page. Do not enter passwords or personal details over HTTP, and do not bypass certificate warnings. If unsure, use the device manual or ask its owner.';
+  return `First, make sure you recognise this device and have permission to open it. Then type ${address} into your browser's address bar, not its search box. `
+    + 'This is its starting page, not a confirmed settings or sign-in page. Do not enter passwords or personal details over HTTP. Do not bypass certificate warnings. If unsure, use the device manual or ask its owner.';
 }
 
 export function deviceLabel(device) {
@@ -176,9 +176,9 @@ export function namingCoverage(devices = []) {
   const unrecorded = devices.filter(device => device.hostname && !device.hostname_source).length;
   const unnamed = devices.filter(device => !device.hostname).length;
   return `${current} device${current === 1 ? '' : 's'} with names reported in this scan; ${previous} with earlier saved names; ${unnamed} without a detected name.`
-    + (unrecorded ? ` ${unrecorded} saved name${unrecorded === 1 ? ' has' : 's have'} no recorded source; when or how ${unrecorded === 1 ? 'it was' : 'they were'} obtained is uncertain.` : '')
+    + (unrecorded ? ` The source of ${unrecorded} saved name${unrecorded === 1 ? ' is' : 's is'} missing. We do not know when or how ${unrecorded === 1 ? 'it was' : 'they were'} found.` : '')
     + (own ? ` Your nicknames label ${own} device${own === 1 ? '' : 's'} separately.` : '')
-    + ` Names are clues, not verified identities. A missing name does not mean an intruder. For a better chance of finding a name, wake the device and use “${IDENTIFY_DEVICE_LABEL}”; no name is guaranteed.`;
+    + ` Names are clues, not verified identities. A missing name does not mean an intruder. To try finding a name, wake the device. Then choose “${IDENTIFY_DEVICE_LABEL}”; no name is guaranteed.`;
 }
 
 export function pendingWording(data) {

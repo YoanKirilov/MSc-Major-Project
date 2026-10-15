@@ -24,10 +24,10 @@ pytestmark = [
 
 
 def _preferences(page):
-    panel = page.locator("details.reading-options")
-    if not panel.evaluate("element => element.open"):
-        panel.locator(":scope > summary").click()
-    return panel
+    dialog = page.locator("#supportingInfoDialog")
+    if not dialog.evaluate("element => element.open"):
+        page.locator('[data-supporting-topic="accessibility"]').click()
+    return dialog.locator(".reading-options")
 
 
 def _navigate(page, url):
@@ -61,19 +61,51 @@ def test_appearance_controls_replace_justification_and_persist_across_pages(ui):
     _preferences(page)
     page.get_by_label("Colour theme", exact=True).select_option("light")
     page.get_by_label("Text size", exact=True).select_option("larger")
-    page.get_by_label("Movement on screen", exact=True).select_option("reduce")
-    _assert_preferences(page, "light", "larger", True)
+    expect(page.get_by_label("Movement on screen", exact=True)).to_have_count(0)
+    _assert_preferences(page, "light", "larger", False)
     saved = page.evaluate("JSON.parse(localStorage.getItem('netguard-appearance-v1'))")
-    assert saved and "justify" not in str(saved)
+    assert saved and "justify" not in str(saved) and "motion" not in saved
     page.reload()
     expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
     _preferences(page)
     expect(page.locator("#themePreference")).to_have_value("light")
     expect(page.locator("#textSizePreference")).to_have_value("larger")
-    expect(page.locator("#motionPreference")).to_have_value("reduce")
+    expect(page.locator("#motionPreference")).to_have_count(0)
     for route in ("/", "/settings", "/history", f"/scans/{reports['zero'].scan_id}"):
         _navigate(page, base + route)
-        _assert_preferences(page, "light", "larger", True)
+        _assert_preferences(page, "light", "larger", False)
+
+
+def test_device_theme_is_consistent_across_settings_report_and_other_tabs(ui):
+    from playwright.sync_api import expect
+
+    page, base, reports = ui
+    page.emulate_media(color_scheme="light")
+    _navigate(page, base + "/settings")
+    page.get_by_label("Colour theme", exact=True).select_option("system")
+    expect(page.locator("html")).to_have_attribute("data-theme", "light")
+    expect(page.locator("#appearance-feedback")).to_contain_text("remembered")
+    _navigate(page, base + f"/scans/{reports['zero'].scan_id}")
+    panel = _preferences(page)
+    expect(panel.locator("#themePreference")).to_have_value("system")
+    page.emulate_media(color_scheme="dark")
+    expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+    expect(panel.locator("#themePreference")).to_have_value("system")
+    expect(panel.locator("#appearance-feedback")).to_have_attribute("role", "status")
+    other = page.context.new_page()
+    try:
+        other.emulate_media(color_scheme="light")
+        _navigate(other, base + "/settings")
+        expect(other.locator("#themePreference")).to_have_value("system")
+        other.get_by_label("Colour theme", exact=True).select_option("light")
+        expect(panel.locator("#themePreference")).to_have_value("light")
+        expect(page.locator("html")).to_have_attribute("data-theme", "light")
+        other.get_by_label("Colour theme", exact=True).select_option("system")
+        expect(panel.locator("#themePreference")).to_have_value("system")
+        expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+        expect(other.locator("html")).to_have_attribute("data-theme", "light")
+    finally:
+        other.close()
 
 
 def test_settings_keeps_display_choices_without_duplicate_header_link(ui, tmp_path):
@@ -110,8 +142,8 @@ def test_settings_keeps_display_choices_without_duplicate_header_link(ui, tmp_pa
     expect(page.get_by_label("Colour theme", exact=True)).to_be_focused()
     page.get_by_label("Colour theme", exact=True).select_option("light")
     page.get_by_label("Text size", exact=True).select_option("larger")
-    page.get_by_label("Movement on screen", exact=True).select_option("reduce")
-    _assert_preferences(page, "light", "larger", True)
+    expect(page.get_by_label("Movement on screen", exact=True)).to_have_count(0)
+    _assert_preferences(page, "light", "larger", False)
     expect(page.locator("#display-preferences-note")).to_contain_text("without pressing Save")
     for control in panel.locator("select").all():
         rect = control.bounding_box()
@@ -123,12 +155,12 @@ def test_settings_keeps_display_choices_without_duplicate_header_link(ui, tmp_pa
     page.wait_for_load_state("networkidle")
     expect(page.locator("#themePreference")).to_have_value("light")
     expect(page.locator("#textSizePreference")).to_have_value("larger")
-    expect(page.locator("#motionPreference")).to_have_value("reduce")
+    expect(page.locator("#motionPreference")).to_have_count(0)
     _navigate(page, base + f"/scans/{reports['zero'].scan_id}")
     _preferences(page)
     expect(page.locator("#themePreference")).to_have_value("light")
     expect(page.locator("#textSizePreference")).to_have_value("larger")
-    expect(page.locator("#motionPreference")).to_have_value("reduce")
+    expect(page.locator("#motionPreference")).to_have_count(0)
     assert not mutations, f"Display choices must never save app settings or start work: {mutations}"
 
 
@@ -164,14 +196,13 @@ def test_display_choices_work_with_blocked_storage_and_unavailable_app_settings(
     expect(panel.locator("#appearance-storage-notice")).to_have_count(1)
 
 
-def test_system_reduced_motion_is_respected_even_when_following_device(ui):
+def test_system_reduced_motion_is_automatic_and_removed_app_preference_is_ignored(ui):
     from playwright.sync_api import expect
 
     page, _ = _open(ui)
     _preferences(page)
-    control = page.get_by_label("Movement on screen", exact=True)
+    expect(page.get_by_label("Movement on screen", exact=True)).to_have_count(0)
     page.emulate_media(reduced_motion="reduce")
-    control.select_option("device")
     _assert_preferences(page, "dark", "standard", True)
     assert (
         page.locator("html").evaluate("element => getComputedStyle(element).scrollBehavior")
@@ -179,10 +210,17 @@ def test_system_reduced_motion_is_respected_even_when_following_device(ui):
     )
     page.emulate_media(reduced_motion="no-preference")
     _assert_preferences(page, "dark", "standard", False)
-    control.select_option("reduce")
-    page.emulate_media(reduced_motion="no-preference")
-    _assert_preferences(page, "dark", "standard", True)
-    expect(control).to_have_value("reduce")
+    page.evaluate(
+        """localStorage.setItem('netguard-appearance-v1', JSON.stringify({
+            version: 1, theme: 'light', textSize: 'larger', motion: 'reduce'
+        }))"""
+    )
+    page.reload()
+    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    _assert_preferences(page, "light", "larger", False)
+    page.emulate_media(reduced_motion="reduce")
+    _assert_preferences(page, "light", "larger", True)
+    expect(page.locator("#motionPreference")).to_have_count(0)
 
 
 def test_themes_and_larger_text_reflow_on_narrow_and_wide_pages(ui, tmp_path):
@@ -223,6 +261,8 @@ def test_themes_and_larger_text_reflow_on_narrow_and_wide_pages(ui, tmp_path):
             if width == 320:
                 page.locator("#themePreference").scroll_into_view_if_needed()
                 page.screenshot(path=tmp_path / f"{theme}-larger-preferences-320.png")
+                page.keyboard.press("Escape")
+                expect(page.locator("#supportingInfoDialog")).not_to_be_visible()
                 page.locator("#detailPanel").scroll_into_view_if_needed()
                 page.screenshot(path=tmp_path / f"{theme}-larger-detail-320.png")
                 page.evaluate("window.scrollTo({top: 0, behavior: 'instant'})")

@@ -1,5 +1,27 @@
 # Testing status
 
+## Edit recovery follow-up — 15 October 2026
+
+[Review, implementation and verification](ui-ux-review2-20261015.md) covers confirmed
+title-save feedback, conditional unsaved-report protection and local hidden-character
+guidance. Offline/package checks passed; 72 selected browser cases have passing
+coverage across the focused/wider runs and three affected retests, not one clean
+combined invocation. The linked record preserves initial failures and test updates.
+Only isolated synthetic data is used; no live
+scans are part of this UI pass. Native leave warnings are best effort, not persistent
+draft storage or a substitute for physical-device/assistive-technology evaluation.
+
+## Inclusive interface follow-up — 15 October 2026
+
+[Current implementation and verification record](inclusive-ui-implementation-20261015.md)
+tracks clearer report wording, device-first inventory, exact-device report links,
+shared display preferences and feedback/focus checks. All testing in this follow-up
+uses isolated synthetic reports; it runs no network scans. Actual assistive-
+technology/physical-device and inclusive-reader sessions remain unperformed; the
+[existing session kit](evaluation-session.md) has been extended, not filled with
+invented results. Final gate/browser/package outcomes are recorded in the current
+execution record; the dated sections below describe earlier versions.
+
 ## Second scanner/UX comparison — 14 October 2026
 
 [Research, changes and exact outcomes](competitive-round2-20261014.md): whole-

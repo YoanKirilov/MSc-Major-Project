@@ -165,3 +165,69 @@ help requested, clarity and task time separately from AI-only scoring.
 On real phones/assistive technology, specifically check the labelled status dropdown,
 announcement after a save failure, focus after name/CVE lookups, and text-size reflow
 of address-specific labels. These are prepared tasks, not completed evaluations.
+
+## Inclusive interface evaluation — 15 October 2026
+
+Status: prepared, no participants recruited and no measured results. This extends
+the combined-interface protocol above; it is not an AI-only comparison. Record
+the application version and use the same synthetic facts and tasks across sessions.
+Do not run scans, model requests or name/CVE lookups during a participant session.
+
+Before recruitment, obtain the university's required ethics/consent approval and
+agree success criteria with the supervisor using the existing quality targets.
+Include disabled and nondisabled nontechnical readers, and readers with different
+computing experience. Disability does not imply lack of technical experience.
+Offer accessible consent materials, breaks and withdrawal without explanation.
+Ask which accommodations/input methods help; do not collect diagnoses. Allow each
+person to use familiar assistive technology rather than teaching an unfamiliar tool.
+One person cannot represent every user with the same accessibility needs.
+
+Use the header-only [UI task log](evaluation-ui-tasks-template.csv) separately from
+the existing original-versus-AI comprehension scores. Use anonymous participant IDs,
+record browser/OS/assistive-technology versions only with consent, and follow the
+agreed storage/retention plan. Never record household identifiers, passwords or real
+network reports. Collect screen/audio recordings only with separate explicit consent.
+
+| Task | Participant prompt | Facilitator success check |
+| --- | --- | --- |
+| UI-01 | Find the device that needs checking first. What remains unknown? | Finds review/unfinished counts; does not infer online status or safety from the saved card |
+| UI-02 | Save a room label, then cancel another change. | Recognises personal labels; saved state and cancelled draft are distinct from scan facts |
+| UI-03 | Open this device's earlier report and return to your place in My devices. | Correct device opens; Back preserves search/page; no device/address transcription needed |
+| UI-04 | This old device link cannot be matched. What can you still read? | No substitute device is guessed; the full report remains available |
+| UI-05 | Make the text larger and use your device's colour preference. | Choices agree in Settings/report; distinguishes applied from remembered when storage is blocked |
+| UI-06 | Explain one technical word, switch topic, close the information window and continue reading. | Finds topic selector, scrolls its content, closes and resumes with usable focus/page position |
+| UI-07 | Mark an action Checked, then explain what that means. Repeat with a simulated failed save. | Personal note is not a verified repair; notices one useful outcome and retains/recover draft |
+| UI-08 | Delete an unwanted synthetic report and recover it. | Confirmation is understood; Undo/recovery succeeds without deleting another report |
+
+Present completed, unfinished, unnamed, zero-review-item and AI-unavailable examples.
+Ask what was found, what remains unknown and what to do first without coaching.
+Record unsafe interpretations explicitly, including claims of verified safety,
+confirmed intrusion, device presence or automatic repair. Preserve essential HTTP
+precautions in any example that involves opening a device page.
+
+For each task record completion, wrong-device selection, assistance, confusing
+words, unsafe interpretation, time and clarity separately. Do not combine these
+into a new success threshold after seeing the results. Have an independent reviewer
+check a sample of anonymous responses and record disagreement. Report missing data,
+withdrawals, untested configurations and sample limits; a small exploratory study
+does not establish that everyone understands the product.
+
+### Manual accessibility checks still required
+
+- Keyboard: skip link, predictable tab order, visible unobscured focus, native
+  disclosures, every search/save/recovery action, no trap outside an open modal.
+- Screen reader: headings/landmarks, label-in-name, table relationships, useful
+  validation, one meaningful save/error announcement and correct dialog focus return.
+  Record actual speech observations; DOM roles alone do not establish spoken output.
+- Voice input: controls can be invoked by their visible labels; repeated controls
+  have usable device context without unrelated hidden names.
+- Magnification: actual browser zoom at 200%/400%, user text spacing, forced colours,
+  long labels and short landscape windows; focused controls remain reachable.
+- Physical Android/iOS: touch, orientation, device text settings and the on-screen
+  keyboard. Do not expose private app APIs or weaken loopback/session protection
+  to obtain a phone screenshot; use approved isolated synthetic deployment.
+
+Record issues, implement the smallest justified fixes and repeat affected tasks.
+Automated Chromium/Firefox checks and simulated viewports complement these sessions;
+they do not replace participants, actual assistive technology or a full conformance
+assessment. See [WAI involving-users guidance](https://www.w3.org/WAI/test-evaluate/involving-users/).

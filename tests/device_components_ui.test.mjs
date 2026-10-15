@@ -75,6 +75,8 @@ test('device identity, status and counts stay visible in a compact shared anatom
     assert.equal(footer.parentElement, group);
     const buttons = descendants(footer).filter(node => node.tagName === 'BUTTON');
     assert.equal(buttons.length, 2);
+    assert.equal(footer.children[0].className, 'device-action-buttons');
+    assert.deepEqual(footer.children[0].children, buttons);
     assert.ok(buttons.every(button => button.className === 'secondary-button'));
     assert.ok(buttons.every(button => button.attributes['aria-describedby'] === summary.id));
   }
@@ -211,7 +213,8 @@ test('disclosure state and callback context survive component reconstruction', (
     onViewFinding: (...args) => calls.push(['finding', ...args]) });
   const [card, tools] = container.children[0].children;
   assert.equal(card.open, true);
-  const [edit, refresh, localStatus] = tools.children;
+  const [actions, localStatus] = tools.children;
+  const [edit, refresh] = actions.children;
   edit.events.click(); refresh.events.click();
   const review = byClass(container, 'device-review-links')[0].querySelector('button');
   review.events.click();

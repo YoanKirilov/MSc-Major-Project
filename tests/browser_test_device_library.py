@@ -79,6 +79,11 @@ def viewer():
                     return
                 if parts.path == "/devices":
                     route.fulfill(content_type="text/html", body=html)
+                elif parts.path.startswith("/scans/"):
+                    route.fulfill(
+                        content_type="text/html",
+                        body='<h1>Saved report</h1><a href="/devices">Return to my devices</a>',
+                    )
                 elif parts.path == "/api/session" and request.method == "GET":
                     route.fulfill(json={"csrf_token": "synthetic-csrf"})
                 elif parts.path == "/api/devices" and request.method == "GET":
@@ -225,6 +230,79 @@ def test_device_inventory_complete_pages_search_and_reflow(engine, viewer):
 
 
 @pytest.mark.parametrize("engine", os.getenv("UI_UX_BROWSERS", "chromium").split(","))
+def test_device_inventory_foregrounds_recognition_and_review_keeps_history_reachable(
+    engine, viewer
+):
+    from playwright.sync_api import expect
+
+    page, state = viewer(engine, count=2)
+    state["items"][0].update(review_count=4, unfinished_count=1)
+    state["items"][1]["annotations"].update(room="Living room", recognised=True)
+    state["items"][0]["reports"][0]["device_id"] = "saved device / ? # &"
+    state["items"][1]["reports"][0]["device_id"] = "different-saved-device"
+    page.goto(ORIGIN + "/devices")
+    cards = page.locator(".device-library-card")
+    expect(cards).to_have_count(2)
+    first = cards.first
+    expect(first.locator(".device-library-primary h3")).to_have_text("Household device 1")
+    expect(first.locator(".device-library-recognition")).to_have_text(
+        "Not marked recognised by you"
+    )
+    expect(cards.nth(1).locator(".device-library-recognition")).to_contain_text("Recognised by you")
+    expect(cards.nth(1).locator(".device-library-badges")).to_contain_text("Living room")
+    summary = first.locator(".device-library-check-summary")
+    expect(summary.locator("dt")).to_have_text(
+        [
+            "Last recorded check",
+            "Review items in latest report",
+            "Unfinished checks in latest report",
+        ]
+    )
+    recorded = page.evaluate(
+        "value => new Date(value).toLocaleString(undefined, {timeZoneName: 'short'})",
+        state["items"][0]["last_observed"],
+    )
+    expect(summary.locator("dd")).to_have_text([recorded, "4", "1"])
+    history = first.locator(".device-library-history")
+    expect(history.locator("dt").first).not_to_be_visible()
+    expect(history.locator("a")).not_to_be_visible()
+    history.locator("summary").click()
+    expect(history.locator("dt")).to_have_text(
+        [
+            "Last recorded address",
+            "Recorded network",
+            "First recorded observation",
+            "Saved reports in this inventory",
+        ]
+    )
+    expect(history).to_contain_text("192.168.56.1")
+    expect(history).to_contain_text("192.168.56.0/24")
+    first_seen = page.evaluate(
+        "value => new Date(value).toLocaleString(undefined, {timeZoneName: 'short'})",
+        state["items"][0]["first_observed"],
+    )
+    expect(history).to_contain_text(first_seen)
+    for index, card in enumerate(cards.all()):
+        details = card.locator(".device-library-history")
+        if not details.evaluate("element => element.open"):
+            details.locator("summary").click()
+        address = urlsplit(card.get_by_role("link").get_attribute("href"))
+        assert parse_qs(address.query) == {
+            "device": [state["items"][index]["reports"][0]["device_id"]]
+        }
+        assert address.fragment == "devices-title"
+    first.get_by_text("Your household labels", exact=True).click()
+    editor = first.locator(".device-library-editor")
+    expect(editor.locator("button.primary-button")).to_have_count(1)
+    expect(editor.get_by_role("button", name="Save my labels", exact=True)).to_be_disabled()
+    expect(editor).to_contain_text("Saving does not change scan facts or start a scan")
+    for width in (320, 768, 1440):
+        page.set_viewport_size({"width": width, "height": 844})
+        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
+    assert not state["writes"] and not state["unexpected"] and not state["errors"]
+
+
+@pytest.mark.parametrize("engine", os.getenv("UI_UX_BROWSERS", "chromium").split(","))
 def test_device_labels_conflict_reload_and_explicit_save_keep_draft(engine, viewer):
     from playwright.sync_api import expect
 
@@ -236,16 +314,20 @@ def test_device_labels_conflict_reload_and_explicit_save_keep_draft(engine, view
     room = card.get_by_role("textbox", name="Your room or location")
     room.fill("Study\u200b")
     expect(room).to_have_attribute("aria-invalid", "true")
-    expect(card.get_by_role("button", name="Save household labels", exact=True)).to_be_disabled()
+    expect(card.get_by_role("button", name="Save my labels", exact=True)).to_be_disabled()
     assert not state["writes"]
     room.fill("My Study")
     card.get_by_label("Keep as my favourite", exact=True).check()
     card.get_by_label("I recognise this device (my label, not a safety check)").check()
     state["fault"] = "save"
-    card.get_by_role("button", name="Save household labels", exact=True).click()
-    expect(card.locator("[role=status]")).to_contain_text("Your draft is kept")
+    card.get_by_role("button", name="Save my labels", exact=True).click()
+    outcome = card.locator(".device-library-editor .status-message")
+    expect(outcome).to_contain_text("Your draft is kept")
+    expect(outcome).to_be_focused()
+    assert outcome.get_attribute("role") is None
+    assert outcome.get_attribute("aria-live") is None
     expect(room).to_have_value("My Study")
-    expect(card.get_by_role("button", name="Save household labels", exact=True)).to_be_disabled()
+    expect(card.get_by_role("button", name="Save my labels", exact=True)).to_be_disabled()
     assert len(state["writes"]) == 1
     state["fault"] = None
     state["revision"] = 2
@@ -253,9 +335,11 @@ def test_device_labels_conflict_reload_and_explicit_save_keep_draft(engine, view
     card.get_by_role("button", name="Reload saved labels, keep draft").click()
     expect(card.locator(".device-library-saved-labels")).to_contain_text("Other saved room")
     expect(room).to_have_value("My Study")
-    expect(card.get_by_role("button", name="Save household labels", exact=True)).to_be_enabled()
-    card.get_by_role("button", name="Save household labels", exact=True).click()
-    expect(card.locator("[role=status]")).to_contain_text("Household labels saved")
+    expect(card.get_by_role("button", name="Save my labels", exact=True)).to_be_enabled()
+    card.get_by_role("button", name="Save my labels", exact=True).click()
+    expect(outcome).to_contain_text("Your labels are saved")
+    expect(outcome).to_be_focused()
+    assert outcome.get_attribute("role") is None
     assert state["writes"][-1] == {
         "expected_revision": 2,
         "room": "My Study",
@@ -267,6 +351,17 @@ def test_device_labels_conflict_reload_and_explicit_save_keep_draft(engine, view
     assert page.evaluate("document.activeElement.id").startswith("label-status-")
     page.reload()
     expect(page.locator(".device-library-badges")).to_contain_text("My Study")
+    card = page.locator(".device-library-card")
+    card.get_by_text("Your household labels", exact=True).click()
+    room = card.get_by_role("textbox", name="Your room or location")
+    room.fill("Temporary unsaved room")
+    card.get_by_role("button", name="Discard this draft", exact=True).click()
+    expect(room).to_have_value("My Study")
+    outcome = card.locator(".device-library-editor .status-message")
+    expect(outcome).to_contain_text("Draft discarded")
+    expect(outcome).to_be_focused()
+    assert outcome.get_attribute("role") is None
+    assert len(state["writes"]) == 2
     assert not state["unexpected"]
     assert not state["errors"]
 
@@ -291,16 +386,17 @@ def test_device_list_outage_retry_and_readonly_evidence(engine, viewer):
     card = page.locator(".device-library-card").first
     card.get_by_text("Your household labels", exact=True).click()
     expect(card.locator(".device-library-saved-labels")).to_contain_text("not confirmed")
+    expect(card.locator(".device-library-recognition")).to_contain_text("unavailable")
     expect(card.get_by_role("textbox", name="Your room or location")).to_be_disabled()
-    card.get_by_text("Open recorded reports", exact=True).click()
+    card.get_by_text("Saved check details and reports", exact=True).click()
     expect(card.get_by_role("link")).to_have_attribute(
         "href", "/scans/00000000-0000-4000-8000-000000000001"
     )
     expect(card).to_contain_text("a response was not established")
     device_card = page.locator(".device-library-card").nth(1)
-    device_card.get_by_text("Open recorded reports", exact=True).click()
+    device_card.get_by_text("Saved check details and reports", exact=True).click()
     expect(device_card.get_by_role("link")).to_have_attribute(
-        "href", "/scans/00000000-0000-4000-8000-000000000001#devices-title"
+        "href", "/scans/00000000-0000-4000-8000-000000000001?device=synthetic-device#devices-title"
     )
     expect(card).to_contain_text("current connection status is unknown")
     assert len(state["reads"]) == 2
@@ -363,4 +459,46 @@ def test_ignored_view_retains_draft_and_explains_legacy_backend(engine, viewer):
     expect(page.locator("#device-library-error")).to_contain_text("restart the backend")
     expect(room).to_have_value("Unsaved Study")
     expect(page.locator("#device-library-applied")).to_contain_text("All devices")
+    assert not state["writes"] and not state["errors"] and not state["unexpected"]
+
+
+@pytest.mark.parametrize("engine", os.getenv("UI_UX_BROWSERS", "chromium").split(","))
+def test_return_from_saved_report_restores_applied_view_page_and_card(engine, viewer):
+    from playwright.sync_api import expect
+
+    page, state = viewer(engine, count=30)
+    page.goto(ORIGIN + "/devices")
+    expect(page.locator(".device-library-card")).to_have_count(24)
+    page.get_by_role("searchbox", name="Search saved devices").fill("Household")
+    page.get_by_role("combobox", name="Show saved devices").select_option("review")
+    page.get_by_role("button", name="Search devices", exact=True).click()
+    expect(page.locator("#device-library-applied")).to_contain_text("With items to review")
+    page.locator("#device-library-pages").get_by_role("button", name="Next page").click()
+    expect(page.locator(".device-library-card")).to_have_count(6)
+    card = page.locator(".device-library-card").nth(2)
+    card.get_by_text("Saved check details and reports", exact=True).click()
+    card.get_by_role("link").click()
+    expect(page.get_by_role("heading", name="Saved report", exact=True)).to_be_visible()
+    page.get_by_role("link", name="Return to my devices", exact=True).click()
+    expect(page.locator(".device-library-card")).to_have_count(6)
+    expect(page.get_by_role("searchbox", name="Search saved devices")).to_have_value("Household")
+    expect(page.get_by_role("combobox", name="Show saved devices")).to_have_value("review")
+    page.wait_for_function("document.activeElement.textContent === 'Household device 27'")
+    assert state["reads"][-1]["offset"] == 24
+    assert page.evaluate("scrollY > 0")
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+    card = page.locator(".device-library-card").nth(2)
+    card.get_by_text("Saved check details and reports", exact=True).click()
+    card.get_by_role("link").click()
+    expect(page.get_by_role("heading", name="Saved report", exact=True)).to_be_visible()
+    page.go_back()
+    expect(page.locator(".device-library-card")).to_have_count(6)
+    expect(page.get_by_role("combobox", name="Show saved devices")).to_have_value("review")
+    expect(page.get_by_role("searchbox", name="Search saved devices")).to_have_value("Household")
+    page.get_by_role("button", name="Reset search and view", exact=True).click()
+    expect(page.locator(".device-library-card")).to_have_count(24)
+    page.reload()
+    expect(page.locator(".device-library-card")).to_have_count(24)
+    expect(page.get_by_role("combobox", name="Show saved devices")).to_have_value("all")
+    assert state["reads"][-1]["offset"] == 0
     assert not state["writes"] and not state["errors"] and not state["unexpected"]

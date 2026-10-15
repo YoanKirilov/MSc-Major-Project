@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { createReadingState, validatedReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation } from '../app/static/js/report-view.mjs';
+import { createReadingState, validatedReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation, bindSupportingInformation } from '../app/static/js/report-view.mjs';
 import { reviewItemTitle } from '../app/static/js/presentation.mjs';
 import { findingDeviceOptions, repeatedUnknownReplies } from '../app/static/js/finding-list.mjs';
 
 const state = () => ({ version: 1, search: 'web', devices: 'display', filter: 'low', tasks: 'to_check',
-  sort: 'name', deviceFilter: 'all', reviewDevice: 'all', selected: 'finding-1', limit: 48, open: ['device-details'], y: 987 });
+  sort: 'name', deviceFilter: 'all', contextDeviceId: '', reviewDevice: 'all', selected: 'finding-1', limit: 48, open: ['device-details'], y: 987 });
 
 test('reading state is isolated by report and tab and never persists evidence or edits', () => {
   const values = new Map();
@@ -44,7 +44,7 @@ test('stored filters, lengths, scroll and disclosure keys are bounded and allowl
   assert.equal(value.tasks, 'all');
   assert.equal(value.sort, 'priority');
   assert.equal(validatedReadingState({ ...state(), deviceFilter: 'unsafe' }).deviceFilter, 'all');
-  assert.equal(validatedReadingState({ ...state(), deviceFilter: 'unfinished' }).deviceFilter, 'unfinished');
+  assert.equal(validatedReadingState({ ...state(), deviceFilter: 'unfinished' }).deviceFilter, 'all');
   assert.equal(value.limit, 254);
   assert.equal(value.y, 0);
   assert.equal(value.open.length, 2048);
@@ -68,15 +68,129 @@ test('legacy alignment is ignored without losing per-report filters or scroll po
 
 test('accessibility controls replace justified alignment with native labelled preferences', () => {
   const report = readFileSync(new URL('../app/templates/scan.html', import.meta.url), 'utf8');
+  const display = readFileSync(new URL('../app/templates/includes/display-controls.html', import.meta.url), 'utf8');
   assert.doesNotMatch(report, /textAlignment|Paragraph alignment|Justified/);
-  assert.match(report, /<summary>Accessibility preferences<\/summary>/);
-  for (const id of ['themePreference', 'textSizePreference', 'motionPreference']) {
-    assert.match(report, new RegExp(`<label for="${id}">`));
-    assert.match(report, new RegExp(`<select id="${id}"[^>]*aria-describedby=`));
+  assert.match(report, /<h3 id="supporting-accessibility-title">Text and colour preferences<\/h3>/);
+  for (const id of ['themePreference', 'textSizePreference']) {
+    assert.match(display, new RegExp(`<label for="${id}">`));
+    assert.match(display, new RegExp(`<select id="${id}"[^>]*aria-describedby=`));
   }
-  assert.match(report, /<option value="dark">Dark<\/option><option value="light">Light<\/option>/);
+  assert.match(report, /include "includes\/display-controls.html"/);
+  assert.match(display, /<option value="dark">Dark<\/option><option value="light">Light<\/option><option value="system">Use device theme<\/option>/);
   assert.match(report, /Reduced movement from your device settings is always respected\./);
+  assert.doesNotMatch(report, /motionPreference|Movement on screen/);
   assert.match(report, /These preferences apply to this browser, not your scan results\./);
+});
+
+test('report keeps results before comparisons and removes redundant filters and shortcuts', () => {
+  const report = readFileSync(new URL('../app/templates/scan.html', import.meta.url), 'utf8');
+  assert.ok(report.indexOf('id="what-changed"') > report.indexOf('id="nextStepsList"'));
+  assert.ok(report.indexOf('id="what-changed"') < report.indexOf('id="changes-title"'));
+  assert.doesNotMatch(report, /deviceQuickFilter|resetDeviceFilters|needHelpShortcut|expandReviewTasks|collapseReviewTasks/);
+  for (const id of ['deviceSearchInput', 'deviceSort', 'checklist-filter']) assert.match(report, new RegExp(`id="${id}"`));
+  assert.match(report, /<dialog id="supportingInfoDialog"[^>]+aria-labelledby="supportingInfoTitle"/);
+  assert.match(report, /id="closeSupportingInfo"[^>]*>Close<\/button>/);
+});
+
+function supportingFixture() {
+  const node = (extra = {}) => ({ hidden: false, disabled: false, isConnected: true, events: {},
+    tabIndex: 0, getClientRects: () => [1], checkVisibility() { return !this.hidden; },
+    addEventListener(name, handler) { this.events[name] = handler; },
+    focus(options) { document.activeElement = this; this.focusOptions = options; }, ...extra });
+  const topics = ['comparisons', 'announcements', 'technical', 'explanations', 'glossary', 'accessibility'];
+  const buttons = topics.map(topic => node({ dataset: { supportingTopic: topic } }));
+  const panels = topics.map(topic => node({ dataset: { supportingPanel: topic }, hidden: true }));
+  const options = topics.map(value => node({ value }));
+  const content = node({ scrollTop: 0 });
+  const heading = node();
+  const select = node({ value: '', querySelectorAll: () => options });
+  const announcement = node({ hidden: true });
+  const close = node();
+  const focusable = [close, select, content];
+  const dialog = node({ open: false, showModal() { this.open = true; },
+    close() { this.open = false; this.events.close?.(); },
+    querySelector: () => content, querySelectorAll: selector => selector === '[data-supporting-panel]' ? panels : focusable });
+  const ids = new Map([['#supportingInfoDialog', dialog], ['#supportingInfoTopic', select],
+    ['#supportingInfoTitle', heading], ['#closeSupportingInfo', close], ['#mdns-section', announcement]]);
+  const document = { activeElement: null, querySelectorAll: () => buttons, querySelector: id => ids.get(id) };
+  const controller = bindSupportingInformation(document);
+  return { buttons, panels, options, content, heading, select, announcement, close, dialog, document, controller, focusable };
+}
+
+test('supporting topics use one native modal without moving the page or stealing topic-selector focus', () => {
+  const ui = supportingFixture();
+  ui.buttons[4].events.click();
+  assert.equal(ui.dialog.open, true);
+  assert.equal(ui.select.value, 'glossary');
+  assert.equal(ui.document.activeElement, ui.heading);
+  assert.deepEqual(ui.heading.focusOptions, { preventScroll: true });
+  assert.deepEqual(ui.panels.filter(panel => !panel.hidden).map(panel => panel.dataset.supportingPanel), ['glossary']);
+  ui.content.scrollTop = 280;
+  ui.select.focus(); ui.select.value = 'technical'; ui.select.events.change();
+  assert.equal(ui.document.activeElement, ui.select);
+  assert.equal(ui.content.scrollTop, 0);
+  ui.content.scrollTop = 30;
+  ui.select.value = 'glossary'; ui.select.events.change();
+  assert.equal(ui.content.scrollTop, 280);
+  ui.close.events.click();
+  assert.equal(ui.dialog.open, false);
+  assert.equal(ui.document.activeElement, ui.buttons[4]);
+  assert.deepEqual(ui.buttons[4].focusOptions, { preventScroll: true });
+  ui.content.scrollTop = 0; // Browsers can zero hidden dialog geometry.
+  ui.buttons[4].events.click();
+  assert.equal(ui.content.scrollTop, 280);
+  ui.content.scrollTop = 140; ui.dialog.events.cancel(); ui.dialog.close();
+  ui.content.scrollTop = 0;
+  ui.buttons[4].events.click();
+  assert.equal(ui.content.scrollTop, 140);
+});
+
+test('supporting availability follows saved announcements and rejects unrecognised topics', () => {
+  const ui = supportingFixture();
+  assert.equal(ui.buttons[1].hidden, true);
+  assert.equal(ui.options[1].disabled, true);
+  assert.equal(ui.controller.open('announcements'), false);
+  assert.equal(ui.controller.open('<script>'), false);
+  ui.announcement.hidden = false; ui.controller.refresh();
+  assert.equal(ui.buttons[1].hidden, false);
+  assert.equal(ui.options[1].disabled, false);
+  assert.equal(ui.controller.open('announcements'), true);
+  ui.announcement.hidden = true; ui.controller.refresh();
+  assert.equal(ui.select.value, 'technical');
+  assert.equal(ui.panels[1].hidden, true);
+});
+
+test('supporting close returns to the actual glossary invoker and fragment navigation closes the dialog', () => {
+  const ui = supportingFixture();
+  const trigger = { isConnected: true, focus(options) { this.focusOptions = options; } };
+  assert.equal(ui.controller.open('glossary', trigger), true);
+  const fragment = { getAttribute: () => '#devices-title' };
+  ui.dialog.events.click({ target: { closest: () => fragment } });
+  assert.equal(ui.dialog.open, false);
+  assert.deepEqual(trigger.focusOptions, { preventScroll: true });
+  const unsupported = bindSupportingInformation({ querySelectorAll: () => [], querySelector: () => null });
+  assert.equal(unsupported.open('glossary'), false);
+  unsupported.refresh();
+});
+
+test('supporting Tab boundaries contain focus and skip disabled, hidden and negative-tabindex controls', () => {
+  const ui = supportingFixture();
+  ui.controller.open('accessibility');
+  let prevented = 0;
+  const tab = shiftKey => ui.dialog.events.keydown({ key: 'Tab', shiftKey, preventDefault() { prevented++; } });
+  ui.heading.focus(); tab(false);
+  assert.equal(ui.document.activeElement, ui.close);
+  tab(true);
+  assert.equal(ui.document.activeElement, ui.content);
+  tab(false);
+  assert.equal(ui.document.activeElement, ui.close);
+  ui.focusable.push({ disabled: true }, { tabIndex: -1 }, { tabIndex: 0, getClientRects: () => [] },
+    { tabIndex: 0, getClientRects: () => [1], checkVisibility: () => false });
+  ui.content.focus(); tab(false);
+  assert.equal(ui.document.activeElement, ui.close);
+  assert.equal(prevented, 4);
+  ui.close.focus(); tab(false);
+  assert.equal(prevented, 4, 'native sequential movement within the dialog is not intercepted');
 });
 
 test('device review options count every finding without mutating facts or inventing names', () => {

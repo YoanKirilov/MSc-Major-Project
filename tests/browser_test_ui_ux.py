@@ -353,7 +353,7 @@ def test_repeat_collapsed_task_status_and_empty_filters_remain_honest(ui):
     expect(heading).to_contain_text("1 Checked")
     page.locator("#checklist-filter").select_option("checked")
     expect(heading).to_contain_text("1 available in this filter")
-    expect(page.locator("#expandReviewTasks")).to_be_enabled()
+    expect(checklist).to_have_attribute("open", "")
     page.locator("#checklist-filter").select_option("all")
     endpoint = f"**/api/live-scans/{report.scan_id}/annotations"
     page.route(endpoint, lambda route: route.fulfill(status=503, body='{"detail":"Test delay"}'))
@@ -363,8 +363,8 @@ def test_repeat_collapsed_task_status_and_empty_filters_remain_honest(ui):
     expect(page.locator("#checklist-progress")).to_contain_text("unavailable")
     expect(controls.first).to_be_disabled()
     page.unroute(endpoint)
-    # A fresh report has no Checked actions; no-match disclosure buttons must not
-    # suggest that hidden rows can be expanded, or change task state.
+    # A fresh report has no Checked actions; the empty status filter must explain
+    # the result without hiding the original scan facts or changing task state.
     page, _ = _open(ui, kind="rich")
     page.locator("#checklist-filter").select_option("checked")
     # The rich report retains the saved Checked action from this test, so use a
@@ -376,10 +376,9 @@ def test_repeat_collapsed_task_status_and_empty_filters_remain_honest(ui):
     expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
     page.locator("#checklist-filter").select_option("checked")
     expect(page.locator("#checklist-empty")).to_be_visible()
-    expect(page.locator("#expandReviewTasks")).to_be_disabled()
-    expect(page.locator("#collapseReviewTasks")).to_be_disabled()
+    expect(page.locator("#nextStepsList > li:visible")).to_have_count(0)
     page.locator("#checklist-filter").select_option("all")
-    expect(page.locator("#expandReviewTasks")).to_be_enabled()
+    expect(page.locator("#checklist-empty")).to_be_hidden()
 
 
 def test_repeat_technical_columns_and_unknown_reply_context_preserve_evidence(ui):
@@ -423,40 +422,77 @@ def test_repeat_technical_columns_and_unknown_reply_context_preserve_evidence(ui
     assert path.read_bytes() == before
 
 
-def test_final_layout_supporting_options_reflow_and_keep_native_keyboard_state(ui):
+def test_final_layout_supporting_topics_keep_report_position_and_native_keyboard_state(
+    ui, tmp_path
+):
     from playwright.sync_api import expect
 
     page, _ = _open(ui, size=(1440, 1000))
-    grid = page.locator(".supporting-grid")
-    summaries = grid.locator(":scope > details > summary, :scope > section > details > summary")
-    cards = grid.locator(":scope > *:visible")
+    grid = page.locator(".supporting-topics")
+    cards = grid.locator(":scope > button:visible")
     assert cards.count() == 6  # Includes the optional unmatched mDNS announcements.
-    tops = [card.bounding_box()["y"] for card in cards.all()]
-    assert max(tops) - min(tops) <= 1
     for selector in ("main", ".topbar", ".site-footer"):
         assert page.locator(selector).bounding_box()["width"] == 1360
     expect(page.locator("#resultsSummary")).to_have_attribute("role", "status")
     expect(page.locator("#resultsSummary")).to_have_attribute("aria-atomic", "true")
     glossary = page.locator("#report-glossary")
-    summary = glossary.locator(":scope > summary")
-    summary.focus()
+    trigger = page.locator('[data-supporting-topic="glossary"]')
+    trigger.scroll_into_view_if_needed()
+    trigger.focus()
+    before = page.evaluate("scrollY")
     page.keyboard.press("Enter")
-    expect(glossary).to_have_attribute("open", "")
-    assert abs(glossary.bounding_box()["width"] - grid.bounding_box()["width"]) <= 1
-    expect(summary).to_be_focused()
-    page.reload()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
-    expect(glossary).to_have_attribute("open", "")
+    dialog = page.locator("#supportingInfoDialog")
+    expect(dialog).to_be_visible()
+    expect(glossary).to_be_visible()
+    expect(page.locator("#supportingInfoTitle")).to_be_focused()
+    assert abs(page.evaluate("scrollY") - before) < 2
+    page.screenshot(path=str(tmp_path / "supporting-dialog-desktop.png"))
+    for topic in ("technical", "comparisons", "accessibility", "glossary"):
+        page.locator("#supportingInfoTopic").select_option(topic)
+        expect(page.locator(f'[data-supporting-panel="{topic}"]')).to_be_visible()
+        assert abs(page.evaluate("scrollY") - before) < 2
+    page.keyboard.press("Escape")
+    expect(dialog).not_to_be_visible()
+    expect(trigger).to_be_focused()
+    assert abs(page.evaluate("scrollY") - before) < 2
     for width in (320, 390, 768):
         page.set_viewport_size({"width": width, "height": 1000})
         assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
-        for control in summaries.all():
+        for control in cards.all():
             rect = control.bounding_box()
             assert rect["width"] >= 44 and rect["height"] >= 44
+        trigger.click()
+        assert dialog.bounding_box()["height"] <= 1000
+        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
+        page.locator("#closeSupportingInfo").click()
+        expect(trigger).to_be_focused()
+    page.set_viewport_size({"width": 390, "height": 568})
+    trigger.scroll_into_view_if_needed()
+    before = page.evaluate("scrollY")
+    trigger.click()
+    content = dialog.locator(".supporting-dialog-content")
+    page.screenshot(path=str(tmp_path / "supporting-dialog-mobile.png"))
+    content.evaluate(
+        "element => { element.scrollTop = "
+        "Math.min(160, element.scrollHeight - element.clientHeight); }"
+    )
+    recorded = content.evaluate("element => element.scrollTop")
+    assert recorded > 0
+    page.locator("#supportingInfoTopic").select_option("technical")
+    page.locator("#supportingInfoTopic").select_option("glossary")
+    assert abs(content.evaluate("element => element.scrollTop") - recorded) < 2
+    page.keyboard.press("Escape")
+    expect(trigger).to_be_focused()
+    assert abs(page.evaluate("scrollY") - before) < 2
+    trigger.click()
+    assert abs(content.evaluate("element => element.scrollTop") - recorded) < 2
+    page.locator("#closeSupportingInfo").click()
     page.set_viewport_size({"width": 768, "height": 1024})
     page.add_style_tag(content="html {font-size:200% !important}")
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
-    expect(summary).to_be_visible()
+    trigger.click()
+    expect(glossary).to_be_visible()
+    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
     expect(page.locator("#textAlignment")).to_have_count(0)
     expect(page.locator("#themePreference")).to_have_count(1)
 
@@ -485,7 +521,7 @@ def test_final_layout_renders_only_current_wording_without_changing_saved_rules(
     assert all(finding["fixed_explanation"] for finding in after["findings"])
     _open(ui, kind="empty")
     expect(page.locator("#checklist-filter-count")).to_contain_text("No review tasks were recorded")
-    expect(page.locator("#expandReviewTasks")).to_be_disabled()
+    expect(page.locator("#expandReviewTasks")).to_have_count(0)
 
 
 def test_reading_followup_grouped_evidence_and_theme_survive_reload(ui):
@@ -515,10 +551,12 @@ def test_reading_followup_grouped_evidence_and_theme_survive_reload(ui):
         )
         == "left"
     )
-    page.locator(".reading-options > summary").click()
+    page.locator('[data-supporting-topic="accessibility"]').click()
     page.locator("#themePreference").select_option("light")
     page.reload()
     expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    expect(page.locator("#supportingInfoDialog")).not_to_be_visible()
+    page.locator('[data-supporting-topic="accessibility"]').click()
     expect(page.locator("#themePreference")).to_have_value("light")
     expect(page.locator("html")).to_have_attribute("data-theme", "light")
     expect(group.locator(".feature-technical")).to_have_attribute("open", "")
@@ -529,6 +567,7 @@ def test_reading_followup_grouped_evidence_and_theme_survive_reload(ui):
         == "left"
     )
     page.locator("#themePreference").select_option("dark")
+    page.locator("#closeSupportingInfo").click()
     for width, height in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": height})
         assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
@@ -589,8 +628,10 @@ def test_reading_followup_failed_preview_and_first_action_caution_are_explicit(u
     group = page.locator(".device-summary-group").first
     group.locator(".device-summary > summary").click()
     group.locator("[data-glossary-link]").click()
-    expect(page.locator("#report-glossary")).to_have_attribute("open", "")
-    expect(page.locator("#report-glossary > summary")).to_be_focused()
+    expect(page.locator("#report-glossary")).to_be_visible()
+    expect(page.locator("#supportingInfoTitle")).to_be_focused()
+    page.keyboard.press("Escape")
+    expect(group.locator("[data-glossary-link]")).to_be_focused()
 
 
 @pytest.mark.parametrize("size", VIEWPORTS)
@@ -1076,7 +1117,7 @@ def test_followup_comparisons_and_unfinished_device_announcements_have_one_home(
     expect(unchecked).to_contain_text("Unchecked display announcement")
     expect(unchecked).to_contain_text("unverified claim")
     expect(unchecked).to_contain_text("checks could not finish")
-    page.locator("#report-comparisons > summary").click()
+    page.locator('[data-supporting-topic="announcements"]').click()
     expect(page.locator("#mdns-list")).not_to_contain_text("Unchecked display announcement")
     expect(page.locator("#mdns-list")).to_contain_text("Unmatched announcement")
 
@@ -1100,7 +1141,9 @@ def test_followup_refresh_restores_filters_selection_disclosures_and_scroll_with
     selected = page.locator("#findingsList .finding-card").nth(1)
     identity = selected.get_attribute("data-finding-id")
     selected.click()
-    page.locator("#expandReviewTasks").click()
+    for checklist in page.locator("#nextStepsList .next-step-checklist").all():
+        if not checklist.evaluate("element => element.open"):
+            checklist.locator(":scope > summary").click()
     page.locator("#next-title").evaluate("element => element.scrollIntoView({block:'start'})")
     key = "netguard-report-view-v1:" + report.scan_id
     page.wait_for_function(
@@ -1137,17 +1180,17 @@ def test_followup_refresh_restores_filters_selection_disclosures_and_scroll_with
     )
 
 
-def test_followup_collapsing_all_tasks_is_reading_state_not_editing_or_scanning(ui):
+def test_followup_individual_task_disclosures_are_reading_state_not_editing_or_scanning(ui):
     from playwright.sync_api import expect
 
     page, _ = _open(ui)
     page.locator("#checklist-filter").select_option("to_check")
-    page.locator("#expandReviewTasks").click()
     for task in page.locator(".next-step-checklist").all():
         expect(task).to_have_attribute("open", "")
-    page.locator("#collapseReviewTasks").focus()
-    page.keyboard.press("Enter")
-    expect(page.locator("#collapseReviewTasks")).to_be_focused()
+        summary = task.locator(":scope > summary")
+        summary.focus()
+        page.keyboard.press("Enter")
+        expect(summary).to_be_focused()
     for task in page.locator(".next-step-checklist").all():
         expect(task).not_to_have_attribute("open", "")
     page.reload()
@@ -1157,8 +1200,8 @@ def test_followup_collapsing_all_tasks_is_reading_state_not_editing_or_scanning(
     for task in page.locator(".next-step-checklist").all():
         expect(task).not_to_have_attribute("open", "")
     _open(ui, kind="empty")
-    expect(page.locator("#expandReviewTasks")).to_be_disabled()
-    expect(page.locator("#collapseReviewTasks")).to_be_disabled()
+    expect(page.locator("#expandReviewTasks")).to_have_count(0)
+    expect(page.locator("#collapseReviewTasks")).to_have_count(0)
 
 
 def test_followup_navigation_does_not_obscure_targets_on_small_or_enlarged_screens(ui):

@@ -1,3 +1,5 @@
+import { validReportDeviceId } from './report-device-context.mjs?v=20261015-inclusive';
+
 export const DEVICE_PAGE_SIZE = 24;
 export const DEVICE_ROOM_LIMIT = 80;
 export const DEVICE_VIEWS = Object.freeze({ all: 'All devices', favourites: 'My favourites',
@@ -9,6 +11,15 @@ const count = value => Number.isSafeInteger(value) && value >= 0;
 const label = (value, limit) => typeof value === 'string' && value.length <= limit;
 const same = (left, right) => left.room === right.room && left.favourite === right.favourite
   && left.recognised === right.recognised;
+
+/** Read-only report navigation, never an API request or authority to scan. */
+export function deviceReportHref(report) {
+  if (!report || typeof report.scan_id !== 'string' || !scanId.test(report.scan_id)) return null;
+  const path = `/scans/${encodeURIComponent(report.scan_id)}`;
+  if (!validReportDeviceId(report.device_id)) return path;
+  const query = new URLSearchParams({ device: report.device_id });
+  return `${path}?${query}#devices-title`;
+}
 
 export function validDeviceLabels(value) {
   return value && label(value.room, DEVICE_ROOM_LIMIT) && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(value.room)

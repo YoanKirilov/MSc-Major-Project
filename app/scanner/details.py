@@ -10,6 +10,7 @@ from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 
 from app.scanner.names import add_name, clean_name
+from app.scanner.netbios import computer_name
 from app.scanner.observations import detail
 
 
@@ -158,18 +159,16 @@ async def netbios_name(device, services, nmap_path, runner, cancel, interface=No
         args += ["-e", interface]
     result = await runner([*args, "-oX", "-", device.ip], 5, cancel)
     name = None
-    if not (result.timed_out or result.cancelled or result.overflow or result.returncode):
-        try:
-            root = ElementTree.fromstring(result.stdout)
-            for host in root.findall("host"):
-                if not any(n.get("addr") == device.ip for n in host.findall("address")):
-                    continue
-                for script in host.findall("hostscript/script[@id='nbstat']"):
-                    match = re.search(r"NetBIOS name:\s*([^,\r\n]+)", script.get("output", ""))
-                    if match and match[1] != "<unknown>":
-                        name = clean_name(match[1])
-        except (ValueError, ElementTree.ParseError, DefusedXmlException):
-            pass
+    if result.cancelled:
+        reason = "The optional computer-name check was cancelled."
+    elif result.timed_out:
+        reason = "The optional computer-name check ran out of time."
+    elif result.overflow:
+        reason = "The computer-name reply exceeded its size limit."
+    elif result.returncode != 0:
+        reason = "The optional computer-name check returned a scanner error."
+    else:
+        name, reason = computer_name(result.stdout, device.ip)
     # Never persist raw output: nbstat may also return logged-in usernames.
     if name:
         add_name(device, name, "netbios", device.observed_at)
@@ -177,7 +176,7 @@ async def netbios_name(device, services, nmap_path, runner, cancel, interface=No
         device,
         "netbios",
         "Computer name",
-        name or "No computer name was returned.",
+        name or reason,
         "NetBIOS",
         "observed" if name else "unavailable",
     )

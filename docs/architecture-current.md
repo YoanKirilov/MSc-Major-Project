@@ -1,4 +1,46 @@
-# Current architecture — updated 14 October 2026
+# Current architecture — updated 15 October 2026
+
+The [edit-recovery follow-up](ui-ux-review2-20261015.md) adds a report-only conditional
+native leave guard for dirty/pending label edits and unresolved checklist drafts.
+It neither stores drafts nor automatically repeats writes. Explicit discard removes
+protection immediately, before the native close event. Title success requires a
+strictly newer matching server-normalised receipt; uncertainty keeps the draft and
+refreshes saved notes. Hidden-character validation remains client guidance backed
+by authoritative server checks. No scan, storage-schema or provider contract changes.
+
+The [inclusive interface follow-up](inclusive-ui-implementation-20261015.md) changes
+presentation only. `report-device-context.mjs` validates bounded explicit device
+reading context, matched exactly against saved IDs without selector interpolation.
+It never changes scope, authorises work or starts requests. Inventory links carry
+that context; report reload/Back retain later reading state. Missing IDs do not
+select a substitute device. Device cards foreground last recorded checks and review
+needs; secondary history and original report facts remain reachable.
+
+Settings and reports share `includes/display-controls.html`, including device-theme
+selection. Saved display preferences remain local to the browser; OS motion is
+automatic. Checklist feedback uses a designated final live outcome with static row
+feedback. Native nickname-editor failures stay local; success is announced after
+modal close. Inventory save outcomes use focused non-live feedback. These DOM
+semantics still require actual assistive-technology evaluation. No scanner, rule,
+AI validation, storage-schema or permission contract changed in this UI follow-up.
+
+The [Settings simplification](periodic-removal-20261014.md) removes periodic
+checking completely: no scheduler, monitoring API, runtime store or client module
+is loaded. Only explicit user requests start scans. Existing `monitor.json` and
+`monitor.previous.json` files remain inert and are included in private backups
+for archival compatibility; startup never reads or executes them. Shared scan/AI
+admission, capacity, deletion and restoration safeguards remain in place. Display
+preferences retain theme/text size; motion follows the operating-system setting
+and any legacy app-level motion choice is ignored.
+
+The [third comparison round](competitive-round3-20261014.md) adds bounded 24-hour
+per-tab inventory reading context in `device-library-context.mjs`. Only allowlisted
+display context is stored; permission, credentials, labels and drafts are excluded.
+Restore waits for the fetched list and does not override user interaction; reset
+replaces prior context. `scanner/netbios.py` extracts one bounded endpoint-bound
+computer name or an unavailable reason, not logged-in users/raw replies. Enrichment
+1.0.3 shares it across profiles without changing probe/port/retry contracts. Earlier
+certificate interpretation remains enabled. Historical records are not rewritten.
 
 The [second comparison round](competitive-round2-20261014.md) adds allowlisted
 whole-inventory device views applied before search/pagination, with an echoed view
@@ -28,13 +70,11 @@ endpoint-bound script replies. R08/R09 describe SMBv1 support and optional signi
 for the negotiated version, not proven exploits or Internet exposure. Ruleset
 1.3.0 and prompt 4.4.0 keep reviewed plain-language validation and fallback.
 
-`jobs/monitoring.py` owns opt-in app-running periodic Light checks, with revisioned
-`monitor.json`, local bounded events and an in-memory approved connection. Restart
-never restores probing authority. The normal submission helper revalidates the
-scope/context; supervisor admission rejects periodic work atomically when another
-scan/AI job is active. Delays defer, connection changes pause, and submission/close
-are bounded. Default-off inspection never starts probes. This is not an always-on
-service. Monitoring data is covered by the existing private backup allowlist.
+The earlier opt-in periodic Light implementation has been removed, including its
+routes, lifecycle hooks, storage models, browser module and scheduling-only
+admission branch. Earlier execution logs describe that historical version, not
+an available current feature. The shared admission lock still protects manual
+parallel scans, standalone AI work, report deletion and restoration.
 
 The execution record distinguishes final offline/browser/package/live evidence
 from historical sections below and pending human/assistive-technology evaluation.
@@ -68,7 +108,7 @@ automatically. Filters apply across the library before pagination. Select this p
 includes eligible offscreen rows of this page only; selection clears across pages
 and filters. Removal still refreshes/corrects the current page safely.
 
-Main navigation has Scan, Saved reports and Settings; display choices remain in
+Main navigation has Scan, My devices, Saved reports and Settings; display choices remain in
 Settings without another global shortcut. Pi-hole UI bindings/control were removed.
 Settings saves omit its legacy field, so they do not silently alter configuration
 or erase historic observations. The optional backend implementation remains for
@@ -118,10 +158,11 @@ now requests and renders no reports; intentional scrolling admits one entry at
 a time, with gesture locking and an explicit keyboard alternative. Recorded
 profile colours override visited-link colour and reverse on hover/focus.
 
-`static/js/appearance.js` restores allowlisted Dark/Light, text size and movement
-choices from bounded, versioned browser storage before the stylesheet. Native
-controls bind on DOM readiness and update root datasets. Device reduced motion
-always takes precedence. Display preferences are separate from scan facts and
+`static/js/appearance.js` restores allowlisted theme and text-size choices from
+bounded, versioned browser storage before the stylesheet. Native controls bind
+on DOM readiness and update root datasets. Reduced motion follows the device
+automatically; removed legacy motion choices are ignored without losing a saved
+theme or text size. Display preferences are separate from scan facts and
 per-report reading state; old alignment is ignored without losing searches or
 disclosures. Light surfaces and severity/text colours are theme-aware. No scan,
 job, provider or JSON-storage contract changes were needed.

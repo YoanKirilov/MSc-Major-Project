@@ -191,7 +191,7 @@ def test_live_scan_reports_capacity_without_leaving_a_queued_scan(tmp_path, monk
             },
             headers=headers,
         )
-    assert response.status_code == 429
+    assert response.status_code == 429, response.text
     assert "capacity" in response.json()["detail"].lower()
     assert not list((tmp_path / "scans").glob("*/scan.json"))
 

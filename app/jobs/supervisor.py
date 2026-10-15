@@ -184,10 +184,8 @@ class ScanSupervisor:
                     results.append(await trash.restore(trash_id, deadline=deadline))
         return results
 
-    async def start(self, scan_id: str, *, require_idle: bool = False) -> None:
+    async def start(self, scan_id: str) -> None:
         async with self._admission:
-            if require_idle and self.active_scan_count:
-                raise RuntimeError("SCAN_BUSY")
             if self.is_active(scan_id) or self.is_analysis_active(scan_id):
                 raise RuntimeError("SCAN_BUSY")
             if not self.has_capacity():

@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createNoteState, projectNotes, reviewProgress } from '../app/static/js/notes.mjs';
+import { createNoteState, projectNotes, reviewProgress, confirmedTitleReceipt } from '../app/static/js/notes.mjs';
+
+test('title save receipts require a strictly newer safe revision and the normalised requested value', () => {
+  assert.equal(confirmedTitleReceipt({ revision: 3, title: 'Home' }, 2, '  Home  '), true);
+  assert.equal(confirmedTitleReceipt({ revision: 3, title: '' }, 2, ' '), true);
+  for (const receipt of [null, {}, { revision: 2, title: 'Home' },
+    { revision: 1, title: 'Home' }, { revision: 3, title: 'Other title' },
+    { revision: 3, title: null }, { revision: '3', title: 'Home' },
+    { revision: Number.MAX_SAFE_INTEGER + 1, title: 'Home' }]) {
+    assert.equal(confirmedTitleReceipt(receipt, 2, 'Home'), false);
+  }
+  assert.equal(confirmedTitleReceipt({ revision: 3, title: 'Home' }, null, 'Home'), false);
+  assert.equal(confirmedTitleReceipt({ revision: 3, title: 'Home' }, 2, null), false);
+});
 
 test('every full snapshot is projected once; delayed older responses cannot regress notes', () => {
   const projected = [];
@@ -83,14 +96,12 @@ test('status filters hide complete task rows, not recommendations in the selecte
 
 test('no-action reports do not direct users to nonexistent task controls or imply safety', () => {
   const elements = new Map(['#report-user-title', '#editReportTitle', '#annotation-notice',
-    '#checklist-filter', '#checklist-filter-count', '#expandReviewTasks', '#collapseReviewTasks'].map(id => [id, {}]));
+    '#checklist-filter', '#checklist-filter-count'].map(id => [id, {}]));
   elements.get('#checklist-filter').value = 'all';
   projectNotes({ querySelector: id => elements.get(id), querySelectorAll: () => [] },
     { revision: 1, action_checks: [] });
   assert.equal(elements.get('#checklist-filter-count').textContent,
     'No review tasks were recorded. This is not a safety verdict.');
-  assert.equal(elements.get('#expandReviewTasks').disabled, true);
-  assert.equal(elements.get('#collapseReviewTasks').disabled, true);
 });
 
 test('background projections do not undo the user closing a filtered task disclosure', () => {
@@ -111,9 +122,32 @@ test('background projections do not undo the user closing a filtered task disclo
   assert.equal(group.hidden, false);
 });
 
-test('collapsed checklists expose saved status without rebuilding controls and empty filters disable only disclosure actions', () => {
+test('an uncertain checklist draft survives projection and keeps a filtered row available without claiming it saved', () => {
   const elements = new Map(['#report-user-title', '#editReportTitle', '#annotation-notice',
-    '#checklist-filter', '#checklist-filter-count', '#expandReviewTasks', '#collapseReviewTasks'].map(id => [id, {}]));
+    '#checklist-filter'].map(id => [id, {}]));
+  elements.get('#checklist-filter').value = 'to_check';
+  const retry = {};
+  const row = { dataset: {}, querySelector: () => retry };
+  const task = {};
+  const control = { dataset: { findingId: 'one', actionId: 'a' },
+    closest: selector => selector === '.review-task' ? task : row };
+  const drafts = new Map([[JSON.stringify(['one', 'a']), { status: 'checked', message: 'Save not confirmed. Choice kept as a draft.' }]]);
+  const document = { querySelector: id => elements.get(id), querySelectorAll: selector =>
+    selector === '.action-check select' ? [control] : [] };
+  projectNotes(document, { revision: 1, action_checks: [] }, { drafts });
+  assert.equal(control.value, 'checked');
+  assert.equal(task.hidden, false);
+  assert.equal(retry.hidden, false);
+  assert.equal(retry.disabled, false);
+  projectNotes(document, null, { drafts });
+  assert.equal(control.value, 'checked');
+  assert.equal(control.disabled, true);
+  assert.equal(retry.disabled, true);
+});
+
+test('collapsed checklists expose saved status without rebuilding controls and empty filters retain truthful counts', () => {
+  const elements = new Map(['#report-user-title', '#editReportTitle', '#annotation-notice',
+    '#checklist-filter', '#checklist-filter-count'].map(id => [id, {}]));
   elements.get('#checklist-filter').value = 'all';
   const summary = {};
   const rows = ['a', 'b'].map(actionId => ({ hidden: false, dataset: { actionId } }));
@@ -127,19 +161,15 @@ test('collapsed checklists expose saved status without rebuilding controls and e
   projectNotes(document, notes, { expandFiltered: false });
   assert.equal(summary.textContent, 'Review tasks (2) · 1 Checked · 1 need help');
   assert.equal(disclosure.open, false);
-  assert.equal(elements.get('#expandReviewTasks').disabled, false);
   assert.match(elements.get('#checklist-filter-count').textContent, /tasks available.*Open a Review tasks heading/);
   elements.get('#checklist-filter').value = 'to_check';
   rows.forEach(row => { row.hidden = true; });
   projectNotes(document, notes, { expandFiltered: false });
   assert.equal(summary.textContent, 'Review tasks (2) · 1 Checked · 1 need help · 0 available in this filter');
   assert.equal(group.hidden, true);
-  assert.equal(elements.get('#expandReviewTasks').disabled, true);
-  assert.equal(elements.get('#collapseReviewTasks').disabled, true);
   rows.forEach(row => { row.hidden = false; });
   elements.get('#checklist-filter').value = 'all';
   projectNotes(document, null, { expandFiltered: false });
   assert.match(summary.textContent, /saved status unavailable/);
   assert.doesNotMatch(summary.textContent, /to check|Checked|need help/);
-  assert.equal(elements.get('#expandReviewTasks').disabled, false);
 });

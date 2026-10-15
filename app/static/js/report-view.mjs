@@ -1,9 +1,9 @@
 // Best-effort reading state in this browser tab. No evidence, edit revisions,
-// credentials, scan targets or API requests are stored or restored here.
+// credentials, scan authority or API requests are stored or restored here.
+import { validReportDeviceId } from './report-device-context.mjs?v=20261015-inclusive';
 const filters = ['all', 'high', 'medium', 'low', 'informational'];
 const taskFilters = ['all', 'to_check', 'checked', 'need_help'];
 const sorts = ['priority', 'name', 'address'];
-const deviceFilters = ['all', 'unnamed', 'unfinished', 'review'];
 const boundedText = (value, limit) => typeof value === 'string' ? value.slice(0, limit) : '';
 
 export function validatedReadingState(value) {
@@ -13,7 +13,10 @@ export function validatedReadingState(value) {
     filter: filters.includes(value.filter) ? value.filter : 'all',
     tasks: taskFilters.includes(value.tasks) ? value.tasks : 'all',
     sort: sorts.includes(value.sort) ? value.sort : 'priority',
-    deviceFilter: deviceFilters.includes(value.deviceFilter) ? value.deviceFilter : 'all',
+    // The extra device filter was retired. Ignore old hidden restrictions while
+    // preserving the reader's useful search, sorting and scroll context.
+    deviceFilter: 'all',
+    contextDeviceId: validReportDeviceId(value.contextDeviceId) ? value.contextDeviceId : '',
     reviewDevice: boundedText(value.reviewDevice, 80) || 'all',
     selected: boundedText(value.selected, 80),
     limit: Number.isInteger(value.limit) ? Math.min(254, Math.max(24, value.limit)) : 24,
@@ -106,4 +109,88 @@ export function bindReportNavigation(document, window) {
   update();
   if (window.ResizeObserver) new window.ResizeObserver(update).observe(nav);
   window.addEventListener('resize', update);
+}
+
+// Keep optional supporting material out of the report's layout. Native modal
+// behaviour supplies keyboard containment and Escape; no scroll or scan request
+// is generated when readers switch topics. Each topic retains its inner position.
+export function bindSupportingInformation(document) {
+  const buttons = [...document.querySelectorAll('[data-supporting-topic]')];
+  const dialog = document.querySelector('#supportingInfoDialog');
+  if (!buttons.length || !dialog?.showModal) return { open: () => false, refresh() {} };
+  const select = document.querySelector('#supportingInfoTopic');
+  const heading = document.querySelector('#supportingInfoTitle');
+  const content = dialog.querySelector('.supporting-dialog-content');
+  const panels = new Map([...dialog.querySelectorAll('[data-supporting-panel]')]
+    .map(panel => [panel.dataset.supportingPanel, panel]));
+  const options = new Map([...select.querySelectorAll('option')].map(option => [option.value, option]));
+  const positions = new Map();
+  let selected = null;
+  let invoker = null;
+  const available = topic => panels.has(topic)
+    && (topic !== 'announcements' || document.querySelector('#mdns-section')?.hidden === false);
+  // Hidden modal contents can report zero after native close. Capture while
+  // open, including the cancel event before Escape closes the modal.
+  const savePosition = () => { if (selected && dialog.open) positions.set(selected, content.scrollTop); };
+  const choose = topic => {
+    if (!available(topic)) return false;
+    savePosition();
+    for (const [key, panel] of panels) panel.hidden = key !== topic;
+    selected = topic;
+    select.value = topic;
+    content.scrollTop = positions.get(topic) || 0;
+    return true;
+  };
+  const refresh = () => {
+    for (const button of buttons) {
+      const topic = button.dataset.supportingTopic;
+      button.hidden = !available(topic);
+      const option = options.get(topic);
+      if (option) option.disabled = button.hidden;
+    }
+    if (selected && !available(selected)) choose('technical');
+  };
+  const open = (topic, trigger) => {
+    refresh();
+    if (!choose(topic)) return false;
+    invoker = trigger || buttons.find(button => button.dataset.supportingTopic === topic);
+    if (!dialog.open) {
+      dialog.showModal();
+      heading.focus({ preventScroll: true });
+      content.scrollTop = positions.get(topic) || 0;
+    }
+    return true;
+  };
+  for (const button of buttons) button.addEventListener('click', () => open(button.dataset.supportingTopic, button));
+  select.addEventListener('change', () => { if (!choose(select.value)) select.value = selected; });
+  content.addEventListener('scroll', savePosition, { passive: true });
+  dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    const controls = [...dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')]
+      .filter(control => !control.disabled && control.tabIndex >= 0
+        && control.getClientRects().length
+        && control.checkVisibility?.({ checkOpacity: true, checkVisibilityCSS: true }) !== false);
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (!first) { event.preventDefault(); heading.focus({ preventScroll: true }); return; }
+    if (!controls.includes(document.activeElement)
+        || (event.shiftKey && document.activeElement === first)
+        || (!event.shiftKey && document.activeElement === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus({ preventScroll: true });
+    }
+  });
+  document.querySelector('#closeSupportingInfo').addEventListener('click', () => { savePosition(); dialog.close(); });
+  dialog.addEventListener('cancel', savePosition);
+  dialog.addEventListener('close', () => {
+    if (invoker?.isConnected && !invoker.disabled) invoker.focus({ preventScroll: true });
+  });
+  // An intentional link back into the report closes the modal before the browser
+  // follows the fragment. Opening/switching/closing alone never moves the page.
+  dialog.addEventListener('click', event => {
+    const link = event.target?.closest?.('a');
+    if (link?.getAttribute('href')?.startsWith('#')) { savePosition(); dialog.close(); }
+  });
+  refresh();
+  return { open, refresh };
 }

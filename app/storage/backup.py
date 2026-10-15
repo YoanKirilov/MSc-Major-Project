@@ -14,6 +14,8 @@ from filelock import FileLock
 MAX_BACKUP_BYTES = 3 * 1024 * 1024 * 1024
 MAX_FILES = 20000
 ALLOWED = re.compile(
+    # Removed periodic-check settings are archival data only. Preserve them in
+    # private backups; the app has no scheduler or reader that can execute them.
     r"(?:settings|nicknames|device-labels|monitor)(?:\.previous)?\.json|nicknames\.recovery\.json|"
     r"nicknames\.corrupt-[0-9a-f]{32}\.json|"
     r"(?:scans|\.trash)/[0-9a-f-]{36}/(?:[a-z.]+\.json|\.removal-receipt\.json|annotations\.corrupt-[0-9a-f]{32}\.json|"

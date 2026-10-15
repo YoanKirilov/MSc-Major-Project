@@ -333,7 +333,9 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
     }
     card.append(body);
     const tools = text('footer', '', 'device-name-tools');
+    const actions = text('div', '', 'device-action-buttons');
     if (device.device_id) {
+      if (onEditNickname || (data.phase === 'finished' && onRefreshName)) tools.append(actions);
       if (onEditNickname) {
         const edit = text('button', device.user_nickname ? 'Edit or remove your nickname' : 'Add your own nickname', 'secondary-button');
         edit.type = 'button';
@@ -342,7 +344,7 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
         edit.setAttribute('aria-describedby', heading.id);
         edit.disabled = !nicknameAvailable || nicknameSaving;
         edit.addEventListener('click', () => onEditNickname(device, edit));
-        tools.append(edit);
+        actions.append(edit);
       }
       if (data.phase === 'finished' && onRefreshName) {
         const refresh = text('button', IDENTIFY_DEVICE_LABEL, 'secondary-button');
@@ -353,7 +355,8 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
         lookupStatus.setAttribute('role', 'status');
         lookupStatus.hidden = true;
         refresh.addEventListener('click', () => onRefreshName(device, refresh, lookupStatus));
-        tools.append(refresh, lookupStatus);
+        actions.append(refresh);
+        tools.append(lookupStatus);
         const laterDetails = text('div');
         laterDetails.dataset.notePanel = 'name';
         let shown = '';

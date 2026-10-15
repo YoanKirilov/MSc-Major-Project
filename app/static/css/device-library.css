@@ -5,11 +5,17 @@
 .device-library-list { list-style: none; display: grid; gap: var(--space-5); margin: var(--space-5) 0; padding: 0; }
 .device-library-card { min-width: 0; padding: var(--space-5); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow-wrap: anywhere; }
 .device-library-card h3 { margin: 0 0 var(--space-2); }
+.device-library-primary { display: grid; gap: var(--space-2); }
+.device-library-check-summary div { min-width: 0; }
+.device-library-check-summary dt { color: var(--muted); }
+.device-library-check-summary dd { margin: 0; font-weight: 650; }
+.device-library-history { border-top: 1px solid var(--line); margin-top: var(--space-4); padding-top: var(--space-2); }
 .device-library-recorded { color: var(--muted); }
 .device-library-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-5); }
 .device-library-facts div { min-width: 0; }
 .device-library-facts dt { color: var(--muted); }
 .device-library-facts dd { margin: 0; }
+.device-library-check-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin: var(--space-4) 0; }
 .device-library-badges { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .device-library-badge { border: 1px solid var(--line); border-radius: 6px; padding: var(--space-1) var(--space-2); background: var(--surface-2); }
 .device-library-editor { border-top: 1px solid var(--line); margin-top: var(--space-4); padding-top: var(--space-4); }
@@ -26,6 +32,7 @@
 @media (max-width: 620px) {
   .device-library-card { padding: var(--space-4); }
   .device-library-facts { grid-template-columns: minmax(0, 1fr); }
+  .device-library-check-summary { grid-template-columns: minmax(0, 1fr); }
 }
 @media (forced-colors: active) {
   .device-library-card, .device-library-badge { border-color: CanvasText; }

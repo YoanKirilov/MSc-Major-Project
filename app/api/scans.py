@@ -144,8 +144,6 @@ async def _create_validated_live_scan(
     request: Request,
     body: ScanCreateRequest,
     retry_of: str | None = None,
-    *,
-    approved_context: dict | None = None,
 ):
     if not body.authorised:
         raise HTTPException(status_code=422, detail="Authorisation is required")
@@ -212,12 +210,6 @@ async def _create_validated_live_scan(
             "The current network connection could not be verified. "
             "Check Network range and Interface in Settings before scanning.",
         )
-    if approved_context is not None and context != approved_context:
-        raise HTTPException(
-            409,
-            "The connection changed since periodic checks were authorised. "
-            "Stop periodic checks and confirm the current network again.",
-        )
     ai_available = await request.app.state.explanations.provider_available()
     mdns_interface_ip = None
     mdns_warning = None
@@ -266,7 +258,7 @@ async def _create_validated_live_scan(
             "pihole_enabled": settings.pihole_enabled,
             "extra_details_enabled": True,
             "extra_details_budget_seconds": 30,
-            "extra_details_version": "1.0.2",
+            "extra_details_version": "1.0.3",
             "retry_of": retry_of,
         },
         coverage={"candidate_count": len(validated.candidates), "targets": targets},
@@ -291,20 +283,11 @@ async def _create_validated_live_scan(
     )
     if mdns_warning:
         document.warnings.append({"code": "MDNS_UNAVAILABLE", "message": mdns_warning})
-    if approved_context is not None and request.app.state.supervisor.active_scan_count:
-        raise HTTPException(429, "Another check is active; periodic checks wait for an idle app.")
     await request.app.state.store.create_scan(document)
     try:
-        if approved_context is None:
-            await request.app.state.supervisor.start(scan_id)
-        else:
-            await request.app.state.supervisor.start(scan_id, require_idle=True)
+        await request.app.state.supervisor.start(scan_id)
     except RuntimeError as exc:
         await request.app.state.store.delete_scan(scan_id)
-        if str(exc) == "SCAN_BUSY":
-            raise HTTPException(
-                429, "Another check started; periodic checks wait for an idle app."
-            ) from exc
         if str(exc) == "SCAN_CAPACITY":
             limit = request.app.state.supervisor.max_concurrent_scans
             raise HTTPException(

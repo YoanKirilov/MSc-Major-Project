@@ -72,7 +72,7 @@ def main():
             if saved != [service.model_dump(exclude={"observed_at"}) for service in services]:
                 raise ValueError("Replayed raw services differ from the saved evidence")
             services_replayed += len(services)
-            if document.policy.get("extra_details_version") == "1.0.2":
+            if document.policy.get("extra_details_version") in {"1.0.2", "1.0.3"}:
                 saved_times = {
                     service.service_id: service.observed_at for service in document.services
                 }

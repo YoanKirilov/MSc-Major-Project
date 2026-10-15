@@ -3,6 +3,7 @@
 import os
 import tempfile
 from importlib import import_module
+from importlib.util import find_spec
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,16 +22,18 @@ def main():
         "app.jobs.enrichment",
         "app.scanner.observations",
         "app.scanner.certificates",
+        "app.scanner.netbios",
         "app.profiling.history",
         "app.schemas.report_management",
         "app.storage.report_trash",
         "app.storage.device_inventory",
         "app.api.report_export",
-        "app.jobs.monitoring",
         "app.risk.smb",
     ):
         module = import_module(name)
         assert Path(module.__file__).resolve().is_relative_to(installed), name
+    for name in ("app.api.monitoring", "app.jobs.monitoring", "app.storage.monitoring"):
+        assert find_spec(name) is None, f"Removed periodic implementation remains installed: {name}"
     with tempfile.TemporaryDirectory(prefix="netguard-package-") as temporary:
         os.environ["APP_DATA_DIR"] = temporary
         os.environ["APP_PORT"] = "8765"
@@ -55,7 +58,10 @@ def main():
             )
             headers = {"Origin": base, "X-CSRF-Token": session.json()["csrf_token"]}
             assert client.get("/api/devices").json()["items"] == []
-            assert client.get("/api/monitoring").json()["enabled"] is False
+            assert "/api/monitoring" not in client.get("/openapi.json").json()["paths"]
+            assert client.get("/api/monitoring").status_code == 404
+            for name in ("monitoring.js", "monitoring-model.mjs"):
+                assert client.get(f"/static/js/{name}").status_code == 404
             created = client.post("/api/demo-runs", json={}, headers=headers)
             assert created.status_code == 201
             assert client.get("/api/demo-runs/" + created.json()["run_id"]).status_code == 200
