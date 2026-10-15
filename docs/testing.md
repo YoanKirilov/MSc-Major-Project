@@ -1,5 +1,19 @@
 # Testing status
 
+## Ollama recovery and related CVEs — 15 October 2026
+
+[Execution and verification](cve-and-ollama-followup-20261015.md) records the removed
+AI-outage/retry UI, local model maintenance and separately qualified related-product
+references. Offline tests use isolated JSON and synthetic processes/NVD/providers.
+Real local Ollama generation and preload checks use synthetic facts only; the public
+NVD parameter check sends no private identifiers. No live device scans are run.
+Final offline gate passed 860 Python/five environment skips, 252 JavaScript,
+Ruff/181-file formatting and 27 syntax checks. Thirteen selected browser cases have
+passing coverage across the matrix and one affected retest. Real synthetic local
+generation/preload passed separately. The final offline wheel passed seven pages,
+29 assets and all 115 source/installed/current file hashes. See the execution record
+for initial failures and the backend-restart requirement.
+
 ## Edit recovery follow-up — 15 October 2026
 
 [Review, implementation and verification](ui-ux-review2-20261015.md) covers confirmed

@@ -14,6 +14,7 @@ def prevent_live_work_in_synthetic_tests(request, monkeypatch):
 def isolate_application_data(tmp_path, monkeypatch):
     """Tests must never reconcile or write the developer's saved scans."""
     monkeypatch.setenv("APP_DATA_DIR", str(tmp_path / "app-data"))
+    monkeypatch.setenv("APP_AI_AUTOSTART", "0")
     # Tests opt in to synthetic credentials, never inherit a real Pi-hole secret.
     for name in ("APP_PIHOLE_URL", "APP_PIHOLE_PASSWORD", "APP_PIHOLE_PASSWORD_FILE"):
         monkeypatch.delenv(name, raising=False)

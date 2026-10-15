@@ -514,8 +514,8 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   context.data.explanations = [{ finding_id: 'high', status: 'ready', source: 'ai', prompt_version: '3.0.0',
     rejected_fields: { recommended_steps: 'list_length_changed' }, content: { meaning: 'Observed service.', why_it_matters: 'Review settings.' } }];
   vm.runInContext('render(data)', context);
-  assert.equal(elements.get('#simplifyButton').hidden, false);
-  assert.equal(elements.get('#simplifyButton').textContent, 'Retry remaining explanations');
+  assert.equal(elements.has('#simplifyButton'), false);
+  assert.equal(elements.has('#ai-report-notice'), false);
   assert.match(text(elements.get('#detailPanel')), /suggested actions/);
   context.data.plain_guidance = { high: { title: 'Plain finding title', limitations: ['Plain limitation.'], content: {
     meaning: 'Plain explanation.', why_it_matters: 'Plain reason.',

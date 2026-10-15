@@ -2,6 +2,7 @@ import os
 
 import pytest
 from app.explanations import ExplanationService, OllamaExplanationProvider
+from app.explanations.runtime import OllamaRuntime
 from app.explanations.service import PROMPT_VERSION
 from app.explanations.wording import wording_choices
 from app.risk.engine import evaluate_device
@@ -69,3 +70,20 @@ async def test_local_ollama_explanation_is_validated_and_persisted(tmp_path):
     ):
         assert step in wording_choices(action.text)
         assert check in wording_choices(action.verification)
+
+
+@pytest.mark.live_provider
+@pytest.mark.skipif(os.getenv("RUN_LIVE_OLLAMA") != "1", reason="Explicit local-model opt-in")
+@pytest.mark.asyncio
+async def test_local_runtime_preloads_existing_server_without_taking_ownership():
+    provider = OllamaExplanationProvider(model="llama3.2:3b", timeout_s=120)
+    assert await provider.available(), "Start local Ollama before this opt-in check"
+    runtime = OllamaRuntime(provider)
+    try:
+        assert await runtime.ensure_ready(warm=True)
+        assert runtime.state == "ready"
+        assert runtime.process is None, "An existing server must not be replaced"
+        assert runtime.next_warm > 0
+    finally:
+        await runtime.close()
+    assert await provider.available(), "Closing the app must leave an external server alone"

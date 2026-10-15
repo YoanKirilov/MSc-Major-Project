@@ -119,9 +119,8 @@ def test_report_review_and_recovery_actions_have_separate_hierarchy(ui, tmp_path
         page.set_viewport_size({"width": width, "height": 900})
         recovery = page.get_by_role("group", name="Recover the report or unfinished checks")
         expect(recovery).to_be_visible()
-        expect(recovery.locator("#simplifyButton")).to_be_visible()
-        expect(page.locator("#ai-report-notice")).to_contain_text("built-in explanations")
-        expect(page.locator("#ai-report-notice")).not_to_contain_text("rule-based")
+        expect(recovery.locator("#simplifyButton")).to_have_count(0)
+        expect(page.locator("#ai-report-notice")).to_have_count(0)
         assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
         page.screenshot(path=tmp_path / f"report-actions-{width}.png", full_page=True)
         page.locator("#scan-summary").screenshot(
@@ -130,7 +129,7 @@ def test_report_review_and_recovery_actions_have_separate_hierarchy(ui, tmp_path
     page, _ = _open(ui, "failed")
     recovery = page.get_by_role("group", name="Recover the report or unfinished checks")
     expect(recovery.locator("#retryHostsButton")).to_be_visible()
-    expect(recovery.locator("#simplifyButton")).to_be_visible()
+    expect(recovery.locator("#simplifyButton")).to_have_count(0)
 
 
 def test_recovery_actions_remain_visible_without_has_layout_support(ui):
@@ -148,4 +147,4 @@ def test_recovery_actions_remain_visible_without_has_layout_support(ui):
     page, _ = _open(ui, "failed")
     recovery = page.get_by_role("group", name="Recover the report or unfinished checks")
     expect(recovery.locator("#retryHostsButton")).to_be_visible()
-    expect(recovery.locator("#simplifyButton")).to_be_visible()
+    expect(recovery.locator("#simplifyButton")).to_have_count(0)

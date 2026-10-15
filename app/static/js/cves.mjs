@@ -26,8 +26,8 @@ export function createCvePanel(document, scanId, service, saved, onSaved) {
   browse.rel = 'noopener noreferrer';
   research.append(browse);
   const output = element('div');
-  // Use the same exact-version policy as the lookup endpoint; a product/OS CPE
-  // alone is insufficient. Older backends fail closed until they are restarted.
+  // Backend policy requires a confidently observed application, never a port/OS
+  // guess. It labels version-specific and related-product research separately.
   const eligible = service?.cve_lookup_available === true;
   const button = element('button', 'Check CVEs for this software');
   button.type = 'button';
@@ -35,15 +35,35 @@ export function createCvePanel(document, scanId, service, saved, onSaved) {
   button.dataset.deviceAction = 'cve-lookup';
   function availabilityText(record) {
     if (!record) return eligible
-      ? 'Optional research is available for the recorded software version. No online lookup has started.'
-      : 'CVE matching is unavailable: a precise software fingerprint and version were not recorded.';
+      ? 'Optional software research is available. Version matches and related-product references are kept separate. No online lookup has started.'
+      : 'CVE matching is unavailable: a reliable software product was not recorded.';
     const count = (record.results || []).filter(item => /^CVE-\d{4}-\d{4,19}$/.test(item.cve_id)).length;
+    const related = (record.related_results || []).filter(item => /^CVE-\d{4}-\d{4,19}$/.test(item.cve_id)).length;
+    if (related) return `${record.query ? count + ' possible version matches' : 'Version not identified'}; ${related} related-product reference${related === 1 ? '' : 's'}. None confirms a vulnerability on this device.`;
     if (record.status === 'candidates' && count) return `${count} saved possible CVE match${count === 1 ? '' : 'es'}; not confirmed vulnerabilities on this device.`;
     return ({ no_matches: 'No matching CVE records were returned by the saved lookup; this is not proof of safety.',
       identity_unresolved: 'The saved lookup could not identify this software reliably; no match is confirmed.',
       insufficient_evidence: 'The saved lookup did not have enough software evidence to match CVEs.',
       unavailable: 'The saved CVE lookup was unavailable. Your scan evidence remains accessible.' })[record.status]
       || 'Saved CVE research is available; matches require checking the actual software and version.';
+  }
+
+  function references(records, parent) {
+    const list = element('ul');
+    records.forEach(item => {
+      if (!/^CVE-\d{4}-\d{4,19}$/.test(item.cve_id)) return;
+      const row = element('li');
+      const link = element('a', item.cve_id);
+      link.href = `https://nvd.nist.gov/vuln/detail/${item.cve_id}`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      const details = element('details');
+      details.dataset.disclosureKey = `description:${item.cve_id}`;
+      details.append(element('summary', 'Published technical description'), element('p', item.description));
+      row.append(link, details);
+      list.append(row);
+    });
+    parent.append(list);
   }
 
   function show(record) {
@@ -60,27 +80,28 @@ export function createCvePanel(document, scanId, service, saved, onSaved) {
     }
     if (record.checked_at) output.append(element('p', `Reference check: ${recordedTimeLabel(record.checked_at)}. Saved checks are reused for 24 hours.`));
     if (record.results?.length) {
+      output.append(element('h5', 'References for the recorded version'));
       output.append(element('p', `Showing ${record.results.length} of ${record.total} database records. These are possible matches, not confirmed vulnerabilities on your device.`));
-      const list = element('ul');
-      record.results.forEach(item => {
-        if (!/^CVE-\d{4}-\d{4,19}$/.test(item.cve_id)) return;
-        const row = element('li');
-        const link = element('a', item.cve_id);
-        link.href = `https://nvd.nist.gov/vuln/detail/${item.cve_id}`;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        const details = element('details');
-        details.dataset.disclosureKey = `description:${item.cve_id}`;
-        details.append(element('summary', 'Published technical description'), element('p', item.description));
-        row.append(link, details);
-        list.append(row);
-      });
-      output.append(list);
+      references(record.results, output);
+    }
+    if (record.related_query) {
+      const related = element('section');
+      related.className = 'cve-related-references';
+      related.append(element('h5', 'Related software problems — version not verified'));
+      related.append(element('p', 'These records concern the same software product, possibly other versions or settings. They are leads to compare with the maker’s advice, not matches confirmed for your device.'));
+      if (record.related_results?.length) {
+        related.append(element('p', `Showing ${record.related_results.length} additional reference${record.related_results.length === 1 ? '' : 's'} from a limited product search. Records already listed above are not repeated.`));
+        references(record.related_results, related);
+      } else related.append(element('p', record.related_status === 'unavailable'
+        ? 'The related-product search could not finish. Any version references above remain available.'
+        : 'No additional verified product references were retained from the limited search. This is not proof of safety.'));
+      if (record.related_truncated) related.append(element('p', 'This is a limited selection, not a complete list of published problems.'));
+      output.append(related);
     }
     (record.explanation || []).forEach(line => output.append(element('p', line)));
     if (record.explanation?.length) output.append(element('p', record.ai_source === 'ollama'
       ? 'Local Ollama selected the reviewed explanation above. CVE links come from NVD.'
-      : 'Reviewed guidance is shown; an AI explanation was unavailable for this lookup.'));
+      : 'Reviewed guidance is shown. CVE links come from NVD.'));
     button.textContent = 'Check CVEs again';
   }
 
@@ -126,7 +147,7 @@ export function createCvePanel(document, scanId, service, saved, onSaved) {
       }
     });
   } else if (!saved) {
-    output.append(element('p', 'This scan did not identify a precise software fingerprint and version. A new Deep scan may collect more detail; a matching CVE cannot be inferred from the port.'));
+    output.append(element('p', 'This scan did not reliably identify the software product. A new Deep scan may collect more detail; a matching CVE cannot be inferred from the port.'));
   }
   research.append(output);
   research.append(element('p', 'This product uses data from the NVD API but is not endorsed or certified by the NVD.'));

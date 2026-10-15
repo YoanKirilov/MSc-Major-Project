@@ -31,7 +31,7 @@ from app.scanner.commands import (
     PROFILE_ID,
     UDP_PORTS,
 )
-from app.scanner.cpe import service_cpe
+from app.scanner.cpe import service_product_cpe
 from app.scanner.mdns import mdns_available
 from app.schemas.api import RefreshGuidanceRequest, ScanCreateRequest
 from app.schemas.scan import ScanDocument
@@ -310,7 +310,7 @@ async def get_live_scan(request: Request, scan_id: str):
     payload = document.model_dump(mode="json")
     # Presentation is editorial and never saved over scan facts.
     for service, presented in zip(document.services, payload["services"], strict=True):
-        presented["cve_lookup_available"] = service_cpe(service) is not None
+        presented["cve_lookup_available"] = service_product_cpe(service) is not None
     payload["plain_guidance"] = {item.finding_id: plain_finding(item) for item in document.findings}
     payload["plain_overview"] = plain_report(document)
     payload["guidance_status"] = {**guidance_status(document), "ai_prompt_version": PROMPT_VERSION}

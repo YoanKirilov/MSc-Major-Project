@@ -50,13 +50,11 @@
             <p id="result-status" class="status-message"></p>
             <div id="scan-problems" class="status-message" hidden></div>
             <p id="self-check-notice" class="self-check-notice" hidden></p>
-            <p id="ai-report-notice" class="status-message" role="status" hidden></p>
             <p id="annotation-notice" class="status-message" hidden></p>
             <p id="report-user-title"></p>
             <div class="report-recovery-actions" role="group" aria-label="Recover the report or unfinished checks">
               <button class="secondary-button" id="retryReportLoad" type="button" hidden>Reload saved report</button>
               <button class="secondary-button" id="retryHostsButton" type="button" hidden>Retry unfinished device checks</button>
-              <button class="secondary-button" id="simplifyButton" type="button" hidden>Retry plain-English explanations</button>
             </div>
             <div class="hero-actions report-tools" role="group" aria-label="Report tools">
               <button class="secondary-button" id="runAgainButton" type="button" disabled>Run again</button>
@@ -223,6 +221,6 @@
       </main>
       {% include "includes/shared-footer.html" %}
     </div>
-    <script type="module" src="/static/js/scan.js?v=20261015-edit-recovery"></script>
+    <script type="module" src="/static/js/scan.js?v=20261015-related"></script>
   </body>
 </html>

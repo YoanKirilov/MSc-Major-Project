@@ -22,6 +22,7 @@ from .config import load_config, resolve_nmap_path
 from .demo.adapter import DemoFindingsAdapter
 from .demo.runs import DemoRunStore
 from .explanations import ExplanationService, OllamaExplanationProvider
+from .explanations.runtime import OllamaRuntime
 from .jobs.supervisor import ScanSupervisor
 from .runtime_diagnostics import observe_asyncio_errors
 from .scanner.cve import NvdClient
@@ -114,10 +115,20 @@ async def owned_lifespan(app: FastAPI):
         app_config=config,
     )
     await app.state.supervisor.reconcile_incomplete()
+    app.state.ollama_runtime = None
+    if explanation_provider is not None and config.ai_autostart:
+        runtime = OllamaRuntime(explanation_provider)
+        explanation_provider.runtime = runtime
+        app.state.ollama_runtime = runtime
+        runtime.start()
     try:
         yield
     finally:
-        await app.state.supervisor.shutdown()
+        try:
+            await app.state.supervisor.shutdown()
+        finally:
+            if app.state.ollama_runtime is not None:
+                await app.state.ollama_runtime.close()
 
 
 def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:

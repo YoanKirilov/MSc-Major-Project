@@ -89,6 +89,7 @@ class OllamaExplanationProvider:
         self.transport = transport
         self.last_readiness: dict[str, str] | None = None
         self._generation_lock = asyncio.Lock()
+        self.runtime = None
 
     async def available(self) -> bool:
         try:
@@ -116,6 +117,8 @@ class OllamaExplanationProvider:
         return False
 
     async def generate(self, findings: list[dict[str, object]]) -> GeneratedExplanationBatch:
+        if self.runtime is not None and not await self.runtime.wait_ready():
+            raise RuntimeError("local_model_not_ready")
         async with self._generation_lock:
             return await self._generate(findings)
 
@@ -150,6 +153,7 @@ class OllamaExplanationProvider:
         request_body = {
             "model": self.model,
             "stream": False,
+            "keep_alive": "10m",
             "messages": [
                 {
                     "role": "system",

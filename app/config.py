@@ -62,6 +62,7 @@ class AppConfig:
     ai_base_url: str = "http://127.0.0.1:11434"
     ai_model: str = "llama3.2:3b"
     ai_timeout_s: float = 60.0
+    ai_autostart: bool = True
     allowed_network: str | None = None
     max_concurrent_scans: int = 5
     pihole_url: str | None = None
@@ -82,6 +83,8 @@ class AppConfig:
             ai_base_url=os.getenv("APP_AI_BASE_URL", "http://127.0.0.1:11434").strip(),
             ai_model=os.getenv("APP_AI_MODEL", "llama3.2:3b").strip(),
             ai_timeout_s=_float_env("APP_AI_TIMEOUT_SECONDS", 60.0, 1.0, 300.0),
+            ai_autostart=os.getenv("APP_AI_AUTOSTART", "1").strip().lower()
+            not in {"0", "false", "no"},
             allowed_network=os.getenv("APP_ALLOWED_NETWORK") or None,
             max_concurrent_scans=_integer_env("APP_MAX_CONCURRENT_SCANS", 5, 1, 8),
             pihole_url=os.getenv("APP_PIHOLE_URL") or None,

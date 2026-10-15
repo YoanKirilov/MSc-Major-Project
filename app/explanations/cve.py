@@ -45,7 +45,11 @@ async def explain_cves(lookup, provider, *, busy=False):
     lookup.explanation = [choices["why_it_matters"][-1]] + [
         choices[field][0][-1] for field in ("limitations", "recommended_steps", "how_to_check")
     ]
-    if lookup.status not in {"candidates", "no_matches"} or provider is None or busy:
+    has_references = lookup.status in {"candidates", "no_matches"} or lookup.related_status in {
+        "candidates",
+        "no_matches",
+    }
+    if not has_references or provider is None or busy:
         lookup.ai_fallback_reason = "scan_busy" if busy else "provider_or_reference_unavailable"
         return lookup
     lookup.ai_model = provider.model

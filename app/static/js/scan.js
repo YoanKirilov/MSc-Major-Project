@@ -4,12 +4,12 @@ import { renderFindingList, findingDeviceOptions, repeatedUnknownReplies } from 
 import { createReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation, bindSupportingInformation } from './report-view.mjs?v=20261015-inclusive';
 import { readReportDeviceContext, resolveReportDeviceContext, resumeReportDeviceContext } from './report-device-context.mjs?v=20261015-inclusive';
 import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from './devices.mjs?v=20261014-reliability';
-import { createCvePanel } from './cves.mjs?v=20261002-cve';
+import { createCvePanel } from './cves.mjs?v=20261015-related';
 import { renderReportInsights } from './report-insights.mjs?v=20261014-simpler-report';
 import { bindReportExport } from './report-export.mjs?v=20261014-device-first';
 import { createNoteState, checkStatus, projectNotes, confirmedTitleReceipt } from './notes.mjs?v=20261015-edit-recovery';
 import { createNicknameState, projectNicknames } from './nicknames.mjs?v=20261007-followup';
-import { recordedTimeLabel, localFeatureHelp, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, pendingWording, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261014-dates';
+import { recordedTimeLabel, localFeatureHelp, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261014-dates';
 import { partialScanTitle, prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261014-reliability';
 
 const severityConfig = {
@@ -40,7 +40,6 @@ const sameDeviceButton = document.querySelector('#sameDeviceButton');
 const anotherDeviceButton = document.querySelector('#anotherDeviceButton');
 const cancelRunAgainButton = document.querySelector('#cancelRunAgainButton');
 const runAgainDevice = document.querySelector('#runAgainDevice');
-const simplifyButton = document.querySelector('#simplifyButton');
 const refreshGuidanceButton = document.querySelector('#refreshGuidanceButton');
 const guidanceNotice = document.querySelector('#guidance-notice');
 const scanProblems = document.querySelector('#scan-problems');
@@ -466,21 +465,6 @@ anotherDeviceButton.addEventListener('click', () => {
   if (currentData) window.location.href = scanSetupLink(currentData, false);
 });
 cancelRunAgainButton.addEventListener('click', () => runAgainDialog.close());
-
-simplifyButton.addEventListener('click', async () => {
-  if (!currentData) return;
-  simplifyButton.disabled = true;
-  try {
-    const aiStatus = await request('/api/status');
-    if (!aiStatus.ai_available) throw new Error('The local Ollama model is unavailable. Check AI settings.');
-    await request(`/api/live-scans/${scanId}/explanations`, { method: 'POST', body: '{}' });
-    status.textContent = 'Local AI is checking optional wording. The saved scan facts are unchanged.';
-    poll();
-  } catch (error) {
-    simplifyButton.disabled = false;
-    status.textContent = error.message;
-  }
-});
 
 refreshGuidanceButton.addEventListener('click', async () => {
   if (!currentData) return;
@@ -1129,7 +1113,6 @@ function render(data) {
     partial: 'Some checks could not finish', failed: 'Could not complete', cancelled: 'Cancelled',
   };
   const preparing = ['queued', 'running'].includes(data.state) || data.phase === 'analysis';
-  const analysisFailed = data.analysis_status === 'failed';
   reportContent.hidden = preparing;
   reportContent.inert = preparing || !readingRestored;
   reportContent.setAttribute('aria-busy', String(preparing));
@@ -1144,7 +1127,6 @@ function render(data) {
     lead.textContent = data.phase === 'analysis' ? analysisProgressText(data) : 'Your report will appear after the scan and AI explanation finish.';
     status.textContent = coverageSummary(data);
     state.textContent = 'In progress';
-    simplifyButton.hidden = true;
     refreshGuidanceButton.hidden = true;
     return;
   }
@@ -1189,11 +1171,6 @@ function render(data) {
       overviewHelp.append(list);
     }
   }
-  const aiNotice = document.querySelector('#ai-report-notice');
-  aiNotice.hidden = !analysisFailed;
-  aiNotice.textContent = pendingWording(data)
-    ? 'Some explanations still use built-in wording. You can retry the remaining explanations without scanning again.'
-    : 'Automatic explanations are unavailable. Your saved results and built-in explanations are still here. You can try again without running another scan.';
   const overviewRecord = currentOverview(data);
   const aiRecords = (data.explanations || []).filter(record => record.source === 'ai' && usableAiRecord(record, data));
   document.querySelector('#ai-report-source').textContent = overviewRecord || aiRecords.length
@@ -1210,7 +1187,7 @@ function render(data) {
   scanProblems.replaceChildren();
   const hasSelfCheck = data.devices.some(device => recordedDeviceRole(device, data) === 'Computer that ran this scan');
   const problems = [...(data.errors || []).filter(item => !item.target_ip), ...(data.warnings || []).filter(item =>
-    !(item.code === 'AI_PREFLIGHT_UNAVAILABLE' && data.analysis_status === 'ready')
+    item.code !== 'AI_PREFLIGHT_UNAVAILABLE'
     && !(item.code === 'SELF_SCAN_LOCAL_ROUTING' && hasSelfCheck))];
   (data.coverage?.targets || []).filter((target) => ['failed', 'timed_out', 'cancelled'].includes(target.service_status)).forEach((target) => {
     const reasons = { host_scan_timeout: 'timed out', host_result_invalid: 'returned an incomplete or invalid result',
@@ -1250,7 +1227,7 @@ function render(data) {
     : data.guidance_status?.outdated_findings
       ? 'Some older guidance cannot be refreshed from the saved evidence. Run a new scan to reassess those findings.'
       : data.guidance_updated_at ? 'Guidance was refreshed from saved observations. The original scan date and evidence are unchanged.' : '';
-  if (outdatedAi) guidanceNotice.textContent += ' Older AI wording is hidden because it predates the current validation checks. You can request local AI wording again.';
+  if (outdatedAi) guidanceNotice.textContent += ' Older AI wording is hidden because it predates the current validation checks.';
   document.querySelector('#finding-metric').textContent = data.findings.length;
   document.querySelector('#device-metric').textContent = deviceCheckLabel(data);
   document.querySelector('#service-metric').textContent = openServices;
@@ -1261,10 +1238,6 @@ function render(data) {
   renderBeginnerGuide(data);
   renderReportInsights({ document, data, onShowDevice: showInsightDevice });
   document.querySelector('#shareReportButton').disabled = data.source !== 'live' || data.phase !== 'finished';
-  simplifyButton.hidden = !['completed', 'partial', 'failed', 'cancelled'].includes(data.state)
-    || (data.analysis_status === 'ready' && !pendingWording(data) && !outdatedAi && currentOverview(data));
-  simplifyButton.disabled = preparing;
-  simplifyButton.textContent = pendingWording(data) ? 'Retry remaining explanations' : analysisFailed ? 'Retry plain-English explanations' : 'Prepare plain-English explanations';
   restoreReading();
 }
 

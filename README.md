@@ -1,5 +1,15 @@
 # NetGuard AI (Network Assessor)
 
+Latest follow-up: [local Ollama recovery and related CVE research](docs/cve-and-ollama-followup-20261015.md).
+The app starts installed local Ollama when needed, keeps its installed model warm
+and allows a bounded slow-start grace period. No model download or system-service
+change is made. Reports no longer show the AI-outage banner or manual wording-retry
+button; source/fallback metadata remains available in Supporting information.
+CVE research separates recorded-version references from related-product leads,
+including products whose version was not identified. Neither confirms a flaw on a
+device. Retry unfinished checks still targets only unfinished selected hosts in a
+new linked report, not the whole network.
+
 Latest UI follow-up: [edit recovery and confirmed title saves](docs/ui-ux-review2-20261015.md).
 Unsaved report edits and failed checklist drafts receive conditional browser leave
 protection. Title confirmations require a matching newer response; uncertain saves

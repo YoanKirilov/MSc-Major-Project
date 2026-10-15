@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, Request
 from app.api.dependencies import require_session
 from app.api.library import live_document, note_operation
 from app.explanations.cve import explain_cves
-from app.scanner.cpe import service_cpe
-from app.scanner.cve import NvdBusy
+from app.scanner.cpe import product_cpe, service_cpe, service_product_cpe
+from app.scanner.cve import LOOKUP_VERSION, NvdBusy
 from app.schemas.common import utc_now
 from app.storage.annotations import AnnotationStore
 
@@ -33,9 +33,16 @@ async def lookup_cves(request: Request, scan_id: str, service_id: str):
         cached = next((r for r in annotations.cve_lookups if r.service_id == service_id), None)
         if (
             cached
+            and cached.lookup_version == LOOKUP_VERSION
             and cached.query == service_cpe(service)
-            and cached.status in {"candidates", "no_matches"}
-            and (cached.status == "candidates" or cached.resolution is not None)
+            and cached.related_query
+            == (product_cpe(cached.resolved_query) or service_product_cpe(service))
+            and cached.related_status in {"candidates", "no_matches"}
+            and cached.status in {"candidates", "no_matches", "insufficient_evidence"}
+            and (
+                cached.status in {"candidates", "insufficient_evidence"}
+                or cached.resolution is not None
+            )
         ):
             try:
                 age = (utc_now() - datetime.fromisoformat(cached.checked_at)).total_seconds()

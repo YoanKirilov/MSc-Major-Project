@@ -26,6 +26,14 @@ class CveLookup(StrictModel):
     results: list[CveReference] = Field(default_factory=list, max_length=5)
     truncated: bool = False
     message: str = Field(max_length=600)
+    lookup_version: str | None = Field(default=None, max_length=80)
+    related_query: str | None = Field(default=None, max_length=512)
+    related_status: Literal["not_requested", "candidates", "no_matches", "unavailable"] = (
+        "not_requested"
+    )
+    related_total: int = Field(default=0, ge=0)
+    related_results: list[CveReference] = Field(default_factory=list, max_length=5)
+    related_truncated: bool = False
     ai_source: Literal["fixed", "ollama"] = "fixed"
     ai_model: str | None = Field(default=None, max_length=200)
     ai_prompt_version: str = "cve-context-1"

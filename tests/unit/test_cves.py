@@ -7,6 +7,7 @@ import pytest
 from app.explanations.cve import explain_cves
 from app.explanations.service import GeneratedExplanationBatch
 from app.main import create_app
+from app.scanner.cpe import service_product_cpe
 from app.scanner.cve import NvdBusy, NvdClient, application_cpe, service_cpe
 from app.scanner.parser import parse_host
 from app.schemas.cve import CveLookup
@@ -102,6 +103,10 @@ async def test_nvd_uses_only_specific_cpe_and_enforces_pause():
     def handler(request):
         calls.append(request)
         assert request.url.host == "services.nvd.nist.gov"
+        if "virtualMatchString" in request.url.params:
+            assert request.url.params["virtualMatchString"] == service_product_cpe(software())
+            assert set(request.url.params) == {"virtualMatchString", "noRejected", "resultsPerPage"}
+            return httpx.Response(200, json={"totalResults": 0, "vulnerabilities": []})
         assert request.url.params["cpeName"] == QUERY
         assert "isVulnerable" in request.url.params
         assert set(request.url.params) == {
@@ -113,14 +118,16 @@ async def test_nvd_uses_only_specific_cpe_and_enforces_pause():
         return httpx.Response(200, json=nvd_data())
 
     client = NvdClient(httpx.MockTransport(handler))
+    client.request_interval_s = 0.01
     result = await client.lookup(software())
     assert result.results[0].cve_id == "CVE-2021-41773"
     assert result.status == "candidates"
+    client.next_request = float("inf")
     with pytest.raises(NvdBusy):
         await client.lookup(software())
     insufficient = await client.lookup(software(cpes=[]))
     assert insufficient.status == "insufficient_evidence"
-    assert len(calls) == 1
+    assert len(calls) == 2
 
 
 @pytest.mark.asyncio
@@ -200,6 +207,8 @@ def test_authenticated_cve_lookup_saves_annotations_and_cache_without_rewriting_
 
     def handler(request):
         calls.append(request)
+        if "virtualMatchString" in request.url.params:
+            return httpx.Response(200, json={"totalResults": 0, "vulnerabilities": []})
         return httpx.Response(200, json=nvd_data())
 
     with TestClient(app, base_url=BASE_URL) as client:
@@ -215,6 +224,7 @@ def test_authenticated_cve_lookup_saves_annotations_and_cache_without_rewriting_
         primary = app.state.store._scan_dir(scan.scan_id) / "scan.json"
         original = primary.read_bytes()
         app.state.nvd = NvdClient(httpx.MockTransport(handler))
+        app.state.nvd.request_interval_s = 0
         app.state.explanations.provider = CveProvider(invent=initial_ai_failure)
         path = f"/api/live-scans/{scan.scan_id}/services/{service.service_id}/cves"
         assert client.post(path, json={}).status_code in {401, 403}
@@ -254,7 +264,7 @@ def test_authenticated_cve_lookup_saves_annotations_and_cache_without_rewriting_
         assert retried["annotations"]["revision"] == retried["revision"]
         assert retried["lookup"]["ai_source"] == "ollama"
         assert retried["lookup"]["ai_fallback_reason"] is None
-        assert len(calls) == 1
+        assert len(calls) == 2
         assert primary.read_bytes() == original
         saved = AnnotationStore(app.state.store)._load(scan.scan_id)
         assert saved.cve_lookups[0].results[0].cve_id == "CVE-2021-41773"
@@ -293,9 +303,17 @@ def test_report_cve_availability_uses_lookup_policy_without_changing_saved_facts
         response = client.get(f"/api/live-scans/{scan.scan_id}")
         assert response.status_code == 200
         for saved, shown in zip(services, response.json()["services"], strict=True):
-            assert shown["cve_lookup_available"] is (service_cpe(saved) is not None)
+            assert shown["cve_lookup_available"] is (service_product_cpe(saved) is not None)
         assert response.json()["services"][0]["cve_lookup_available"]
-        assert not any(s["cve_lookup_available"] for s in response.json()["services"][1:])
+        assert [s["cve_lookup_available"] for s in response.json()["services"]] == [
+            True,
+            True,
+            False,
+            True,
+            False,
+            False,
+            False,
+        ]
         assert path.read_bytes() == original
 
 

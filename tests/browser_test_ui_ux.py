@@ -1036,9 +1036,9 @@ def test_zero_empty_and_failed_reports_keep_evidence_distinct_from_ai_outage(ui,
 
     page, report = _open(ui, kind=kind, size=(320, 568))
     expect(page.locator("#report-content")).to_be_visible()
-    expect(page.locator("#ai-report-notice")).to_be_visible()
-    expect(page.locator("#ai-report-notice")).to_contain_text("unavailable")
-    expect(page.locator("#simplifyButton")).to_be_visible()
+    expect(page.locator("#ai-report-notice")).to_have_count(0)
+    expect(page.locator("#simplifyButton")).to_have_count(0)
+    expect(page.locator("#ai-report-source")).to_contain_text("No new AI conclusion")
     expect(page.locator("#findingsList")).not_to_be_empty()
     if kind == "failed":
         expect(page.locator("#scan-problems")).to_be_visible()

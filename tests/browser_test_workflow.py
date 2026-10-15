@@ -399,18 +399,27 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
                 page.locator("#scanLaunchButton").click()
             assert response.value.status == 202
             assert response.value.request.post_data_json["hosts"] == ["192.168.56.10"]
-            expect(page.locator("#ai-report-notice")).to_contain_text(
-                "Automatic explanations are unavailable", timeout=15000
-            )
             expect(page.locator("#report-content")).to_be_visible()
+            expect(page.locator("#ai-report-notice")).to_have_count(0)
+            expect(page.locator("#simplifyButton")).to_have_count(0)
             count = len(scanned)
             fail_ai.clear()
             with page.expect_response(
                 lambda reply: reply.url.endswith("/explanations") and reply.request.method == "POST"
             ) as retried:
-                page.locator("#simplifyButton").click()
+                # Retain endpoint recovery coverage without restoring the removed UI option.
+                page.evaluate("""async () => {
+                    const id = location.pathname.split('/').pop();
+                    await fetch('/api/live-scans/' + id + '/explanations', {method:'POST',
+                        headers:{'Content-Type':'application/json',
+                        'X-CSRF-Token':sessionStorage.getItem('network-assessor-csrf')},
+                        body:'{}'});
+                }""")
             assert retried.value.status == 202, retried.value.text()
-            expect(page.locator("#ai-report-notice")).to_be_hidden(timeout=15000)
+            # The API-only recovery no longer has a report button that starts
+            # polling. Reopening observes its saved phase and resumes that polling.
+            page.reload()
+            expect(page.locator("#ai-report-notice")).to_have_count(0)
             page.locator('[data-supporting-topic="explanations"]').click()
             expect(page.locator("#ai-report-source")).to_contain_text(
                 "Local AI contributed", timeout=15000

@@ -21,6 +21,7 @@ pytestmark = [
     pytest.mark.browser,
     pytest.mark.skipif(os.getenv("RUN_BROWSER_TESTS") != "1", reason="Opt-in browser checks"),
 ]
+RELATED_CRITERIA = "cpe:2.3:a:example:telnet:0.9:*:*:*:*:*:*:*"
 
 
 @pytest.mark.parametrize("version_known", [True, False])
@@ -46,6 +47,7 @@ def test_cve_lookup_links_and_saved_references_on_mobile(monkeypatch, tmp_path, 
 
     def nvd(request):
         calls.append(request)
+        related = "virtualMatchString" in request.url.params
         return httpx.Response(
             200,
             json={
@@ -53,12 +55,26 @@ def test_cve_lookup_links_and_saved_references_on_mobile(monkeypatch, tmp_path, 
                 "vulnerabilities": [
                     {
                         "cve": {
-                            "id": "CVE-2026-10001",
+                            "id": "CVE-2026-10002" if related else "CVE-2026-10001",
                             "vulnStatus": "Analyzed",
                             "descriptions": [
                                 {
                                     "lang": "en",
                                     "value": "Synthetic <script>untrusted</script> text.",
+                                }
+                            ],
+                            "configurations": [
+                                {
+                                    "nodes": [
+                                        {
+                                            "cpeMatch": [
+                                                {
+                                                    "vulnerable": True,
+                                                    "criteria": RELATED_CRITERIA,
+                                                }
+                                            ]
+                                        }
+                                    ]
                                 }
                             ],
                         }
@@ -81,6 +97,7 @@ def test_cve_lookup_links_and_saved_references_on_mobile(monkeypatch, tmp_path, 
             time.sleep(0.02)
         assert server.started
         app.state.nvd = NvdClient(httpx.MockTransport(nvd))
+        app.state.nvd.request_interval_s = 0
         app.state.explanations.provider = ReviewedProvider()
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
@@ -91,35 +108,34 @@ def test_cve_lookup_links_and_saved_references_on_mobile(monkeypatch, tmp_path, 
             page.goto(url)
             panel = page.locator("#detailPanel .cve-references")
             expect(panel).to_be_visible()
-            if not version_known:
-                expect(panel.get_by_role("button")).to_have_count(0)
-                expect(panel).to_contain_text(
-                    "a precise software fingerprint and version were not recorded"
-                )
-                assert not calls and not errors
-                browser.close()
-                return
             button = panel.get_by_role("button", name="Check CVEs for this software")
             panel.locator("details > summary").first.click()
             expect(button).to_be_visible()
             assert not calls
             button.click()
-            link = panel.get_by_role("link", name="CVE-2026-10001", exact=True)
-            expect(link).to_have_attribute(
-                "href", "https://nvd.nist.gov/vuln/detail/CVE-2026-10001"
-            )
-            expect(panel).to_contain_text("possible matches, not confirmed vulnerabilities")
-            expect(panel).to_contain_text("Local Ollama selected")
+            cve_id = "CVE-2026-10001" if version_known else "CVE-2026-10002"
+            link = panel.get_by_role("link", name=cve_id, exact=True)
+            expect(link).to_have_attribute("href", "https://nvd.nist.gov/vuln/detail/" + cve_id)
+            expect(panel).to_contain_text("Related software problems — version not verified")
+            expect(panel).to_contain_text("not matches confirmed for your device")
+            if version_known:
+                expect(panel).to_contain_text("Local Ollama selected")
+                expect(panel.get_by_role("link", name="CVE-2026-10002", exact=True)).to_be_visible()
+            else:
+                expect(panel).to_contain_text("Version not identified")
+                expect(panel.get_by_role("link", name="CVE-2026-10001", exact=True)).to_have_count(
+                    0
+                )
             assert panel.locator("script").count() == 0
             page.reload()
             # Reading state preserves this open disclosure across refresh.
             expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
             expect(panel.locator("details").first).to_have_attribute("open", "")
             expect(link).to_be_visible()
-            assert len(calls) == 1
+            assert len(calls) == (2 if version_known else 1)
             panel.get_by_role("button", name="Check CVEs again").click()
             expect(panel.get_by_role("button", name="Check CVEs again")).to_be_enabled()
-            assert len(calls) == 1
+            assert len(calls) == (2 if version_known else 1)
             assert not errors
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
             page.screenshot(path=str(tmp_path / "cve-mobile.png"), full_page=True)

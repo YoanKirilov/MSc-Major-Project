@@ -339,7 +339,7 @@ test('CVE research is collapsed and has concise eligible versus ineligible statu
     assert.match(disclosure.textContent, /not endorsed or certified/);
     const unavailable = createCvePanel(document, 'scan', { service_id: 'service' }, null, () => true);
     assert.equal(unavailable.querySelector('button'), null);
-    assert.match(byClass(unavailable, 'cve-status')[0].textContent, /precise software fingerprint and version were not recorded/);
+    assert.match(byClass(unavailable, 'cve-status')[0].textContent, /reliable software product was not recorded/);
     assert.equal(calls, 0);
   } finally { globalThis.fetch = originalFetch; }
 });
@@ -381,6 +381,26 @@ test('CVE snapshot projection keeps research open and does not erase unchanged r
   panel.updateNotes(null);
   assert.match(byClass(panel, 'cve-status')[0].textContent, /No online lookup has started/);
   assert.equal(button.textContent, 'Check CVEs for this software');
+});
+
+test('related CVEs are labelled separately with canonical links and no AI outage notice', () => {
+  const saved = { service_id: 'service', status: 'insufficient_evidence', message: 'Version unknown.',
+    results: [], query: null, related_query: 'cpe:2.3:a:example:server:*:*:*:*:*:*:*:*',
+    related_status: 'candidates', related_total: 30, related_truncated: true,
+    related_results: [{ cve_id: 'CVE-2026-12345', description: '<img src=bad> literal description' }],
+    explanation: ['Check the maker’s advice.'], ai_source: 'fixed' };
+  const panel = createCvePanel(document, 'scan', { service_id: 'service' }, saved, () => true);
+  assert.match(byClass(panel, 'cve-status')[0].textContent, /Version not identified; 1 related-product/);
+  const related = byClass(panel, 'cve-related-references')[0];
+  assert.match(related.textContent, /version not verified/);
+  assert.match(related.textContent, /other versions or settings/);
+  assert.match(related.textContent, /not a complete list/);
+  const link = descendants(related).find(node => node.tagName === 'A');
+  assert.equal(link.href, 'https://nvd.nist.gov/vuln/detail/CVE-2026-12345');
+  assert.equal(panel.querySelector('img'), null);
+  assert.doesNotMatch(panel.textContent, /AI explanation was unavailable/);
+  panel.updateNotes({ cve_lookups: [{ ...saved, related_results: [], related_status: 'unavailable' }] });
+  assert.match(panel.textContent, /related-product search could not finish/);
 });
 
 test('only an explicit CVE action posts a lookup; stale receipts retain newer saved research', async () => {

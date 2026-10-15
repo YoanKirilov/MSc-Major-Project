@@ -103,6 +103,11 @@ async def status(request: Request):
             "ai_readiness", {"state": "ready" if runtime["ai_available"] else "unavailable"}
         ),
         "ai_enabled": True,
+        "ai_runtime": (
+            request.app.state.ollama_runtime.state
+            if request.app.state.ollama_runtime is not None
+            else "externally_managed"
+        ),
         "ai_required": True,
         "pihole_configured": request.app.state.pihole is not None,
         # Configuration is not authentication or a successful name import.

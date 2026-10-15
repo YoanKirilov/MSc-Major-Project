@@ -37,6 +37,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="netguard-package-") as temporary:
         os.environ["APP_DATA_DIR"] = temporary
         os.environ["APP_PORT"] = "8765"
+        os.environ["APP_AI_AUTOSTART"] = "0"
         manager = SessionManager()
         base = "http://127.0.0.1:8765"
         with TestClient(create_app(session_manager=manager), base_url=base) as client:

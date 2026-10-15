@@ -1,5 +1,16 @@
 # Current architecture — updated 15 October 2026
 
+The [Ollama/CVE follow-up](cve-and-ollama-followup-20261015.md) wires
+`explanations/runtime.py` into the owned app lifespan. It maintains an installed
+loopback-only server/model, with serialized health/startup, startup grace, cooldown
+and bounded warm requests. It never downloads a model, alters OS startup or stops
+another application's server. Source/fallback records remain factual even though
+the repeated report outage notice and wording-retry control have been removed.
+`service_product_cpe` enables separately labelled related-product research without
+relaxing `service_cpe`'s version-specific policy. Saved CVE annotations have bounded
+related fields and a lookup-policy version; legacy caches do not suppress the new
+search. No scanner ports, scan scope, findings or risk severity are broadened.
+
 The [edit-recovery follow-up](ui-ux-review2-20261015.md) adds a report-only conditional
 native leave guard for dirty/pending label edits and unresolved checklist drafts.
 It neither stores drafts nor automatically repeats writes. Explicit discard removes
