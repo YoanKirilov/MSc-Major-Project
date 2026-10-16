@@ -6,7 +6,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from filelock import FileLock, Timeout
 
@@ -28,6 +27,7 @@ from .runtime_diagnostics import observe_asyncio_errors
 from .scanner.cve import NvdClient
 from .scanner.pihole import PiholeClient
 from .security.session import SessionManager
+from .static_assets import AppStaticFiles
 from .storage.json_store import DocumentTooLarge, JsonStore
 
 
@@ -138,7 +138,7 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     app_root = Path(__file__).resolve().parent
     templates = Jinja2Templates(directory=str(app_root / "templates"))
     app.state.templates = templates
-    app.mount("/static", StaticFiles(directory=str(app_root / "static")), name="static")
+    app.mount("/static", AppStaticFiles(directory=str(app_root / "static")), name="static")
 
     @app.middleware("http")
     async def prevent_stale_local_ui(request: Request, call_next):

@@ -34,7 +34,7 @@ WSL has no installed Linux environment here, and Docker is not installed.
   shrink to their available width. Legends are constrained to the container and
   may wrap. The single-column form rule is scoped to Settings; Saved reports keeps
   its two-column desktop filters and single-column mobile layout.
-- No page-wide clipping, hidden overflow, reduced text size, browser skips or
+- No page-wide overflow clipping, reduced text size, browser skips or
   relaxed overflow thresholds are used. CSS cache versions are updated in all
   three page shells.
 - The original failing appearance/responsive/forced-colour assertions now report
@@ -116,6 +116,61 @@ forces genuine overflow and checks both restoration and the unchanged failure.
 Startup errors now include sanitised console errors and static/session response
 status/MIME types rather than only an uninformative session timeout. Neither the
 layout nor hosted Windows bootstrap is declared resolved at this stage.
+
+## Confirmed remaining causes and targeted corrections
+
+The diagnostic run at `696d512`
+([logs](https://github.com/YoanKirilov/MSc-Major-Project/actions/runs/38941155578))
+isolated the remaining issues:
+
+- **WebKit dropdown internals:** enlarged text left `#scope-mode`'s visible box
+  within its 250px field, but its field's scrollable width was 313px and the page's
+  was 348px. Hiding only `#scope-mode` restored the page to 320px; hiding the header,
+  display preferences, advanced section or Ollama button did not. This matches the
+  [documented WebKit select/option overflow family](https://bugs.webkit.org/show_bug.cgi?id=284644).
+  The correction limits overflow **on single-line native selects only**, not the
+  page, form, labels or evidence. Native appearance, options and focus remain;
+  multiple/list-box controls are excluded. Some engines compute this as `clip`
+  rather than `hidden`; tests allow either, while retaining all page/containment
+  assertions and checking that native appearance has not been removed.
+- **Hosted Windows module MIME types:** static `.mjs` responses were HTTP 200 with
+  `text/plain`, while `.js` responses were JavaScript. The startup module therefore
+  could not import its dependencies and never created a session. Browsers require
+  a [JavaScript MIME type for modules](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules);
+  Python can inherit [Windows registry associations](https://docs.python.org/3/library/mimetypes.html).
+  `AppStaticFiles` now supplies deterministic `.js`/`.mjs`/`.css` response types
+  for this app only, without modifying the OS or global Python MIME map. It retains
+  Starlette's path checks, validators, missing-file errors, HEAD and range handling.
+  A locally simulated incorrect MIME mapping failed before this correction.
+
+The earlier diagnostic calibration failures are not app regressions: a zero-height
+empty box did not create a scrollable area, and browsers may serialise a previously
+absent empty style attribute as an empty attribute. The final diagnostic regression
+uses a non-empty oversized box and checks actual CSS properties/computed display,
+including an existing `!important` value, plus the unchanged overflow failure.
+
+Local confirmation of these targeted corrections:
+
+- `.test-artifacts/checks-1aef13db38/`: **871 Python passed**, five Windows environment
+  skips, **252 JavaScript passed**, 27 syntax checks, Ruff and 183-file formatting.
+- `.test-artifacts/webkit-and-mime-20261016-final/`: **12 Chromium/Firefox cases
+  passed**, no skips, in 115 seconds. Covers long native options/focus, style-probe
+  restoration, narrow/enlarged themes, forced colours/text spacing and Settings
+  error/save/disclosure interactions. The earlier control-only run passed eleven
+  cases and rejected an overly specific computed-style expectation (`clip` versus
+  `hidden`); no overflow assertion was relaxed to correct that expectation.
+- `.test-artifacts/package-935c8574c7/`: dependencies, seven installed pages,
+  29 assets, source/build/installed hashes and synthetic create/reopen/delete/Undo
+  passed, including the new static-file responder.
+- Seven MIME regressions simulate incorrect host mappings, check GET/HEAD,
+  conditional/single/multipart-range responses, missing assets and traversal;
+  the process/global mappings stay unchanged by the application.
+
+Full per-engine GitHub confirmation is still pending, not inferred from these
+local passes. Existing app
+processes need restarting to load the new Python static-file responder. Windows
+Smart App Control remains enabled; this does not unblock its unsigned local
+WebKit DLL or claim physical Safari/assistive-technology testing.
 
 For a functioning Linux/macOS test environment, install the pinned development
 dependencies and browsers, then run:

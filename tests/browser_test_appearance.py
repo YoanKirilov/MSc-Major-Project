@@ -212,6 +212,12 @@ def test_settings_controls_fit_fieldsets_with_long_choices_and_enlarged_text(ui,
         """select => select.replaceChildren(new Option(
             'SyntheticNetworkAdapterWithAnUnbrokenIdentifier'.repeat(4), '', true, true))"""
     )
+    adapter = page.locator("#interface-select")
+    expect(adapter.locator("option")).to_have_count(1)
+    adapter.focus()
+    expect(adapter).to_be_focused()
+    assert adapter.evaluate("node => getComputedStyle(node).appearance") != "none"
+    assert adapter.evaluate("node => getComputedStyle(node).overflowX") in {"hidden", "clip"}
     page.locator("#manual-network-field").evaluate("element => element.hidden = false")
     page.locator("#allowed-network").evaluate("element => element.value = '192.168.56.0/24'")
     for scale in ("100%", "125%", "200%"):
