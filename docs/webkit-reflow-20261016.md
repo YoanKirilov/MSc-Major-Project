@@ -83,10 +83,22 @@ CSS change, so those baseline passes do not establish WebKit behaviour either.
 
 ## Required next verification
 
-The existing GitHub workflow still installs and requires Chromium, Firefox **and
-WebKit** on both configured operating systems/Python versions. It was not changed
-to skip or ignore these failures. Review and push the local changes, then inspect
-the actual new run; no remote workflow has been run for this patch.
+The first pushed commit is `3ca2b74`. Its
+[GitHub run](https://github.com/YoanKirilov/MSc-Major-Project/actions/runs/38911284256)
+passed security and all dependency checks, but all four combined-engine test jobs
+were cancelled at their 25-minute cap. Linux progress included failed assertions;
+the cancellation occurred before pytest's end-of-run tracebacks, so this is not a
+passing WebKit result or evidence of a timeout-only problem.
+
+The workflow now separates the three engines into independent matrix jobs, keeping
+**every** Linux/Windows, Python 3.12/3.14 and Chromium/Firefox/WebKit combination.
+The 25-minute job bound and individual test/overflow limits are unchanged. All
+browser prerequisites remain installed because a few older workflow tests explicitly
+use Chromium. `PYTEST_ADDOPTS=-x -vv` and unbuffered output give the first failing
+case/traceback promptly; failures block that job, never become skips or success.
+The other matrix jobs continue independently. A complete successful run must still
+execute all selected cases. Follow-up verification is pending; no green claim is
+inferred from reorganising the jobs.
 
 For a functioning Linux/macOS test environment, install the pinned development
 dependencies and browsers, then run:
