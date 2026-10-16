@@ -12,7 +12,8 @@ PORT_ATTEMPTS = 64
 def assert_page_reflows(page, context="", *, tolerance=1):
     """Keep overflow checks strict and identify the actual oversized elements."""
     layout = page.evaluate(
-        """tolerance => ({width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
+        """tolerance => { const root = document.documentElement; const layout = {
+            width: innerWidth, scrollWidth: root.scrollWidth,
             overflowing: [...document.querySelectorAll('body *')].flatMap(element => {
                 if (!element.getClientRects().length) return [];
                 const rect = element.getBoundingClientRect();
@@ -22,7 +23,44 @@ def assert_page_reflows(page, context="", *, tolerance=1):
                     classes: typeof element.className === 'string' ? element.className : '',
                     left: rect.left, right: rect.right, width: rect.width,
                     minWidth: style.minWidth, grid: style.gridTemplateColumns}];
-            }).slice(0, 20)})""",
+            }).slice(0, 20)};
+            if (layout.scrollWidth <= innerWidth + tolerance) return layout;
+            layout.scrolling = [...document.querySelectorAll('body *')].flatMap(element => {
+                if (element.scrollWidth <= element.clientWidth + tolerance) return [];
+                const style = getComputedStyle(element);
+                return [{tag: element.tagName, id: element.id, classes: element.className,
+                    scroll: element.scrollWidth, client: element.clientWidth,
+                    overflow: style.overflowX, display: style.display}];
+            }).slice(0, 24);
+            layout.textOverflow = [];
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            for (let node; (node = walker.nextNode()) && layout.textOverflow.length < 12;) {
+                if (!node.parentElement.getClientRects().length) continue;
+                const range = document.createRange(); range.selectNodeContents(node);
+                for (const rect of range.getClientRects()) {
+                    if (rect.right <= innerWidth + tolerance) continue;
+                    layout.textOverflow.push({tag: node.parentElement.tagName,
+                        id: node.parentElement.id, left: rect.left, right: rect.right});
+                }
+            }
+            // Probe only the already-failed synthetic page, restore every style,
+            // then still fail against the original measurements. Never a repair.
+            if (document.getElementById('settings-form')) {
+                layout.hiddenSubtreeWidths = {};
+                for (const selector of ['.topbar', '#display-preferences', '#settings-form',
+                    '#scope-mode', '.settings-advanced', '#check-ai', '.site-footer']) {
+                    const node = document.querySelector(selector);
+                    if (!node) continue;
+                    const hadStyle = node.hasAttribute('style');
+                    const saved = node.style.cssText;
+                    try { node.style.display = 'none';
+                        layout.hiddenSubtreeWidths[selector] = root.scrollWidth;
+                    } finally { node.style.cssText = saved;
+                        if (!hadStyle) node.removeAttribute('style'); }
+                }
+            }
+            return layout;
+        }""",
         tolerance,
     )
     assert layout["scrollWidth"] <= layout["width"] + tolerance, f"{context}: {layout}"

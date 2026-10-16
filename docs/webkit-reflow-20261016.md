@@ -100,6 +100,23 @@ The other matrix jobs continue independently. A complete successful run must sti
 execute all selected cases. Follow-up verification is pending; no green claim is
 inferred from reorganising the jobs.
 
+The split run at `385ec14`
+([results](https://github.com/YoanKirilov/MSc-Major-Project/actions/runs/38914929505))
+completed without the combined-job cancellation. All four Linux Chromium/Firefox
+jobs and security passed. Both Linux WebKit jobs still failed the enlarged-text
+Settings check: 348px scroll width in a 320px viewport, with no oversized visible
+element border box. Windows jobs failed earlier, waiting for session bootstrap;
+this is a separate startup failure, not proof of a WebKit launch/signing problem
+on the hosted Windows runners.
+
+Follow-up diagnostics therefore include internal scroll widths, text-node ranges
+and temporary subtree probes on an already-failed synthetic page. Probes restore
+CSS properties and never change the original failure decision. A browser regression
+forces genuine overflow and checks both restoration and the unchanged failure.
+Startup errors now include sanitised console errors and static/session response
+status/MIME types rather than only an uninformative session timeout. Neither the
+layout nor hosted Windows bootstrap is declared resolved at this stage.
+
 For a functioning Linux/macOS test environment, install the pinned development
 dependencies and browsers, then run:
 

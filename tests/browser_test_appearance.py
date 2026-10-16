@@ -243,6 +243,44 @@ def test_settings_controls_fit_fieldsets_with_long_choices_and_enlarged_text(ui,
     page.screenshot(path=tmp_path / "expanded-settings-200-percent-320.png")
 
 
+def test_reflow_diagnostics_restore_styles_and_never_turn_overflow_into_a_pass(ui):
+    page, base, _ = ui
+    page.set_viewport_size({"width": 320, "height": 900})
+    _navigate(page, base + "/settings")
+    selectors = (
+        ".topbar, #display-preferences, #settings-form, #scope-mode, "
+        ".settings-advanced, #check-ai, .site-footer"
+    )
+    nodes = page.locator(selectors)
+    page.locator(".topbar").evaluate(
+        "node => node.style.setProperty('padding-top', '17px', 'important')"
+    )
+    style_state = "nodes => nodes.map(node => [node.style.cssText, getComputedStyle(node).display])"
+    original = nodes.evaluate_all(style_state)
+    page.evaluate(
+        """() => { const node = document.createElement('div');
+            node.id = 'synthetic-overflow'; node.textContent = 'Synthetic overflow';
+            document.body.append(node);
+            node.style.width = '400px'; }"""
+    )
+    observed = page.locator("#synthetic-overflow").evaluate(
+        """node => ({width: node.getBoundingClientRect().width,
+            inline: node.getAttribute('style'), viewport: innerWidth,
+            root: document.documentElement.scrollWidth, body: document.body.scrollWidth,
+            display: getComputedStyle(node).display, cssWidth: getComputedStyle(node).width,
+            maxWidth: getComputedStyle(node).maxWidth,
+            rootOverflow: getComputedStyle(document.documentElement).overflowX,
+            bodyOverflow: getComputedStyle(document.body).overflowX})"""
+    )
+    assert observed["root"] >= 400, str(observed)
+    with pytest.raises(AssertionError, match="synthetic-overflow"):
+        assert_page_reflows(page, "Deliberately oversized synthetic node")
+    assert nodes.evaluate_all(style_state) == original
+    assert page.evaluate("document.documentElement.scrollWidth") >= 400
+    page.locator("#synthetic-overflow").evaluate("node => node.remove()")
+    assert_page_reflows(page, "Original Settings restored after diagnosis")
+
+
 def test_system_reduced_motion_is_automatic_and_removed_app_preference_is_ignored(ui):
     from playwright.sync_api import expect
 

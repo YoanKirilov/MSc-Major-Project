@@ -188,6 +188,7 @@ def _report(kind):
 
 @pytest.fixture(params=ENGINES)
 def ui(request, tmp_path, monkeypatch):
+    from playwright.sync_api import TimeoutError as BrowserTimeout
     from playwright.sync_api import expect, sync_playwright
 
     async def unavailable(self):
@@ -246,9 +247,46 @@ def ui(request, tmp_path, monkeypatch):
 
             context.route("**/*", guard)
             page = context.new_page()
+            startup_errors, startup_responses = [], []
             page.on("pageerror", lambda error: failures.append(str(error)))
+            page.on(
+                "console",
+                lambda message: (
+                    startup_errors.append(
+                        re.sub(r"token=[^\s\"'<>]+", "token=[redacted]", message.text)
+                    )
+                    if message.type == "error" and len(startup_errors) < 12
+                    else None
+                ),
+            )
+            page.on(
+                "response",
+                lambda response: (
+                    startup_responses.append(
+                        {
+                            "path": response.url.split(base, 1)[-1].split("?", 1)[0],
+                            "status": response.status,
+                            "type": response.headers.get("content-type"),
+                        }
+                    )
+                    if len(startup_responses) < 40
+                    and ("/static/" in response.url or response.url.endswith("/api/session"))
+                    else None
+                ),
+            )
             page.goto(manager.get_bootstrap_url(port))
-            page.wait_for_function("sessionStorage.getItem('network-assessor-csrf') !== null")
+            try:
+                page.wait_for_function("sessionStorage.getItem('network-assessor-csrf') !== null")
+            except BrowserTimeout:
+                safe_errors = [
+                    re.sub(r"token=[^\s\"'<>]+", "token=[redacted]", error)
+                    for error in failures[:12]
+                ]
+                pytest.fail(
+                    f"Session bootstrap failed: console={startup_errors}; "
+                    f"page errors={safe_errors}; responses={startup_responses}",
+                    pytrace=False,
+                )
             expect(page.locator("#scanLaunchButton")).to_be_enabled()
             page.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
             yield page, base, reports
