@@ -1,8 +1,35 @@
 import errno
 import socket
+from types import SimpleNamespace
 
 import pytest
 from tests.fixtures import browser
+
+
+@pytest.mark.parametrize(
+    ("scroll_width", "tolerance", "fails"),
+    [(320, 0, False), (321, 1, False), (321, 0, True), (322, 1, True)],
+)
+def test_reflow_diagnostic_keeps_the_callers_original_overflow_limit(
+    scroll_width, tolerance, fails
+):
+    calls = []
+
+    def evaluate(script, limit):
+        calls.append(limit)
+        return {
+            "width": 320,
+            "scrollWidth": scroll_width,
+            "overflowing": [{"id": "synthetic-oversized-control"}],
+        }
+
+    page = SimpleNamespace(evaluate=evaluate)
+    if fails:
+        with pytest.raises(AssertionError, match="synthetic-oversized-control"):
+            browser.assert_page_reflows(page, "Settings at 320px", tolerance=tolerance)
+    else:
+        browser.assert_page_reflows(page, "Settings at 320px", tolerance=tolerance)
+    assert calls == [tolerance]
 
 
 def test_real_browser_listener_is_high_loopback_and_stays_reserved():

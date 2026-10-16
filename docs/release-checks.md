@@ -1,5 +1,17 @@
 # Repeatable release checks
 
+Current status: the [16 October safe audit](safe-audit-20261016.md) inspected the
+actual GitHub run and found failures/cancellations, not an enforced green gate.
+Local CI definitions now isolate their dependencies from runner-global packages;
+that change still needs review/push and remote verification. Older dated evidence
+below is retained as history, not a current release approval.
+
+The [WebKit follow-up](webkit-reflow-20261016.md) records the Settings compatibility
+changes and a confirmed unsigned-DLL Code Integrity block on this Windows PC.
+Leave its security protections enabled. Local Chromium/Firefox checks do not clear
+the required WebKit gate; use the existing CI or a functioning supported Linux/macOS
+environment to verify the changed source with WebKit.
+
 Updated 30 September 2026. These are local prototype checks, not certification.
 Use separate virtual environments; do not install security tooling into the running app.
 

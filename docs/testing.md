@@ -1,5 +1,28 @@
 # Testing status
 
+## WebKit layout follow-up — 16 October 2026
+
+[Changes and verification limits](webkit-reflow-20261016.md): Settings now uses
+ordinary inner grids with shrinkable tracks and native form grouping retained.
+New stress coverage and element-level failure diagnostics retain the existing
+overflow limits. Windows Code Integrity logs identify a blocked unsigned WebKit
+DLL; security protections remain enabled. Actual WebKit confirmation still requires
+a functioning browser environment, not an inferred pass from other engines.
+Offline gate passed 864 Python/five environment skips, 252 JavaScript and 27 syntax
+checks; package verification passed seven pages/29 assets and synthetic report
+lifecycle checks. The broader Chromium/Firefox matrix passed 34 cases; ten directly
+affected cases passed again against the finalized layout and desktop-filter checks.
+No live scans or remote workflow runs were performed.
+
+## Safe architecture and GitHub audit — 16 October 2026
+
+[Findings, cleanup and evidence](safe-audit-20261016.md): 860 Python/five environment
+skips, 252 JavaScript and the final selected 20 Chromium/Firefox cases passed.
+Dependency/static/secret gates passed with 16 low alerts retained, no medium/high
+alerts and no secret alerts. GitHub's published CI is not green; WebKit cannot launch
+locally and its remote layout failures remain open. Current local cleanup has not
+been pushed. No live scans, provider requests or real-report changes were performed.
+
 ## Ollama recovery and related CVEs — 15 October 2026
 
 [Execution and verification](cve-and-ollama-followup-20261015.md) records the removed

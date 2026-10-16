@@ -25,52 +25,58 @@
   <form id="settings-form" novalidate>
     <fieldset class="form-section">
       <legend>Network to check</legend>
-      <p class="field-hint">Only scan networks and devices you own or have permission to assess.</p>
-      <div class="form-field">
-        <label for="scope-mode">How to choose the network range</label>
-        <select id="scope-mode" aria-describedby="scope-mode-hint">
-          <option value="automatic">Automatic — current network</option>
-          <option value="manual">Manual — saved range</option>
-        </select>
-        <p class="field-hint" id="scope-mode-hint">Automatic follows your current private connection when its range is /24 or smaller. Manual keeps a specific range when you change networks.</p>
-      </div>
-      <div class="form-field" id="manual-network-field" hidden>
-        <label for="allowed-network">Authorised network range</label>
-        <input id="allowed-network" type="text" spellcheck="false" autocomplete="off" maxlength="18" aria-describedby="allowed-network-hint allowed-network-error" />
-        <p class="field-hint" id="allowed-network-hint">Enter a private IPv4 network in CIDR format, /24 or smaller. The backend checks that this is a valid, bounded network.</p>
-        <p class="field-error" id="allowed-network-error" hidden></p>
-      </div>
-      <div class="read-only-field">
-        <strong>Current effective network</strong>
-        <p id="network-status" role="status">Checking your connection…</p>
-        <p class="field-hint">This is a read-only observation, not a field to edit. A range fixed by backend configuration takes priority over these saved settings.</p>
+      <div class="form-section-body">
+        <p class="field-hint">Only scan networks and devices you own or have permission to assess.</p>
+        <div class="form-field">
+          <label for="scope-mode">How to choose the network range</label>
+          <select id="scope-mode" aria-describedby="scope-mode-hint">
+            <option value="automatic">Automatic — current network</option>
+            <option value="manual">Manual — saved range</option>
+          </select>
+          <p class="field-hint" id="scope-mode-hint">Automatic follows your current private connection when its range is /24 or smaller. Manual keeps a specific range when you change networks.</p>
+        </div>
+        <div class="form-field" id="manual-network-field" hidden>
+          <label for="allowed-network">Authorised network range</label>
+          <input id="allowed-network" type="text" spellcheck="false" autocomplete="off" maxlength="18" aria-describedby="allowed-network-hint allowed-network-error" />
+          <p class="field-hint" id="allowed-network-hint">Enter a private IPv4 network in CIDR format, /24 or smaller. The backend checks that this is a valid, bounded network.</p>
+          <p class="field-error" id="allowed-network-error" hidden></p>
+        </div>
+        <div class="read-only-field">
+          <strong>Current effective network</strong>
+          <p id="network-status" role="status">Checking your connection…</p>
+          <p class="field-hint">This is a read-only observation, not a field to edit. A range fixed by backend configuration takes priority over these saved settings.</p>
+        </div>
       </div>
     </fieldset>
     <fieldset class="form-section">
       <legend>Plain-language results</legend>
-      <p>Every scan includes local Ollama preparation. If it is unavailable, the saved facts stay readable and the explanation can be retried.</p>
-      <p id="ai-status" class="status-message" role="status"></p>
-      <button class="secondary-button" type="button" id="check-ai">Check Ollama again</button>
+      <div class="form-section-body">
+        <p>Every scan includes local Ollama preparation. If it is unavailable, the saved facts stay readable and the explanation can be retried.</p>
+        <p id="ai-status" class="status-message" role="status"></p>
+        <button class="secondary-button" type="button" id="check-ai">Check Ollama again</button>
+      </div>
     </fieldset>
     <details class="settings-advanced">
       <summary>Advanced and optional settings</summary>
       <fieldset class="form-section">
         <legend>Scanner and evidence</legend>
-        <div class="form-field">
-          <label for="interface-select">Network adapter</label>
-          <select id="interface-select" aria-describedby="interface-hint interface-error"><option value="">Loading available adapters…</option></select>
-          <p class="field-hint" id="interface-hint">Automatic is recommended. Select an adapter only when you know which connection is authorised.</p>
-          <p class="field-error" id="interface-error" hidden></p>
-        </div>
-        <div class="form-field checkbox-field">
-          <label for="retain-raw-xml"><input type="checkbox" id="retain-raw-xml" /> Keep technical scanner output (XML)</label>
-          <p class="field-hint">Useful for technical investigation. These files can contain private network details.</p>
-        </div>
-        <div class="form-field checkbox-field">
-          <label for="mdns-enabled"><input type="checkbox" id="mdns-enabled" aria-describedby="mdns-status mdns-error" /> Look for local device announcements (mDNS)</label>
-          <p id="mdns-status" class="field-hint"></p>
-          <p class="field-hint">Light and Deep can use these unverified announcements. Selected-device scans keep only relevant announcements; an advertisement is not a completed service check.</p>
-          <p class="field-error" id="mdns-error" hidden></p>
+        <div class="form-section-body">
+          <div class="form-field">
+            <label for="interface-select">Network adapter</label>
+            <select id="interface-select" aria-describedby="interface-hint interface-error"><option value="">Loading available adapters…</option></select>
+            <p class="field-hint" id="interface-hint">Automatic is recommended. Select an adapter only when you know which connection is authorised.</p>
+            <p class="field-error" id="interface-error" hidden></p>
+          </div>
+          <div class="form-field checkbox-field">
+            <label for="retain-raw-xml"><input type="checkbox" id="retain-raw-xml" /> Keep technical scanner output (XML)</label>
+            <p class="field-hint">Useful for technical investigation. These files can contain private network details.</p>
+          </div>
+          <div class="form-field checkbox-field">
+            <label for="mdns-enabled"><input type="checkbox" id="mdns-enabled" aria-describedby="mdns-status mdns-error" /> Look for local device announcements (mDNS)</label>
+            <p id="mdns-status" class="field-hint"></p>
+            <p class="field-hint">Light and Deep can use these unverified announcements. Selected-device scans keep only relevant announcements; an advertisement is not a completed service check.</p>
+            <p class="field-error" id="mdns-error" hidden></p>
+          </div>
         </div>
       </fieldset>
     </details>

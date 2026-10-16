@@ -13,7 +13,11 @@ import pytest
 from app.storage.json_store import JsonStore
 from tests.browser_test_ui_ux import _open
 from tests.browser_test_ui_ux import ui as _report_ui
-from tests.fixtures.browser import scroll_history_with_keyboard
+from tests.fixtures.browser import (
+    assert_page_reflows,
+    component_boxes,
+    scroll_history_with_keyboard,
+)
 
 ui = _report_ui
 
@@ -127,7 +131,7 @@ def test_settings_keeps_display_choices_without_duplicate_header_link(ui, tmp_pa
         _navigate(page, base + route)
         link = page.get_by_role("link", name="Display preferences", exact=True)
         expect(link).to_have_count(0)
-        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
+        assert_page_reflows(page, route)
     _navigate(page, base + "/")
     page.locator('nav[aria-label="Main navigation"]').get_by_role(
         "link", name="Settings", exact=True
@@ -148,7 +152,7 @@ def test_settings_keeps_display_choices_without_duplicate_header_link(ui, tmp_pa
     for control in panel.locator("select").all():
         rect = control.bounding_box()
         assert rect["height"] >= 44 and rect["width"] <= 320
-    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
+    assert_page_reflows(page, "Settings display preferences, larger text")
     page.locator("#themePreference").scroll_into_view_if_needed()
     page.screenshot(path=tmp_path / "settings-display-preferences-larger-320.png")
     page.reload()
@@ -194,6 +198,49 @@ def test_display_choices_work_with_blocked_storage_and_unavailable_app_settings(
     )
     page.get_by_label("Colour theme", exact=True).select_option("dark")
     expect(panel.locator("#appearance-storage-notice")).to_have_count(1)
+
+
+def test_settings_controls_fit_fieldsets_with_long_choices_and_enlarged_text(ui, tmp_path):
+    from playwright.sync_api import expect
+
+    page, base, _ = ui
+    _navigate(page, base + "/settings")
+    expect(page.locator("#save-settings")).to_be_enabled()
+    page.locator(".settings-advanced > summary").click()
+    # Change only the synthetic DOM, not saved settings or a real network adapter.
+    page.locator("#interface-select").evaluate(
+        """select => select.replaceChildren(new Option(
+            'SyntheticNetworkAdapterWithAnUnbrokenIdentifier'.repeat(4), '', true, true))"""
+    )
+    page.locator("#manual-network-field").evaluate("element => element.hidden = false")
+    page.locator("#allowed-network").evaluate("element => element.value = '192.168.56.0/24'")
+    for scale in ("100%", "125%", "200%"):
+        page.evaluate("scale => document.documentElement.style.fontSize = scale", scale)
+        for width in (320, 390, 768, 1440):
+            page.set_viewport_size({"width": width, "height": 900})
+            assert_page_reflows(page, f"Expanded Settings at {width}px, {scale} text")
+            bounds = page.locator("#settings-form fieldset").evaluate_all(
+                """fieldsets => fieldsets.map(fieldset => {
+                    const parent = fieldset.getBoundingClientRect();
+                    return {width: parent.width, children: [...fieldset.querySelectorAll(
+                        'legend, input:not([type=checkbox]), select, button')].map(child => {
+                        const rect = child.getBoundingClientRect();
+                        return {tag: child.tagName, id: child.id, left: rect.left - parent.left,
+                            right: rect.right - parent.left, width: rect.width,
+                            height: rect.height};
+                    })};
+                })"""
+            )
+            for fieldset in bounds:
+                for child in fieldset["children"]:
+                    assert child["left"] >= -1 and child["right"] <= fieldset["width"] + 1, (
+                        f"{width}px / {scale}: {fieldset}"
+                    )
+                    if child["tag"] != "LEGEND":
+                        assert child["height"] >= 44, child
+    page.set_viewport_size({"width": 320, "height": 900})
+    page.locator(".settings-advanced").scroll_into_view_if_needed()
+    page.screenshot(path=tmp_path / "expanded-settings-200-percent-320.png")
 
 
 def test_system_reduced_motion_is_automatic_and_removed_app_preference_is_ignored(ui):
@@ -250,9 +297,18 @@ def test_themes_and_larger_text_reflow_on_narrow_and_wide_pages(ui, tmp_path):
                     expect(page.locator("#report-content")).to_have_attribute(
                         "data-reading-ready", "true"
                     )
-                assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"), (
-                    f"{theme} larger text overflows {route} at {width}px"
-                )
+                assert_page_reflows(page, f"{theme} larger text, {route} at {width}px")
+                if route == "/history":
+                    _, scan_type, completion = component_boxes(
+                        page.locator("#history-filters"),
+                        ".form-field:has(#history-profile)",
+                        ".form-field:has(#history-state)",
+                    )
+                    if width == 1440:
+                        assert abs(scan_type["y"] - completion["y"]) <= 1
+                        assert completion["x"] > scan_type["x"] + scan_type["width"]
+                    else:
+                        assert completion["y"] > scan_type["y"] + scan_type["height"]
             _preferences(page)
             controls = page.locator(".reading-options select")
             for control in controls.all():

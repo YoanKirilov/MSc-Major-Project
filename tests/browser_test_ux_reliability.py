@@ -5,6 +5,7 @@ import os
 import pytest
 from tests import browser_test_history_scroll as history_cases
 from tests.browser_test_ui_ux import ui as _report_ui
+from tests.fixtures.browser import assert_page_reflows
 
 history_browser = history_cases.history_browser
 ui = _report_ui
@@ -233,7 +234,7 @@ def test_theme_forced_colours_and_text_spacing_reflow_without_scan_requests(hist
         page.goto(base + path)
         page.set_viewport_size({"width": 320, "height": 900})
         page.add_style_tag(url=base + "/static/css/ux-test-spacing.css")
-        assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
+        assert_page_reflows(page, f"Forced colours and 200% text spacing: {path}")
         link = page.locator(".skip-link")
         link.focus()
         assert link.evaluate("node => getComputedStyle(node).outlineStyle !== 'none'")

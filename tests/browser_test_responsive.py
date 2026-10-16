@@ -14,7 +14,7 @@ from app.scanner.parser import parse_host
 from app.schemas.scan import ScanDocument
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import browser_listener
+from tests.fixtures.browser import assert_page_reflows, browser_listener
 
 pytestmark = [
     pytest.mark.browser,
@@ -189,12 +189,7 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                                     "document.documentElement.scrollWidth > innerWidth"
                                 )
                         page.evaluate("document.documentElement.style.fontSize = ''")
-                    assert not page.evaluate("document.documentElement.scrollWidth > innerWidth"), (
-                        engine,
-                        width,
-                        height,
-                        route,
-                    )
+                    assert_page_reflows(page, f"{engine}, {width}x{height}, {route}", tolerance=0)
                     if route.startswith("/scans/"):
                         expect(page.locator(".next-steps > *")).to_have_count(2)
                         expect(page.locator(".next-steps > div #checklist-filter")).to_have_count(1)

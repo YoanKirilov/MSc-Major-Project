@@ -1,4 +1,14 @@
-# Current architecture — updated 15 October 2026
+# Current architecture — updated 16 October 2026
+
+The [safe architecture/GitHub audit](safe-audit-20261016.md) provides a concise layer
+map, confirmed limitations and prioritised open work. The local prototype retains
+FastAPI, one owned JSON data folder, five admitted jobs/two scanner workers/one
+analysis slot and evidence-validated local explanations. The audit found a CVE
+client/server timeout mismatch and ineffective meta-only framing/MIME defences;
+they remain explicit open fixes, not claims resolved by passing tests. GitHub's
+published run is failing and WebKit overflow remains unverified locally. Small
+cleanup only consolidated CPE eligibility and test helpers/fixtures; the local CI
+definition now isolates its Python environment but has not been pushed or rerun.
 
 The [Ollama/CVE follow-up](cve-and-ollama-followup-20261015.md) wires
 `explanations/runtime.py` into the owned app lifespan. It maintains an installed

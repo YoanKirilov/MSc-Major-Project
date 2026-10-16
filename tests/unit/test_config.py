@@ -74,6 +74,8 @@ def test_resolve_nmap_path_finds_standard_windows_install(tmp_path, monkeypatch)
 
 
 def test_detect_private_network_prefers_adapter_with_default_gateway(monkeypatch):
+    # This is a Windows-output fixture, including when the suite runs on Ubuntu.
+    monkeypatch.setattr("app.config.os", SimpleNamespace(name="nt", getenv=lambda *a: None))
     ipconfig = """
 Ethernet adapter Virtual network:
 

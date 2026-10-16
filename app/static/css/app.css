@@ -477,16 +477,20 @@ input, select { max-width: 100%; min-width: 0; }
 .page-heading h1 { font-size: clamp(2rem, 4vw, 3rem); line-height: 1.2; }
 .page-heading > p:last-child { color: var(--muted); }
 .card { margin: 32px 0; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
-.card form { display: grid; gap: var(--space-5); }
+.card form { display: grid; gap: var(--space-5); min-width: 0; }
+.settings-card form { grid-template-columns: minmax(0, 1fr); }
 .card form > .form-actions { margin-top: 0; }
 .card form > .form-actions > :is(.primary-button, .secondary-button) { min-height: 48px; padding: 10px var(--control-padding-inline); line-height: 1.4; }
 .card p { line-height: 1.6; }
 .card input:not([type=checkbox]), .card select, .form-field input:not([type=checkbox]), .form-field select, .report-toolbar select { width: 100%; min-height: 48px; padding: 10px var(--control-padding-inline); color: var(--text); background: var(--surface-2); border: 1px solid var(--field-line); border-radius: 8px; }
-.form-section { margin: 0; padding: var(--space-5) 0 0; border: 0; min-width: 0; display: grid; gap: var(--space-4); }
+/* Native fieldsets have special intrinsic sizing in WebKit. Keep their semantics,
+   but put the grid in an ordinary child with an explicitly shrinkable track. */
+.form-section { margin: 0; padding: var(--space-5) 0 0; border: 0; min-width: 0; width: 100%; }
+.form-section-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); min-width: 0; }
 .form-section + .form-section { border-top: 1px solid var(--line); }
-.form-section legend { padding: 0; color: var(--text); font-weight: 750; font-size: 1.2rem; }
-.form-section > p { margin: 0; }
-.form-field { display: grid; gap: var(--control-help-gap); min-width: 0; }
+.form-section legend { padding: 0; max-width: 100%; white-space: normal; color: var(--text); font-weight: 750; font-size: 1.2rem; }
+.form-section-body > p { margin: 0; }
+.form-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--control-help-gap); min-width: 0; }
 .form-field label { font-weight: 650; }
 .form-field input[aria-invalid="true"], .form-field select[aria-invalid="true"] { border: 2px solid var(--red); }
 .field-hint { margin: 0; color: var(--muted); font-size: .9rem; }
@@ -503,7 +507,7 @@ input, select { max-width: 100%; min-width: 0; }
 .error-summary h2 { font-size: 1.3rem; }
 .error-summary p { color: #ffc0c5; }
 .error-summary ul:empty { display: none; }
-.settings-advanced { border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.settings-advanced { border-top: 1px solid var(--line); padding-top: var(--space-3); min-width: 0; }
 .settings-advanced > summary { font-weight: 700; }
 .history-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .history-query-field { grid-column: 1 / -1; }

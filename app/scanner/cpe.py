@@ -40,19 +40,19 @@ def product_cpe(value: str) -> str | None:
     return "cpe:2.3:" + ":".join([*fields[:3], *(["*"] * 8)]) if fields else None
 
 
-def service_product_cpe(service: Service) -> str | None:
+def _service_identity(service: Service, parse) -> str | None:
+    """Share eligibility checks without mixing exact and product-only policies."""
     if service.state != "open" or service.detection_method != "probed":
         return None
     if service.nmap_confidence is None or service.nmap_confidence < 7:
         return None
-    identities = {cpe for raw in service.cpes if (cpe := product_cpe(raw))}
+    identities = {cpe for raw in service.cpes if (cpe := parse(raw))}
     return next(iter(identities)) if len(identities) == 1 else None
+
+
+def service_product_cpe(service: Service) -> str | None:
+    return _service_identity(service, product_cpe)
 
 
 def service_cpe(service: Service) -> str | None:
-    if service.state != "open" or service.detection_method != "probed":
-        return None
-    if service.nmap_confidence is None or service.nmap_confidence < 7:
-        return None
-    identities = {cpe for raw in service.cpes if (cpe := application_cpe(raw))}
-    return next(iter(identities)) if len(identities) == 1 else None
+    return _service_identity(service, application_cpe)

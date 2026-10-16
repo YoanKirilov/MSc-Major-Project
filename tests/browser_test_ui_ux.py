@@ -21,7 +21,7 @@ from app.risk.engine import evaluate_device
 from app.schemas.scan import Device, DeviceDetail, ScanDocument, Service
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import browser_listener
+from tests.fixtures.browser import browser_listener, component_boxes
 
 pytestmark = [
     pytest.mark.browser,
@@ -411,8 +411,9 @@ def test_repeat_technical_columns_and_unknown_reply_context_preserve_evidence(ui
             assert wrapper.evaluate("el => el.scrollWidth > el.clientWidth")
         assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
         expect(page.locator("#repeated-replies-note")).to_contain_text(
-            "not confirmed software problems"
+            "These replies do not confirm a software problem"
         )
+        expect(page.locator("#repeated-replies-note")).to_contain_text("Do not disable protection")
         expect(page.locator("#findingsList .finding-card")).to_have_count(len(report.findings))
         assert page.locator("#nextStepsList .review-task").count() == sum(
             len(finding.actions) for finding in report.findings
@@ -644,11 +645,10 @@ def test_checklist_and_search_children_belong_inside_their_components(ui, size):
     expect(checks.first).to_be_visible()
     for row in checks.all():
         item = row.locator("xpath=ancestor::li[1]")
-        row_box, item_box = row.bounding_box(), item.bounding_box()
+        item_box, row_box, select = component_boxes(item, ".action-check", ".action-check select")
         assert row_box["width"] > item_box["width"] * 0.65, (size, row_box, item_box)
         assert row_box["x"] >= item_box["x"] + 20
         assert row_box["x"] + row_box["width"] <= item_box["x"] + item_box["width"] + 1
-        select = row.locator("select").bounding_box()
         assert select["x"] >= row_box["x"] - 1
         assert select["x"] + select["width"] <= row_box["x"] + row_box["width"] + 1
     page.locator("#searchInput").fill("192.168.56.10")
@@ -656,7 +656,7 @@ def test_checklist_and_search_children_belong_inside_their_components(ui, size):
         "xpath=ancestor::*[contains(@class, 'search-box')][1]"
     )
     clear = page.locator("#clearSearchButton")
-    outer, inner = search.bounding_box(), clear.bounding_box()
+    outer, inner = component_boxes(search, "#clearSearchButton")
     assert inner["y"] >= outer["y"] - 1
     assert inner["y"] + inner["height"] <= outer["y"] + outer["height"] + 1
     assert inner["x"] + inner["width"] <= outer["x"] + outer["width"] + 1
@@ -954,12 +954,10 @@ def test_disclosure_targets_and_user_text_spacing_keep_components_usable(ui):
     )
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
     page.locator("#searchInput").fill("file")
-    clear = page.locator("#clearSearchButton").bounding_box()
-    search = (
-        page.locator("#searchInput")
-        .locator("xpath=ancestor::*[contains(@class, 'search-box')][1]")
-        .bounding_box()
+    search = page.locator("#searchInput").locator(
+        "xpath=ancestor::*[contains(@class, 'search-box')][1]"
     )
+    search, clear = component_boxes(search, "#clearSearchButton")
     assert clear["x"] + clear["width"] <= search["x"] + search["width"] + 1
     assert clear["y"] + clear["height"] <= search["y"] + search["height"] + 1
 
@@ -1072,7 +1070,8 @@ def test_followup_loading_waits_for_facts_and_retry_preserves_honest_counts(ui):
     expect(page.locator("#report-content")).to_be_visible()
     expect(page.locator("#device-metric")).to_have_text("1 of 1 discovered")
     expect(page.locator("#service-metric")).to_have_text("0")
-    expect(page.locator("#findingsList")).to_contain_text("not fully assessed")
+    expect(page.locator("#findingsList")).to_contain_text("not fully checked")
+    expect(page.locator("#findingsList")).to_contain_text("does not prove the devices are safe")
 
 
 def test_followup_titles_are_consistent_and_buttons_use_valid_phrasing_content(ui):

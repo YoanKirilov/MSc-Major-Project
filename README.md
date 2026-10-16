@@ -1,5 +1,11 @@
 # NetGuard AI (Network Assessor)
 
+Latest safe review: [architecture, organisation and GitHub audit](docs/safe-audit-20261016.md).
+Offline and selected Chromium/Firefox checks passed; the report distinguishes those
+from the failing published GitHub run and unresolved WebKit, timeout and header work.
+No live network scans were run. The CI-isolation/test cleanup is local until reviewed
+and pushed; no repository protections or remote jobs were changed automatically.
+
 Latest follow-up: [local Ollama recovery and related CVE research](docs/cve-and-ollama-followup-20261015.md).
 The app starts installed local Ollama when needed, keeps its installed model warm
 and allows a bounded slow-start grace period. No model download or system-service
