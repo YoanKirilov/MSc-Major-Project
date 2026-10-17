@@ -217,7 +217,7 @@ def test_settings_controls_fit_fieldsets_with_long_choices_and_enlarged_text(ui,
     adapter.focus()
     expect(adapter).to_be_focused()
     assert adapter.evaluate("node => getComputedStyle(node).appearance") != "none"
-    assert adapter.evaluate("node => getComputedStyle(node).overflowX") in {"hidden", "clip"}
+    assert adapter.evaluate("node => getComputedStyle(node.parentElement).display") == "block"
     page.locator("#manual-network-field").evaluate("element => element.hidden = false")
     page.locator("#allowed-network").evaluate("element => element.value = '192.168.56.0/24'")
     for scale in ("100%", "125%", "200%"):

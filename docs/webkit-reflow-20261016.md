@@ -210,6 +210,25 @@ thread-arrival test was made deterministic. Installed-package verification in
 report create/reopen/delete/Undo. New GitHub results will be recorded after
 completion; the native-select candidate is not yet declared a hosted WebKit pass.
 
+Run 19 at `4f7c7ef` rejected the native-button appearance candidate on Linux.
+Its failure-only probes measured 348px for native button appearance, zero-intrinsic
+width, inline-size containment and column-flex parents. **Block flow for the field
+parent restored exactly 320px**, preserving the native select. Paint containment
+also restored 320px but would risk clipping focus indicators; removing appearance
+worked but unnecessarily restyles a native control. The next correction therefore
+uses ordinary block flow for form fields and explicit child spacing. Native select
+appearance and overflow overrides are removed. The long-option regression now
+checks the block wrapper instead of requiring a theme-dependent computed overflow
+value. All page-width, fieldset bounds, enlarged-text, option and focus assertions
+remain unchanged. Hosted verification remains required.
+
+Final local verification of block fields: `.test-artifacts/ci-block-fields-20261017/`
+passed 17 Chromium/Firefox cases (no skips), including all-page/deep-dialog reflow,
+themes, enlarged text, long native options and forced-colour/text-spacing checks.
+`.test-artifacts/checks-c1004ce1c0/` passed 873 Python tests (five Windows privilege
+skips), 252 JavaScript tests, 27 syntax checks and Ruff/format gates. The GitHub
+matrix must still confirm the real WebKit implementation and Windows timing.
+
 For a functioning Linux/macOS test environment, install the pinned development
 dependencies and browsers, then run:
 

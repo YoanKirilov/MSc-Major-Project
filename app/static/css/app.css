@@ -472,11 +472,6 @@ main, .topbar, footer, dialog { overflow-wrap: anywhere; }
 .topbar { gap: 16px; }
 .topbar nav { display: flex; flex-wrap: wrap; gap: 12px; }
 input, select { max-width: 100%; min-width: 0; }
-/* WebKit's menulist theme can force overflow:visible despite the fitting box.
-   Use its native button appearance so single-line clipping takes effect; keep
-   the real select, popup, keyboard interaction and focus outline.
-   https://bugs.webkit.org/show_bug.cgi?id=284644 */
-select:not([multiple]):not([size]) { appearance: menulist-button; overflow: hidden; }
 .utility-main { padding-top: var(--space-6); padding-bottom: var(--space-7); }
 .page-heading { max-width: 760px; }
 .page-heading h1 { font-size: clamp(2rem, 4vw, 3rem); line-height: 1.2; }
@@ -495,7 +490,13 @@ select:not([multiple]):not([size]) { appearance: menulist-button; overflow: hidd
 .form-section + .form-section { border-top: 1px solid var(--line); }
 .form-section legend { padding: 0; max-width: 100%; white-space: normal; color: var(--text); font-weight: 750; font-size: 1.2rem; }
 .form-section-body > p { margin: 0; }
-.form-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--control-help-gap); min-width: 0; }
+/* Native WebKit selects can propagate option widths through a grid field even
+   when their visible box fits. Block flow avoids that intrinsic-size bug without
+   clipping content, changing appearance or replacing keyboard/popup behaviour.
+   https://bugs.webkit.org/show_bug.cgi?id=284644 */
+.form-field { display: block; min-width: 0; }
+.form-field > label { display: block; }
+.form-field > :not(:first-child) { margin-block-start: var(--control-help-gap); }
 .form-field label { font-weight: 650; }
 .form-field input[aria-invalid="true"], .form-field select[aria-invalid="true"] { border: 2px solid var(--red); }
 .field-hint { margin: 0; color: var(--muted); font-size: .9rem; }
