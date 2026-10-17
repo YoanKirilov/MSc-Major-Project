@@ -287,6 +287,23 @@ passed 14 Chromium/Firefox cases (no skips). Installed-package verification in
 `.test-artifacts/package-6c35d8f7e9/` passed seven pages, 29 assets and synthetic
 create/reopen/delete/Undo against the changed device-navigation source.
 
+Run 22 at `940baf4` passed the first Linux WebKit job and both non-focusing-link
+cases on hosted Windows Firefox, but Windows/Python 3.12 Firefox then timed out
+in navigation waiting for the whole-page `load` event, before any report assertion.
+The GitHub connector could not re-run that job (Actions-write permission denied;
+no permission changes were attempted). Report navigation now waits for parsed DOM
+and the existing bounded application-ready handshake instead of unrelated full-load
+completion, following [Playwright navigation guidance](https://playwright.dev/python/docs/navigations).
+A paused same-origin synthetic image regression proves a fully rendered, non-busy
+report can be ready before `load`, then releases the image and verifies completion.
+No assertion, engine, security gate or navigation timeout is removed or increased.
+`.test-artifacts/ci-dom-readiness-20261018/` passed all 12 Chromium/Firefox readiness
+and unconfirmed-title cases (no skips); Ruff/format and diff checks passed. Run 22
+subsequently confirmed **all four hosted WebKit jobs**, all four Chromium jobs,
+both Linux Firefox jobs and security. Windows/Python 3.12 Firefox's full-load
+timeout is addressed by this navigation correction; final hosted verification is
+still required, not inferred from these local/other-platform passes.
+
 For a functioning Linux/macOS test environment, install the pinned development
 dependencies and browsers, then run:
 

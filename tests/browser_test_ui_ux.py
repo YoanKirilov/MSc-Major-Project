@@ -308,7 +308,9 @@ def _open(ui, kind="rich", size=(390, 844)):
 
     page, base, reports = ui
     page.set_viewport_size({"width": size[0], "height": size[1]})
-    page.goto(base + f"/scans/{reports[kind].scan_id}")
+    # Wait for parsed DOM, then the explicit application-ready handshake. The
+    # window load event also waits on unrelated resources and is not UI readiness.
+    page.goto(base + f"/scans/{reports[kind].scan_id}", wait_until="domcontentloaded")
     wait_for_report_ready(page)
     expect(page.locator("#device-search-count")).not_to_be_empty(timeout=15000)
     return page, reports[kind]
@@ -335,6 +337,34 @@ def test_report_readiness_waits_for_delayed_annotations_before_showing_the_repor
     page, _ = _open(ui, kind="zero")
     assert page.evaluate("window.syntheticReportWasLoading") is True
     assert page.locator("#report-content").get_attribute("data-reading-ready") == "true"
+
+
+def test_report_readiness_does_not_wait_for_an_unrelated_image_load(ui):
+    page = ui[0]
+    pending = []
+    page.add_init_script(
+        """(() => {
+            addEventListener('load', () => { window.syntheticLoadFinished = true; });
+            addEventListener('DOMContentLoaded', () => {
+                const image = new Image(); image.hidden = true;
+                image.src = '/synthetic-late.svg'; document.body.append(image);
+            });
+        })();"""
+    )
+    # Pause only a synthetic same-origin image; no request reaches the network.
+    page.route("**/synthetic-late.svg", lambda route: pending.append(route))
+    try:
+        page, _ = _open(ui, kind="zero")
+        assert pending
+        assert page.evaluate("window.syntheticLoadFinished === true") is False
+        assert page.locator("#report-content").get_attribute("data-reading-ready") == "true"
+    finally:
+        for route in pending:
+            route.fulfill(
+                content_type="image/svg+xml",
+                body='<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+            )
+    page.wait_for_load_state("load")
 
 
 def test_repeat_review_device_filter_retains_all_facts_and_opens_links_outside_filter(ui):
