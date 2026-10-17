@@ -21,7 +21,7 @@ from app.risk.engine import evaluate_device
 from app.schemas.scan import Device, DeviceDetail, ScanDocument, Service
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import browser_listener, component_boxes
+from tests.fixtures.browser import browser_listener, component_boxes, wait_for_report_ready
 
 pytestmark = [
     pytest.mark.browser,
@@ -309,10 +309,32 @@ def _open(ui, kind="rich", size=(390, 844)):
     page, base, reports = ui
     page.set_viewport_size({"width": size[0], "height": size[1]})
     page.goto(base + f"/scans/{reports[kind].scan_id}")
-    expect(page.locator("#report-content")).to_be_visible()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     expect(page.locator("#device-search-count")).not_to_be_empty(timeout=15000)
     return page, reports[kind]
+
+
+def test_report_readiness_waits_for_delayed_annotations_before_showing_the_report(ui):
+    page = ui[0]
+    page.add_init_script(
+        """(() => {
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = async (...args) => {
+                const response = await originalFetch(...args);
+                if (typeof args[0] === 'string' && args[0].endsWith('/annotations')) {
+                    const content = document.getElementById('report-content');
+                    window.syntheticReportWasLoading = content.hidden
+                        && content.dataset.readingReady !== 'true';
+                    // HTTP is already idle; frontend processing is not ready yet.
+                    await new Promise(resolve => setTimeout(resolve, 6000));
+                }
+                return response;
+            };
+        })();"""
+    )
+    page, _ = _open(ui, kind="zero")
+    assert page.evaluate("window.syntheticReportWasLoading") is True
+    assert page.locator("#report-content").get_attribute("data-reading-ready") == "true"
 
 
 def test_repeat_review_device_filter_retains_all_facts_and_opens_links_outside_filter(ui):
@@ -340,7 +362,7 @@ def test_repeat_review_device_filter_retains_all_facts_and_opens_links_outside_f
     path = store._scan_dir(report.scan_id) / "scan.json"
     before = path.read_bytes()
     page.goto(base + f"/scans/{report.scan_id}")
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     device_count = page.locator(".device-summary-group").count()
     task_count = page.locator("#nextStepsList .review-task").count()
     control = page.get_by_label("Review items for", exact=True)
@@ -356,7 +378,7 @@ def test_repeat_review_device_filter_retains_all_facts_and_opens_links_outside_f
         arg={"scan": report.scan_id, "device": other.device_id},
     )
     page.reload()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     expect(control).to_have_value(other.device_id)
     expect(page.locator("#findingsList .finding-card")).to_have_count(1)
     first = page.locator(f'.device-summary-group[data-device-ip="{report.devices[0].ip}"]')
@@ -396,7 +418,7 @@ def test_repeat_collapsed_task_status_and_empty_filters_remain_honest(ui):
     endpoint = f"**/api/live-scans/{report.scan_id}/annotations"
     page.route(endpoint, lambda route: route.fulfill(status=503, body='{"detail":"Test delay"}'))
     page.reload()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     expect(heading).to_contain_text("saved status unavailable")
     expect(page.locator("#checklist-progress")).to_contain_text("unavailable")
     expect(controls.first).to_be_disabled()
@@ -411,7 +433,7 @@ def test_repeat_collapsed_task_status_and_empty_filters_remain_honest(ui):
     JsonStore(Path(os.environ["APP_DATA_DIR"]))._create_scan(fresh)
     _, base, _ = ui
     page.goto(base + f"/scans/{fresh.scan_id}")
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     page.locator("#checklist-filter").select_option("checked")
     expect(page.locator("#checklist-empty")).to_be_visible()
     expect(page.locator("#nextStepsList > li:visible")).to_have_count(0)
@@ -437,7 +459,7 @@ def test_repeat_technical_columns_and_unknown_reply_context_preserve_evidence(ui
     for width in (320, 390, 768, 1440):
         page.set_viewport_size({"width": width, "height": 1000})
         page.goto(base + f"/scans/{report.scan_id}")
-        expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+        wait_for_report_ready(page)
         table = page.locator("#technical-devices")
         if not table.evaluate("el => el.open"):
             table.locator(":scope > summary").click()
@@ -593,7 +615,7 @@ def test_reading_followup_grouped_evidence_and_theme_survive_reload(ui):
     page.locator('[data-supporting-topic="accessibility"]').click()
     page.locator("#themePreference").select_option("light")
     page.reload()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     expect(page.locator("#supportingInfoDialog")).not_to_be_visible()
     page.locator('[data-supporting-topic="accessibility"]').click()
     expect(page.locator("#themePreference")).to_have_value("light")
@@ -631,7 +653,7 @@ def test_reading_followup_exact_device_search_and_recognition_never_match_prefix
     expect(page.locator("#device-summaries .device-summary-group")).to_have_count(1)
     expect(page.locator("#device-summaries .device-summary-address")).to_contain_text(address)
     page.reload()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     expect(page.locator("#device-summaries .device-summary-group")).to_have_count(1)
     page.locator("#clearDeviceSearch").click()
     page.locator("#identifyFirstDevice").click()
@@ -1105,7 +1127,7 @@ def test_followup_loading_waits_for_facts_and_retry_preserves_honest_counts(ui):
     expect(page.locator("#report-content")).to_have_attribute("aria-busy", "false")
     page.unroute(endpoint)
     page.locator("#retryReportLoad").click()
-    expect(page.locator("#report-content")).to_be_visible()
+    wait_for_report_ready(page)
     expect(page.locator("#device-metric")).to_have_text("1 of 1 discovered")
     expect(page.locator("#service-metric")).to_have_text("0")
     expect(page.locator("#findingsList")).to_contain_text("not fully checked")
@@ -1190,8 +1212,7 @@ def test_followup_refresh_restores_filters_selection_disclosures_and_scroll_with
     )
     before = page.evaluate("key => JSON.parse(sessionStorage.getItem(key))", key)
     page.reload()
-    expect(page.locator("#report-content")).to_be_visible()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     expect(page.locator("#deviceSearchInput")).to_have_value("192.168.56.10")
     expect(page.locator("#deviceSort")).to_have_value("name")
     expect(page.locator("#searchInput")).to_have_value("192.168.56.10")
@@ -1231,8 +1252,7 @@ def test_followup_individual_task_disclosures_are_reading_state_not_editing_or_s
     for task in page.locator(".next-step-checklist").all():
         expect(task).not_to_have_attribute("open", "")
     page.reload()
-    expect(page.locator("#report-content")).to_be_visible()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     expect(page.locator("#checklist-filter")).to_have_value("to_check")
     for task in page.locator(".next-step-checklist").all():
         expect(task).not_to_have_attribute("open", "")

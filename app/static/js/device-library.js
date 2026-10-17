@@ -8,6 +8,7 @@ const rows = new Map();
 let lastRequested = { search: '', page: 1, view: 'all' };
 const readingContext = createDeviceContext(() => window.sessionStorage);
 const savedContext = readingContext.load();
+let rememberedDeviceKey = savedContext?.focusKey || null;
 let restoringContext = true;
 let userInteracted = false;
 for (const name of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
@@ -286,15 +287,23 @@ async function loadPage(search, page, { focus = false, focusKey = null, view = l
       row.status.textContent = 'Latest saved labels loaded. Your remaining draft is kept; compare the saved labels before saving again.';
       row.status.focus({ preventScroll: true });
     } else { get('heading').focus(); }
-  } else if (focus) { get('heading').focus(); get('heading').scrollIntoView({ block: 'start', behavior: 'instant' }); }
+  } else if (focus) {
+    rememberedDeviceKey = null;
+    get('heading').focus(); get('heading').scrollIntoView({ block: 'start', behavior: 'instant' });
+  }
   rememberContext();
 }
-function rememberContext() {
+function rememberContext(preferredKey = null) {
   const state = library.getState();
   if (restoringContext || state.total === null) return;
-  const activeKey = document.activeElement?.closest?.('.device-library-card')?.dataset.deviceKey || null;
+  // Pointer navigation need not focus an anchor (notably in WebKit). Save the
+  // clicked card explicitly and retain it through pagehide, which may have BODY
+  // as its active element. Never retain a key outside the current visible page.
+  const activeKey = typeof preferredKey === 'string' ? preferredKey
+    : document.activeElement?.closest?.('.device-library-card')?.dataset.deviceKey || rememberedDeviceKey;
+  rememberedDeviceKey = rows.has(activeKey) ? activeKey : null;
   readingContext.save({ search: state.search, view: state.view, page: currentPage(state),
-    y: Math.max(0, window.scrollY || 0), focusKey: activeKey });
+    y: Math.max(0, window.scrollY || 0), focusKey: rememberedDeviceKey });
 }
 get('search').addEventListener('submit', event => { event.preventDefault(); void loadPage(get('query').value, 1, { focus: true, view: get('view').value }); });
 get('search').addEventListener('reset', event => {
@@ -307,7 +316,10 @@ window.addEventListener('beforeunload', event => {
   if (library.getState().draftCount) { event.preventDefault(); event.returnValue = ''; }
 });
 window.addEventListener('pagehide', rememberContext);
-get('list').addEventListener('click', event => { if (event.target.closest('a')) rememberContext(); });
+get('list').addEventListener('click', event => {
+  const link = event.target.closest('a');
+  if (link) rememberContext(link.closest('.device-library-card')?.dataset.deviceKey);
+});
 async function initialise() {
   get('query').value = savedContext?.search || '';
   get('view').value = savedContext?.view || 'all';

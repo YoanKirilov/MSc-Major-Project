@@ -5,7 +5,7 @@ import os
 import pytest
 from tests import browser_test_history_scroll as history_cases
 from tests.browser_test_ui_ux import ui as _report_ui
-from tests.fixtures.browser import assert_page_reflows
+from tests.fixtures.browser import assert_page_reflows, wait_for_report_ready
 
 history_browser = history_cases.history_browser
 ui = _report_ui
@@ -176,7 +176,7 @@ def test_report_wording_source_keyboard_path_and_small_screen_text_spacing(ui):
     page.emulate_media(forced_colors="active")
     page.set_viewport_size({"width": 320, "height": 900})
     page.goto(base + "/scans/" + reports["rich"].scan_id)
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     page.add_style_tag(url=base + "/static/css/ux-report-spacing.css")
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
     source = page.locator("#detailPanel .wording-provenance")

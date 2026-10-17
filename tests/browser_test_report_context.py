@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 import pytest
 from tests.browser_test_ui_ux import _open
 from tests.browser_test_ui_ux import ui as ui
+from tests.fixtures.browser import wait_for_report_ready
 
 pytestmark = [
     pytest.mark.browser,
@@ -14,12 +15,7 @@ pytestmark = [
 
 
 def _ready(page):
-    from playwright.sync_api import expect
-
-    # Navigation's load event does not wait for the report/session GETs. Settle
-    # those reads before asserting restored state, as on other browser pages.
-    page.wait_for_load_state("networkidle")
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
 
 
 def _watch_messages(page):

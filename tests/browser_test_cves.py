@@ -13,7 +13,7 @@ from app.scanner.cve import NvdClient
 from app.schemas.scan import ScanDocument
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import browser_listener
+from tests.fixtures.browser import browser_listener, wait_for_report_ready
 from tests.fixtures.fixtures import make_telnet_scan
 from tests.fixtures.provider import ReviewedProvider
 
@@ -129,7 +129,7 @@ def test_cve_lookup_links_and_saved_references_on_mobile(monkeypatch, tmp_path, 
             assert panel.locator("script").count() == 0
             page.reload()
             # Reading state preserves this open disclosure across refresh.
-            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+            wait_for_report_ready(page)
             expect(panel.locator("details").first).to_have_attribute("open", "")
             expect(link).to_be_visible()
             assert len(calls) == (2 if version_known else 1)

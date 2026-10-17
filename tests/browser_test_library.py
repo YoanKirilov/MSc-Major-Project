@@ -15,7 +15,11 @@ from app.schemas.scan import Device, DeviceDetail, ScanDocument
 from app.security.session import SessionManager
 from app.storage.annotations import NameRefresh
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import browser_listener, scroll_history_with_keyboard
+from tests.fixtures.browser import (
+    browser_listener,
+    scroll_history_with_keyboard,
+    wait_for_report_ready,
+)
 from tests.fixtures.fixtures import make_telnet_scan
 
 pytestmark = [
@@ -227,7 +231,7 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             )
             page.set_viewport_size({"width": 390, "height": 844})
             page.reload()
-            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+            wait_for_report_ready(page)
             expect(
                 page.locator("#device-summaries .device-summary-group > details[open]")
             ).to_have_count(2)
@@ -437,7 +441,7 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             page.goto(base + f"/scans/{scan_id}")
             # Returning from history retains the prior reading filter even when
             # annotations are unavailable; clearing it still exposes all facts.
-            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+            wait_for_report_ready(page)
             expect(page.locator("#deviceSearchInput")).to_have_value("TV kitchen")
             page.locator("#clearDeviceSearch").click()
             expect(

@@ -13,7 +13,11 @@ from app.main import create_app
 from app.scanner.runner import ProcessResult
 from app.schemas.scan import DeviceDetail
 from app.security.session import SessionManager
-from tests.fixtures.browser import browser_listener, scroll_history_with_keyboard
+from tests.fixtures.browser import (
+    browser_listener,
+    scroll_history_with_keyboard,
+    wait_for_report_ready,
+)
 from tests.fixtures.provider import ReviewedProvider
 
 pytestmark = [
@@ -165,6 +169,11 @@ def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages
                 # Configure the viewport before creating tabs. Resizing a
                 # background Firefox tab can stall the automation driver on Windows.
                 page.bring_to_front()
+                # Settle only the current status reads before unloading the page.
+                # Both synthetic scanner jobs remain blocked/running throughout.
+                # WebKit can otherwise misreport a navigation-cancelled GET as
+                # an access-control page error; keep all error assertions intact.
+                page.wait_for_load_state("networkidle")
                 page.reload()
                 expect(page.locator("#scanLaunchButton")).to_be_disabled()
                 expect(page.locator("#progressPhase")).to_contain_text("Checking device")
@@ -320,12 +329,12 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             assert len(scanned) == before_refresh
             released.set()
             page.wait_for_url("**/scans/*", timeout=15000)
+            wait_for_report_ready(page)
             expect(page.locator("#result-title")).to_have_text("Your local scan is ready.")
             expect(page.locator("#resultsSummary")).to_contain_text("review item")
             page.locator('[data-supporting-topic="explanations"]').click()
             expect(page.locator("#ai-report-source")).to_contain_text("Local AI contributed")
             page.locator("#closeSupportingInfo").click()
-            expect(page.locator("#report-content")).to_be_visible()
             expect(
                 page.locator("#device-summaries .device-summary-group > .device-summary")
             ).to_have_count(1)
@@ -356,7 +365,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
             expect(page.locator("#report-checks")).to_contain_text("device")
             card = page.locator("#device-summaries .device-summary").first
             # The device opened above stays open through the nickname reload.
-            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+            wait_for_report_ready(page)
             expect(card).to_have_attribute("open", "")
             card.locator("summary", has_text="About this device").click()
             extra_summary = card.get_by_text(
@@ -399,7 +408,7 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
                 page.locator("#scanLaunchButton").click()
             assert response.value.status == 202
             assert response.value.request.post_data_json["hosts"] == ["192.168.56.10"]
-            expect(page.locator("#report-content")).to_be_visible()
+            wait_for_report_ready(page)
             expect(page.locator("#ai-report-notice")).to_have_count(0)
             expect(page.locator("#simplifyButton")).to_have_count(0)
             count = len(scanned)

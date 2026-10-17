@@ -5,6 +5,7 @@ import os
 import pytest
 from tests.browser_test_ui_ux import _open
 from tests.browser_test_ui_ux import ui as _report_ui
+from tests.fixtures.browser import LOCAL_READ_TIMEOUT_MS
 
 ui = _report_ui
 pytestmark = [
@@ -53,7 +54,10 @@ def test_mocked_progress_has_honest_status_values_and_spaced_actions(ui, tmp_pat
                 "discovery": "Looking for devices",
                 "service_scan": "Checking device connections",
                 "analysis": "Making your results easier to understand.",
-            }[current]
+            }[current],
+            # This is timer-driven feedback, with the client's local-read budget;
+            # five seconds can expire before the next read on hosted Firefox.
+            timeout=LOCAL_READ_TIMEOUT_MS,
         )
         expect(page.locator("#scan-config")).not_to_contain_text("Ready to scan")
         expect(progress).to_have_attribute("aria-valuemin", "0")

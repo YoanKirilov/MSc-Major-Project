@@ -7,6 +7,22 @@ import socket
 MIN_BROWSER_PORT = 49152
 MAX_BROWSER_PORT = 65535
 PORT_ATTEMPTS = 64
+LOCAL_READ_TIMEOUT_MS = 20_000
+
+
+def wait_for_report_ready(page):
+    """Wait for the real reading handshake, not load/idle or a fixed sleep.
+
+    The client gives each local read up to 20 seconds. A five-second DOM
+    assertion can reject a still-pending read on slower hosted Windows runners.
+    Keep a bounded wait and require ready, visible and no longer busy together.
+    """
+    from playwright.sync_api import expect
+
+    content = page.locator("#report-content")
+    expect(content).to_have_attribute("data-reading-ready", "true", timeout=LOCAL_READ_TIMEOUT_MS)
+    expect(content).to_be_visible()
+    expect(content).to_have_attribute("aria-busy", "false")
 
 
 def assert_page_reflows(page, context="", *, tolerance=1):

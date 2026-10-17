@@ -240,6 +240,53 @@ The corrected return-navigation test passed in Chromium and Firefox in
 `.test-artifacts/ci-csp-focus-20261017/` (two cases, no skips); Ruff and formatting
 also passed. The full hosted matrix will verify WebKit's CSP behaviour.
 
+Run 20 also exposed another Windows report-load race at the shared `_open` helper:
+the content was still honestly showing its loading state when a five-second
+visibility assertion expired. Finished-report waits are now consolidated in
+`wait_for_report_ready`: wait up to the client's 20-second local-read budget for
+`data-reading-ready=true`, then require visible content and `aria-busy=false`.
+This removes duplicate waits and does not treat HTTP idle as rendered readiness.
+A regression holds annotation processing for six seconds after HTTP has finished;
+the report must remain loading until processing completes. Error/loading-state,
+fact, view, focus and overflow assertions remain. This is test synchronisation,
+not a new claim that every report loads in five seconds.
+
+Run 21's Windows WebKit locator focus assertion reported an inactive target.
+The bundled Playwright assertion additionally requires `document.hasFocus()`;
+the test now activates its automated page before asserting, without programmatically
+focusing the required heading. If it still fails, bounded focus diagnostics report
+target/document focus and active tag/ID. The actual restoration remains required.
+
+A deterministic non-focusing-link regression then reproduced a genuine controller
+bug in Chromium and Firefox: two normal-focus cases passed, while both blurred-link
+cases returned with BODY active instead of the expected device. Activating the page
+alone did not fix it. `device-library.js` now records the clicked report card explicitly
+and retains that validated, current-page key through `pagehide`. Applied search/page
+changes clear it; reset cannot retain an old card. No labels or evidence are changed.
+All 16 device-library cases passed afterwards in
+`.test-artifacts/ci-pointer-focus-after-20261018/`, including both link-focus behaviours,
+restored view/page/card, explicit reset, failed/conflicting edits and reflow.
+
+Other run-21 findings: Linux WebKit reached 139 passing cases before a navigation-
+cancelled progress GET was logged as an access-control error during concurrent scan
+refreshes. Tests now settle current HTTP reads before unloading, while both synthetic
+scanner jobs are still blocked/running. Job independence, refresh, cancellation,
+no-duplicate-submission and all page-error assertions remain. Windows Firefox also
+expired a five-second mocked-progress assertion while still showing the queued phase;
+the timer-driven expectation now uses the same bounded local-read budget, without
+changing the required phase text or numeric/ARIA assertions.
+
+Readiness regression verification: `.test-artifacts/ci-reading-state-20261018/` passed
+20 focused cases, including six-second annotation processing after HTTP becomes idle,
+enlarged/narrow navigation, explicit/invalid links, reload/back and strict diagnostics.
+`.test-artifacts/checks-3c5dec573d/` passed 873 Python (five Windows environment skips),
+252 JavaScript, 27 syntax checks and Ruff/format gates. The final hosted matrix is
+still needed to verify the Windows/WebKit findings; no live scans were run.
+Final parallel-flow/progress retest in `.test-artifacts/ci-progress-refresh-20261018/`
+passed 14 Chromium/Firefox cases (no skips). Installed-package verification in
+`.test-artifacts/package-6c35d8f7e9/` passed seven pages, 29 assets and synthetic
+create/reopen/delete/Undo against the changed device-navigation source.
+
 For a functioning Linux/macOS test environment, install the pinned development
 dependencies and browsers, then run:
 

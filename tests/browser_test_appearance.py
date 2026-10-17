@@ -17,6 +17,7 @@ from tests.fixtures.browser import (
     assert_page_reflows,
     component_boxes,
     scroll_history_with_keyboard,
+    wait_for_report_ready,
 )
 
 ui = _report_ui
@@ -70,7 +71,7 @@ def test_appearance_controls_replace_justification_and_persist_across_pages(ui):
     saved = page.evaluate("JSON.parse(localStorage.getItem('netguard-appearance-v1'))")
     assert saved and "justify" not in str(saved) and "motion" not in saved
     page.reload()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     _preferences(page)
     expect(page.locator("#themePreference")).to_have_value("light")
     expect(page.locator("#textSizePreference")).to_have_value("larger")
@@ -307,7 +308,7 @@ def test_system_reduced_motion_is_automatic_and_removed_app_preference_is_ignore
         }))"""
     )
     page.reload()
-    expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+    wait_for_report_ready(page)
     _assert_preferences(page, "light", "larger", False)
     page.emulate_media(reduced_motion="reduce")
     _assert_preferences(page, "light", "larger", True)
@@ -330,7 +331,7 @@ def test_themes_and_larger_text_reflow_on_narrow_and_wide_pages(ui, tmp_path):
     assert larger_size > standard_size
     for theme in ("dark", "light"):
         _navigate(page, base + f"/scans/{reports['rich'].scan_id}")
-        expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+        wait_for_report_ready(page)
         _preferences(page)
         page.locator("#themePreference").select_option(theme)
         for width, height in ((320, 568), (1440, 1000)):
@@ -338,9 +339,7 @@ def test_themes_and_larger_text_reflow_on_narrow_and_wide_pages(ui, tmp_path):
             for route in ("/", "/history", "/settings", f"/scans/{reports['rich'].scan_id}"):
                 _navigate(page, base + route)
                 if route.startswith("/scans/"):
-                    expect(page.locator("#report-content")).to_have_attribute(
-                        "data-reading-ready", "true"
-                    )
+                    wait_for_report_ready(page)
                 assert_page_reflows(page, f"{theme} larger text, {route} at {width}px")
                 if route == "/history":
                     _, scan_type, completion = component_boxes(
@@ -496,7 +495,7 @@ def test_report_name_colour_keeps_scan_type_and_swaps_on_hover(ui):
     JsonStore(Path(os.environ["APP_DATA_DIR"]))._create_scan(deep)
     for theme in ("dark", "light"):
         _navigate(page, base + f"/scans/{reports['rich'].scan_id}")
-        expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+        wait_for_report_ready(page)
         _preferences(page)
         page.locator("#themePreference").select_option(theme)
         colours = {}

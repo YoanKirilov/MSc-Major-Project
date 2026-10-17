@@ -14,7 +14,7 @@ from app.scanner.parser import parse_host
 from app.schemas.scan import ScanDocument
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import assert_page_reflows, browser_listener
+from tests.fixtures.browser import assert_page_reflows, browser_listener, wait_for_report_ready
 
 pytestmark = [
     pytest.mark.browser,
@@ -139,11 +139,9 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                     (f"/scans/{scan_id}", "#first-action"),
                 ]:
                     page.goto(base + route)
-                    expect(page.locator(selector)).to_be_visible()
                     if route.startswith("/scans/"):
-                        expect(page.locator("#report-content")).to_have_attribute(
-                            "data-reading-ready", "true"
-                        )
+                        wait_for_report_ready(page)
+                    expect(page.locator(selector)).to_be_visible()
                     if route == "/settings":
                         expect(page.locator("#save-settings")).to_be_enabled()
                     elif route == "/history":
@@ -229,7 +227,7 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
             page.set_viewport_size({"width": 320, "height": 568})
             page.goto(base + f"/scans/{scan_id}")
             expect(page.locator("#first-action")).to_be_visible()
-            expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
+            wait_for_report_ready(page)
             device_card = page.locator("#device-summaries .device-summary-group > details").first
             expect(device_card).not_to_have_attribute("open", "")
             collapsed_height = page.evaluate("document.documentElement.scrollHeight")
@@ -275,10 +273,8 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                 expect(touch.locator("#scanLaunchButton")).to_be_enabled()
                 touch.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
                 touch.goto(base + f"/scans/{scan_id}")
+                wait_for_report_ready(touch)
                 expect(touch.locator("#first-action")).to_be_visible()
-                expect(touch.locator("#report-content")).to_have_attribute(
-                    "data-reading-ready", "true"
-                )
                 touch.locator("#runAgainButton").tap()
                 expect(touch.get_by_role("dialog")).to_be_visible()
                 touch.get_by_role("button", name="Same device", exact=True).tap()

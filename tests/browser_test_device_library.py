@@ -463,7 +463,10 @@ def test_ignored_view_retains_draft_and_explains_legacy_backend(engine, viewer):
 
 
 @pytest.mark.parametrize("engine", os.getenv("UI_UX_BROWSERS", "chromium").split(","))
-def test_return_from_saved_report_restores_applied_view_page_and_card(engine, viewer):
+@pytest.mark.parametrize("link_takes_focus", [True, False])
+def test_return_from_saved_report_restores_applied_view_page_and_card(
+    engine, viewer, link_takes_focus
+):
     from playwright.sync_api import expect
 
     page, state = viewer(engine, count=30)
@@ -477,6 +480,14 @@ def test_return_from_saved_report_restores_applied_view_page_and_card(engine, vi
     expect(page.locator(".device-library-card")).to_have_count(6)
     card = page.locator(".device-library-card").nth(2)
     card.get_by_text("Saved check details and reports", exact=True).click()
+    if not link_takes_focus:
+        # Simulate platforms where clicking a link does not focus it. Record the
+        # clicked device, not whichever control happened to have keyboard focus.
+        page.locator("#device-library-list").evaluate(
+            """list => list.addEventListener('click', event => {
+                if (event.target.closest('a')) document.activeElement?.blur();
+            }, true)"""
+        )
     card.get_by_role("link").click()
     expect(page.get_by_role("heading", name="Saved report", exact=True)).to_be_visible()
     page.get_by_role("link", name="Return to my devices", exact=True).click()
@@ -484,8 +495,21 @@ def test_return_from_saved_report_restores_applied_view_page_and_card(engine, vi
     expect(page.get_by_role("searchbox", name="Search saved devices")).to_have_value("Household")
     expect(page.get_by_role("combobox", name="Show saved devices")).to_have_value("review")
     # Locator assertions preserve the focus requirement without compiling a
-    # string in the page's CSP-restricted main world (Windows WebKit).
-    expect(page.get_by_role("heading", name="Household device 27", exact=True)).to_be_focused()
+    # string in the page's CSP-restricted main world (Windows WebKit). They also
+    # require an active document: activate the test page, never focus the target
+    # ourselves (that would conceal a broken focus-restoration implementation).
+    page.bring_to_front()
+    target = page.get_by_role("heading", name="Household device 27", exact=True)
+    try:
+        expect(target).to_be_focused()
+    except AssertionError as error:
+        focus = target.evaluate(
+            """node => ({targetActive: document.activeElement === node,
+                documentFocused: document.hasFocus(),
+                activeTag: document.activeElement?.tagName,
+                activeId: document.activeElement?.id})"""
+        )
+        pytest.fail(f"{error}\nFocus diagnostics: {focus}", pytrace=False)
     assert state["reads"][-1]["offset"] == 24
     assert page.evaluate("scrollY > 0")
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
