@@ -34,11 +34,60 @@ async def test_guard_shares_only_overlapping_reads():
 
 
 @pytest.mark.asyncio
+async def test_guard_never_reuses_a_finished_read_within_the_same_clock_tick(monkeypatch):
+    monkeypatch.setattr("app.scanner.network.monotonic", lambda: 100.0)
+    observed = {"adapter": 1}
+    calls = []
+
+    def read():
+        calls.append(1)
+        return dict(observed)
+
+    guard = NetworkGuard({"adapter": 1}, read)
+    await guard.check()
+    await guard.check()
+    assert len(calls) == 2
+    observed["adapter"] = 2
+    with pytest.raises(NetworkInterrupted, match="network_changed"):
+        await guard.check()
+    assert len(calls) == 3 and guard.failed
+
+
+def test_windows_adapter_reads_refresh_even_when_the_clock_does_not_advance(monkeypatch):
+    from app.scanner import network
+
+    monkeypatch.setattr(network, "monotonic", lambda: 100.0)
+    calls = []
+
+    def query():
+        calls.append(1)
+        return [{"Index": len(calls)}]
+
+    monkeypatch.setattr(network, "_query_windows_connections", query)
+    assert network.windows_connections(strict=True) == [{"Index": 1}]
+    assert network.windows_connections(strict=True) == [{"Index": 2}]
+
+
+@pytest.mark.asyncio
 async def test_windows_adapter_queries_are_shared_across_callers(monkeypatch):
     from app.scanner import network
 
     entered, release = threading.Event(), threading.Event()
+    all_requested = threading.Event()
+    query_lock, arrival_lock = threading.Lock(), threading.Lock()
+    arrivals = []
     calls = []
+
+    class ObservedLock:
+        def acquire(self, timeout):
+            with arrival_lock:
+                arrivals.append(1)
+                if len(arrivals) == 4:
+                    all_requested.set()
+            return query_lock.acquire(timeout=timeout)
+
+        def release(self):
+            query_lock.release()
 
     def query(**kwargs):
         calls.append(1)
@@ -47,13 +96,15 @@ async def test_windows_adapter_queries_are_shared_across_callers(monkeypatch):
         return [{"Index": 1}]
 
     monkeypatch.setattr(network, "_query_windows_connections", query)
+    monkeypatch.setattr(network, "_windows_query_lock", ObservedLock())
     first = asyncio.create_task(asyncio.to_thread(network.windows_connections, strict=True))
     assert await asyncio.to_thread(entered.wait, 3)
     others = [
         asyncio.create_task(asyncio.to_thread(network.windows_connections, strict=True))
         for _ in range(3)
     ]
-    await asyncio.sleep(0.05)
+    # Wait for actual overlap, not a sleep that assumes hosted-runner speed.
+    assert await asyncio.to_thread(all_requested.wait, 3)
     release.set()
     results = await asyncio.gather(first, *others)
     assert len(calls) == 1

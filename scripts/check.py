@@ -58,6 +58,7 @@ def main():
             "-o",
             f"cache_dir={run / 'pytest-cache'}",
             "--tb=short",
+            "--durations=15",
         ],
         ["node", "tests/api_ui.test.mjs"],
         ["node", "tests/appearance_ui.test.mjs"],

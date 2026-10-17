@@ -172,6 +172,44 @@ processes need restarting to load the new Python static-file responder. Windows
 Smart App Control remains enabled; this does not unblock its unsigned local
 WebKit DLL or claim physical Safari/assistive-technology testing.
 
+## Follow-up after GitHub run 18 (17 October)
+
+[Run 18 at `63cff66`](https://github.com/YoanKirilov/MSc-Major-Project/actions/runs/38942450107)
+finished with security and five browser jobs passing. The deterministic MIME fix
+allowed Windows browser startup; remaining failures were different:
+
+- Linux WebKit still measured 348px at a 320px Settings viewport. Windows WebKit
+  showed that the native theme overrides single-line `overflow` to `visible`.
+  The next candidate uses `appearance: menulist-button` (not `none`) to retain a
+  native select while allowing clipping of its closed control. Strict narrow/
+  enlarged-text, fieldset bounds, option and focus checks remain. Failure-only
+  diagnostics compare native sizing alternatives and restore original styles.
+- Windows Python 3.12 Chromium found a real snapshot-sharing defect: two sequential
+  calls could share one completed read when their clock ticks were equal. Snapshot
+  sharing now uses a completed-read generation, not timestamps. Time still checks
+  suspension/delayed monitoring. Frozen-clock regressions verify sequential reads
+  refresh and a subsequent network change still stops the guard. Overlap tests
+  explicitly synchronise thread arrival rather than assume a fixed sleep is enough.
+- Windows Python 3.14 Firefox reached a report-state assertion before the initial
+  report/session GETs had settled. Its navigation helper now waits for those reads
+  (as other page helpers do), retaining the actual restored-state assertions.
+- Windows Python 3.12 Firefox had 141 passing cases before the 25-minute whole-job
+  cap; browser checks alone took 20m30s and installation another 3m48s. Windows
+  jobs now have a 35-minute budget; Linux stays at 25 minutes. Installation includes
+  Chromium (required by legacy end-to-end fixtures) and the selected engine only.
+  All 12 OS/Python/engine combinations remain. Slow-test timings are now printed.
+
+Local offline gate: `.test-artifacts/checks-5939ff77df/`, 873 Python passed, five
+Windows privilege-related skips, JavaScript and syntax checks passed, Ruff passed.
+Focused browser verification: `.test-artifacts/ci-fixes-20261017-b/`, 22 Chromium/
+Firefox cases passed (no skips), covering narrow/enlarged Settings, native options,
+diagnostic restoration, explicit/invalid device links and reload/back reading state.
+`.test-artifacts/ci-network-20261017/` passed all 35 guard/listener cases after the
+thread-arrival test was made deterministic. Installed-package verification in
+`.test-artifacts/package-7636c4d5f9/` passed seven pages, 29 assets and synthetic
+report create/reopen/delete/Undo. New GitHub results will be recorded after
+completion; the native-select candidate is not yet declared a hosted WebKit pass.
+
 For a functioning Linux/macOS test environment, install the pinned development
 dependencies and browsers, then run:
 

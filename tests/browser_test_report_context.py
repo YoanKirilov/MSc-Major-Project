@@ -16,6 +16,9 @@ pytestmark = [
 def _ready(page):
     from playwright.sync_api import expect
 
+    # Navigation's load event does not wait for the report/session GETs. Settle
+    # those reads before asserting restored state, as on other browser pages.
+    page.wait_for_load_state("networkidle")
     expect(page.locator("#report-content")).to_have_attribute("data-reading-ready", "true")
 
 

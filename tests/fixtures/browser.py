@@ -58,6 +58,37 @@ def assert_page_reflows(page, context="", *, tolerance=1):
                     } finally { node.style.cssText = saved;
                         if (!hadStyle) node.removeAttribute('style'); }
                 }
+                const select = document.getElementById('scope-mode');
+                if (select) {
+                    layout.nativeSelectProbes = {};
+                    const parent = select.parentElement;
+                    const selectCss = select.style.cssText, parentCss = parent.style.cssText;
+                    const variants = {
+                        menuButton: {appearance: 'menulist-button', overflow: 'hidden'},
+                        noAppearance: {appearance: 'none', overflow: 'hidden'},
+                        zeroIntrinsic: {width: '0px', minWidth: '100%'},
+                        sizeContainment: {contain: 'inline-size'},
+                        paintContainment: {contain: 'paint'},
+                        blockParent: {}, columnFlexParent: {}
+                    };
+                    try {
+                        for (const [name, properties] of Object.entries(variants)) {
+                            select.style.cssText = selectCss; parent.style.cssText = parentCss;
+                            Object.assign(select.style, properties);
+                            if (name === 'blockParent') parent.style.display = 'block';
+                            if (name === 'columnFlexParent') {
+                                parent.style.display = 'flex';
+                                parent.style.flexDirection = 'column';
+                            }
+                            const style = getComputedStyle(select);
+                            layout.nativeSelectProbes[name] = {page: root.scrollWidth,
+                                appearance: style.appearance, overflow: style.overflowX,
+                                width: select.getBoundingClientRect().width};
+                        }
+                    } finally {
+                        select.style.cssText = selectCss; parent.style.cssText = parentCss;
+                    }
+                }
             }
             return layout;
         }""",

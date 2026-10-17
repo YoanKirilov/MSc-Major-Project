@@ -472,10 +472,11 @@ main, .topbar, footer, dialog { overflow-wrap: anywhere; }
 .topbar { gap: 16px; }
 .topbar nav { display: flex; flex-wrap: wrap; gap: 12px; }
 input, select { max-width: 100%; min-width: 0; }
-/* WebKit can count long options as page overflow despite a fitting control box.
-   Clip only single-line controls, not the page or their native popup menus.
+/* WebKit's menulist theme can force overflow:visible despite the fitting box.
+   Use its native button appearance so single-line clipping takes effect; keep
+   the real select, popup, keyboard interaction and focus outline.
    https://bugs.webkit.org/show_bug.cgi?id=284644 */
-select:not([multiple]):not([size]) { overflow: hidden; }
+select:not([multiple]):not([size]) { appearance: menulist-button; overflow: hidden; }
 .utility-main { padding-top: var(--space-6); padding-bottom: var(--space-7); }
 .page-heading { max-width: 760px; }
 .page-heading h1 { font-size: clamp(2rem, 4vw, 3rem); line-height: 1.2; }

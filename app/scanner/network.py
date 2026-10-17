@@ -19,28 +19,28 @@ class SnapshotUnavailable(Exception):
 
 
 _windows_query_lock = threading.Lock()
-_windows_query_finished = 0.0
+_windows_query_generation = 0
 _windows_query_result = None
 _windows_query_error = None
 
 
 def windows_connections(*, strict=False):
     """Share overlapping reads across jobs/status calls, never cache later reads."""
-    global _windows_query_finished, _windows_query_result, _windows_query_error
-    requested = monotonic()
+    global _windows_query_generation, _windows_query_result, _windows_query_error
+    requested_generation = _windows_query_generation
     if not _windows_query_lock.acquire(timeout=10):
         if strict:
             raise SnapshotUnavailable("adapter_query_busy")
         return None
     try:
-        if _windows_query_finished < requested:
+        if _windows_query_generation == requested_generation:
             try:
                 _windows_query_result = _query_windows_connections()
                 _windows_query_error = None
             except SnapshotUnavailable as exc:
                 _windows_query_result = None
                 _windows_query_error = exc.reason
-            _windows_query_finished = monotonic()
+            _windows_query_generation += 1
         if _windows_query_error and strict:
             raise SnapshotUnavailable(_windows_query_error)
         return deepcopy(_windows_query_result)
@@ -221,7 +221,7 @@ class NetworkGuard:
         self.failed = False
         self.failure_reason = None
         self._lock = asyncio.Lock()
-        self._checked_at = None
+        self._generation = 0
 
     def _fail(self, reason):
         self.failed = True
@@ -229,7 +229,7 @@ class NetworkGuard:
         raise NetworkInterrupted(reason)
 
     async def check(self):
-        requested_at = monotonic()
+        requested_generation = self._generation
         async with self._lock:
             if self.failed:
                 raise NetworkInterrupted(self.failure_reason)
@@ -237,7 +237,9 @@ class NetworkGuard:
             # Check suspension even when sharing an overlapping successful read.
             if now - self.last_tick > 45:
                 self._fail("monitor_delayed")
-            if self._checked_at is not None and self._checked_at >= requested_at:
+            # A clock tick is not a unique request ID (especially on Python 3.12
+            # Windows). Only callers already waiting on this read may share it.
+            if self._generation != requested_generation:
                 return
             self.last_tick = now
             try:
@@ -252,4 +254,4 @@ class NetworkGuard:
                 self._fail("snapshot_unavailable")
             if observed != self.expected:
                 self._fail("network_changed")
-            self._checked_at = monotonic()
+            self._generation += 1
