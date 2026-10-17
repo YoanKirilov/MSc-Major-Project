@@ -483,7 +483,9 @@ def test_return_from_saved_report_restores_applied_view_page_and_card(engine, vi
     expect(page.locator(".device-library-card")).to_have_count(6)
     expect(page.get_by_role("searchbox", name="Search saved devices")).to_have_value("Household")
     expect(page.get_by_role("combobox", name="Show saved devices")).to_have_value("review")
-    page.wait_for_function("document.activeElement.textContent === 'Household device 27'")
+    # Locator assertions preserve the focus requirement without compiling a
+    # string in the page's CSP-restricted main world (Windows WebKit).
+    expect(page.get_by_role("heading", name="Household device 27", exact=True)).to_be_focused()
     assert state["reads"][-1]["offset"] == 24
     assert page.evaluate("scrollY > 0")
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")

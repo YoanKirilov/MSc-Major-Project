@@ -229,6 +229,17 @@ themes, enlarged text, long native options and forced-colour/text-spacing checks
 skips), 252 JavaScript tests, 27 syntax checks and Ruff/format gates. The GitHub
 matrix must still confirm the real WebKit implementation and Windows timing.
 
+Run 20 at `b8d1ac5` passed the initial Settings/theme/long-option WebKit checks
+on hosted Windows (22 cases before a later failure). Its next failure was a test
+compatibility issue: `wait_for_function` compiled a focus expression in the
+mock page's CSP-restricted main world. The focused device is now checked with
+Playwright's auto-retrying heading `to_be_focused` assertion instead. This retains
+the exact required device/focus outcome; CSP is not loosened, `unsafe-eval` is not
+added, and no case or browser is skipped.
+The corrected return-navigation test passed in Chromium and Firefox in
+`.test-artifacts/ci-csp-focus-20261017/` (two cases, no skips); Ruff and formatting
+also passed. The full hosted matrix will verify WebKit's CSP behaviour.
+
 For a functioning Linux/macOS test environment, install the pinned development
 dependencies and browsers, then run:
 
