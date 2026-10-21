@@ -5,6 +5,7 @@ from time import monotonic
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.build_info import source_build_id
 from app.config import (
     detect_private_network,
     network_warning,
@@ -86,6 +87,15 @@ async def status(request: Request):
                     or {"state": "ready" if ai_available else "unavailable"}
                 ),
             }
+            try:
+                current_build = await asyncio.to_thread(source_build_id)
+            except OSError:
+                current_build = None
+            runtime["source_changed"] = (
+                current_build != request.app.state.running_build["build_id"]
+                if current_build
+                else None
+            )
             request.app.state.runtime_status_cache = runtime
     supervisor = request.app.state.supervisor
     active_scan_ids = supervisor.active_scan_ids
@@ -94,6 +104,10 @@ async def status(request: Request):
     return {
         "app_version": "0.1.0",
         "ui_contract_version": 1,
+        "build": {
+            **request.app.state.running_build,
+            "source_changed": runtime.get("source_changed"),
+        },
         "scanner_available": runtime["scanner_available"],
         "scanner_version": runtime["scanner_version"],
         "interface_choices": runtime["interface_choices"],

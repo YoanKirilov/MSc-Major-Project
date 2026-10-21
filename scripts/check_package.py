@@ -8,6 +8,11 @@ import venv
 from pathlib import Path
 from uuid import uuid4
 
+if __package__:
+    from .bootstrap_trust import bootstrap_trust
+else:
+    from bootstrap_trust import bootstrap_trust
+
 
 def source_snapshot(root: Path, destination: Path) -> Path:
     """Never let stale checkout build/lib files reintroduce removed modules."""
@@ -49,7 +54,9 @@ def main(argv=None):
     def environment_python(name):
         environment = run / name
         venv.EnvBuilder(with_pip=True).create(environment)
-        return environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        bootstrap_trust(python, args.wheelhouse or run / "trust-wheels", offline=args.offline)
+        return python
 
     # Install a pinned backend into an owned environment instead of letting build
     # resolve unbounded backend versions or changing the running app environment.

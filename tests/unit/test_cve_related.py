@@ -7,6 +7,43 @@ from tests.unit.test_cves import QUERY, nvd_data, software
 PRODUCT = "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*"
 
 
+@pytest.mark.asyncio
+async def test_unenriched_current_shaped_records_are_unknown_not_no_matches():
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "totalResults": 1,
+                "vulnerabilities": [
+                    {
+                        "cve": {
+                            "id": "CVE-2026-10001",
+                            "vulnStatus": "Awaiting Analysis",
+                            "descriptions": [
+                                {"lang": "en", "value": "Synthetic current-shaped record."}
+                            ],
+                            "affected": [
+                                {
+                                    "product": "Example",
+                                    "versions": [{"version": "1", "status": "affected"}],
+                                }
+                            ],
+                            "metrics": {"ssvc": []},
+                            "references": [],
+                        }
+                    }
+                ],
+            },
+        )
+
+    result = await NvdClient(httpx.MockTransport(handler)).lookup(
+        software(cpes=["cpe:/a:apache:http_server"])
+    )
+    assert result.related_status == "coverage_unknown"
+    assert result.related_unverified == 1
+    assert not result.related_results and not result.results
+
+
 def related_data():
     exact = nvd_data()["vulnerabilities"][0]
     rows = [exact]

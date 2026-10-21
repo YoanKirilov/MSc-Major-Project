@@ -309,6 +309,59 @@ def test_library_cache_does_not_retain_a_racing_write(tmp_path, monkeypatch):
     assert search_reports(store, q="updated during read")["total"] == 1
 
 
+def test_library_larger_than_cache_does_not_evict_the_entire_recent_hot_set(tmp_path, monkeypatch):
+    store = JsonStore(tmp_path)
+    for _ in range(5):
+        store._create_scan(report())
+    store.library_cache = LibraryCache(max_entries=2)
+    loads = []
+    original = store._load_scan
+
+    def counted(scan_id):
+        loads.append(scan_id)
+        return original(scan_id)
+
+    monkeypatch.setattr(store, "_load_scan", counted)
+    assert search_reports(store)["total"] == 5
+    assert len(loads) == 5
+    hot = set(store.library_cache.entries)
+    loads.clear()
+    assert search_reports(store)["total"] == 5
+    assert len(loads) == 3
+    assert set(store.library_cache.entries) == hot
+
+
+def test_library_cache_byte_limit_keeps_preferred_projection_stable(tmp_path, monkeypatch):
+    from app.storage.library_cache import _compact
+
+    store = JsonStore(tmp_path)
+    docs = [report() for _ in range(3)]
+    for doc in docs:
+        store._create_scan(doc)
+    budget = max(_compact(doc)[1] for doc in docs) + 1
+    cache = store.library_cache = LibraryCache(max_entries=3, max_bytes=budget)
+    cache.prefer([doc.scan_id for doc in docs])
+    loads = []
+    original = store._load_scan
+
+    def counted(scan_id):
+        loads.append(scan_id)
+        return original(scan_id)
+
+    monkeypatch.setattr(store, "_load_scan", counted)
+    # Reverse first access must still admit the newest preferred item.
+    for doc in reversed(docs):
+        cache.load(store, doc.scan_id)
+    assert list(cache.entries) == [docs[0].scan_id]
+    assert cache.size <= budget
+    loads.clear()
+    for doc in docs:
+        cache.load(store, doc.scan_id)
+    assert loads == [doc.scan_id for doc in docs[1:]]
+    assert list(cache.entries) == [docs[0].scan_id]
+    assert cache.size <= budget
+
+
 def test_library_cache_concurrent_readers_share_projection(tmp_path, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
 
@@ -409,7 +462,7 @@ def test_library_api_security_annotations_and_scope(monkeypatch):
     monkeypatch.setattr("app.api.library.detect_private_network", lambda: "192.168.0.0/24")
     calls = []
 
-    async def fake_lookup(device, scope, interface):
+    async def fake_lookup(device, scope, interface, **kwargs):
         calls.append(device.ip)
         return NameRefresh(device_id=device.device_id, checked_at=iso_z(utc_now()))
 

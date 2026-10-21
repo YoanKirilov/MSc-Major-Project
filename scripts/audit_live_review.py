@@ -216,6 +216,21 @@ def main():
             "name_sources": dict(
                 Counter(device.hostname_source for device in document.devices if device.hostname)
             ),
+            "name_lookup_outcomes": dict(
+                Counter(
+                    f"{item.source}:{item.status}"
+                    for device in document.devices
+                    for item in device.name_diagnostics
+                )
+            ),
+            "max_name_lookup_elapsed_ms": max(
+                (
+                    item.elapsed_ms
+                    for device in document.devices
+                    for item in device.name_diagnostics
+                ),
+                default=None,
+            ),
             "mdns_observations": len(document.observations),
             "selected_scripts": document.policy.get("selected_scripts", []),
             "configuration_checks_version": document.policy.get("configuration_checks_version"),

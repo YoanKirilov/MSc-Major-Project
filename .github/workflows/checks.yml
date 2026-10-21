@@ -9,7 +9,52 @@ permissions:
   contents: read
 
 jobs:
+  offline:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12', '3.14']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Isolate offline dependencies
+        shell: python
+        run: |
+          import os, venv
+          from pathlib import Path
+          environment = Path('.venv-ci').resolve()
+          venv.EnvBuilder(with_pip=True).create(environment)
+          scripts = environment / ('Scripts' if os.name == 'nt' else 'bin')
+          with open(os.environ['GITHUB_PATH'], 'a', encoding='utf-8') as output:
+              output.write(str(scripts) + '\n')
+      - name: Bootstrap hash-verified trust bundles before index access
+        run: python scripts/bootstrap_trust.py --python python --wheelhouse .test-artifacts/trust-bootstrap
+      - run: python -m pip install -r requirements-dev.lock -e ".[dev]"
+      - run: python -m pip check
+      - run: python scripts/check.py --ci-artifacts
+      - name: Build and verify installed package
+        run: python scripts/check_package.py
+      - name: Retain redacted synthetic reports only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          name: offline-${{ matrix.os }}-${{ matrix.python }}
+          path: .test-artifacts/ci-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+          # Only this explicitly redacted export folder, never .test-artifacts/.
+          include-hidden-files: true
+
   test:
+    needs: offline
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +69,7 @@ jobs:
       BROWSER_CHANNEL: ''
       PYTHONUNBUFFERED: '1'
       # Report the first failure before a long run can lose its traceback.
-      # Every OS/Python/engine combination remains in the test matrix.
+      # Every OS/Python/engine combination remains in the browser matrix.
       PYTEST_ADDOPTS: '-x -vv'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -45,17 +90,24 @@ jobs:
           scripts = environment / ('Scripts' if os.name == 'nt' else 'bin')
           with open(os.environ['GITHUB_PATH'], 'a', encoding='utf-8') as output:
               output.write(str(scripts) + '\n')
+      - name: Bootstrap hash-verified trust bundles before index access
+        run: python scripts/bootstrap_trust.py --python python --wheelhouse .test-artifacts/trust-bootstrap
       - name: Install pinned test environment
         run: python -m pip install -r requirements-dev.lock -e ".[dev]"
       - run: python -m pip check
       - name: Install synthetic-workflow browser
-        # Some end-to-end fixtures still use Chromium in every engine job.
-        # Install that and the selected engine, not unrelated third engines.
-        run: python -m playwright install --with-deps chromium ${{ matrix.browser }}
-      - name: Check code, offline tests and browser workflow (no network scans)
-        run: python scripts/check.py --browser --browser-engines ${{ matrix.browser }}
-      - name: Build and verify installed package
-        run: python scripts/check_package.py
+        run: python -m playwright install --with-deps ${{ matrix.browser }}
+      - name: Selected-engine browser workflows (no network scans)
+        run: python scripts/check.py --browser-only --browser-engines ${{ matrix.browser }} --ci-artifacts
+      - name: Retain redacted synthetic failures only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          name: browser-${{ matrix.os }}-${{ matrix.python }}-${{ matrix.browser }}
+          path: .test-artifacts/ci-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+          include-hidden-files: true
 
   security:
     runs-on: ubuntu-latest
@@ -76,6 +128,8 @@ jobs:
           scripts = environment / ('Scripts' if os.name == 'nt' else 'bin')
           with open(os.environ['GITHUB_PATH'], 'a', encoding='utf-8') as output:
               output.write(str(scripts) + '\n')
+      - name: Bootstrap hash-verified trust bundles before index access
+        run: python scripts/bootstrap_trust.py --python python --wheelhouse .test-artifacts/trust-bootstrap
       - run: python -m pip install -r requirements-security.lock
       - name: Dependency, static and offline secret gates
         run: python scripts/check_security.py

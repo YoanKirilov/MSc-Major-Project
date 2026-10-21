@@ -88,7 +88,10 @@ async def refresh_name(request: Request, scan_id: str, device_id: str, body: Nam
         try:
             async with asyncio.timeout(10):
                 refresh = await lookup_names(
-                    device, scope, bound if settings.mdns_enabled else None
+                    device,
+                    scope,
+                    bound if settings.mdns_enabled else None,
+                    resolver=request.app.state.name_resolver.lookup,
                 )
         except TimeoutError as exc:
             raise HTTPException(

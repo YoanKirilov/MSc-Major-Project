@@ -1,10 +1,48 @@
 # NetGuard AI (Network Assessor)
 
-Latest safe review: [architecture, organisation and GitHub audit](docs/safe-audit-20261016.md).
-Offline and selected Chromium/Firefox checks passed; the report distinguishes those
-from the failing published GitHub run and unresolved WebKit, timeout and header work.
-No live network scans were run. The CI-isolation/test cleanup is local until reviewed
-and pushed; no repository protections or remote jobs were changed automatically.
+Current verification: [status by revision and evidence type](docs/verification-status.md).
+Latest fixes: [21 October scan-start, recovery, network diagnostics and coverage](docs/issue-fixes-20261021.md).
+All four reproduced issues are fixed locally and verified; restart the backend
+task when idle, reopen its session link and reload tabs to use the new backend code.
+Latest recheck: [21 October live results and open issues](docs/live-review-20261021.md).
+Deep completed; Light was interrupted by interface verification. Four new recovery/
+wording/diagnostic edges were documented in that review and fixed in the follow-up above.
+Latest implementation: [20-21 October findings and verification](docs/findings-implementation-20261020.md).
+The trust-bundle/tooling update, refresh-safe scan-start receipts and build-freshness
+checks are implemented locally. Security, offline and installed-package gates passed.
+The normal backend needs a task restart to load API contract 3; finish active work
+first, reopen its session link and reload tabs. No commit or push was made.
+The [preceding live review](docs/live-review-20261020.md) retains its original results:
+Light had one unreachable device after two attempts; Deep completed.
+
+The [19 October post-review implementation](docs/post-review-implementation-20261019.md)
+fixes queue-expired targeted retry, unknown CVE mappings and shared-thread DNS
+isolation. It adds bounded cross-tab CVE receipts, optional naming diagnostics and
+running-build checks. Rich synthetic history, installed-package and focused browser
+checks complement the full offline gate; the linked record separates live results
+from simulation and pending reader/assistive-technology work. Finish active work
+before subsequent code/dependency upgrades and backend-task restarts.
+No new hosted CI result is claimed for unpublished work.
+
+## Earlier implementation records
+
+These dated records retain their original test totals and limitations. Use the
+verification index above for current status.
+
+Latest fixes: [CVE recovery, real security headers and clearer reports](docs/remaining-fixes-20261018.md).
+CVE lookups now have their own bounded deadline and GET-only saved-reference
+recovery after a lost reply. Actual response headers enforce the self-only policy;
+startup assets, report wording and duplicate accessibility content were corrected.
+Existing Light/Deep reports passed responsive/export/inventory checks without new
+scans or evidence changes. Restart the backend task once to load the server changes.
+Final offline checks passed 914 Python and 261 JavaScript tests; 23 focused browser
+cases and the installed-package check passed separately. The linked record includes
+the broad run's initial failures and the affected reruns, not an inferred full-matrix pass.
+[GitHub run 23](https://github.com/YoanKirilov/MSc-Major-Project/actions/runs/39079432854)
+passed all thirteen baseline jobs, including hosted WebKit. The newer changes are
+local, not a new hosted result; local Windows WebKit is still OS-blocked. The
+[preceding live review](docs/live-review-20261018.md) retains the original scan
+results and findings. Dated records below preserve their original verification limits.
 
 Latest follow-up: [local Ollama recovery and related CVE research](docs/cve-and-ollama-followup-20261015.md).
 The app starts installed local Ollama when needed, keeps its installed model warm
@@ -76,9 +114,10 @@ erasure or immediate disk-space cleanup. Current verification/limits are recorde
 separately from the earlier presentation checks: the final offline gate passed
 653 Python/190 JavaScript cases with five Windows link-privilege skips. Installed
 functional checks and the final 96-file installed hash comparison passed, as did
-50 scoped Chromium/Firefox browser cases and six affected regressions. WebKit remains
-unverified under Windows startup policy; earlier harness failures and external checks
-are distinguished in the linked record. Let active scans finish, restart the backend task, then reload
+50 scoped Chromium/Firefox browser cases and six affected regressions. Those local
+WebKit checks were blocked by Windows startup policy; later hosted verification is
+linked above. Earlier harness failures and external checks remain distinguished in
+the dated record. Let active scans finish, restart the backend task, then reload
 the browser to load both the new API and interface.
 
 The earlier same-day [combined design polish](docs/design-polish-20261013.md) adds clearer
@@ -364,8 +403,8 @@ From the project root in **Windows PowerShell**:
 
 ```powershell
 py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe scripts/bootstrap_trust.py --python .\.venv\Scripts\python.exe --wheelhouse .test-artifacts\trust-bootstrap
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock -e .
 .\.venv\Scripts\python.exe -m app doctor
 .\.venv\Scripts\python.exe -m app serve --port 8765
 ```
@@ -374,15 +413,20 @@ On **Linux/macOS**:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e .
+.venv/bin/python scripts/bootstrap_trust.py --python .venv/bin/python --wheelhouse .test-artifacts/trust-bootstrap
+.venv/bin/python -m pip install -r requirements.lock -e .
 .venv/bin/python -m app doctor
 .venv/bin/python -m app serve --port 8765
 ```
 
 The server opens the application in your default browser after startup and prints an authenticated local URL in the terminal. Keep the server running while using the app. Use `--no-browser` if you prefer to open the printed URL yourself. `network-assessor doctor` and `network-assessor serve` are also available after installation.
 
-The project does **not** automatically read `.env` files. Set environment variables in your shell before starting the server; `.env.example` lists supported settings. Legacy AI on/off values no longer gate automatic report preparation. For pinned installations, use `python -m pip install -r requirements.lock .`; development installs use `python -m pip install -r requirements-dev.lock -e ".[dev]"`.
+The bootstrap verifies pinned pip/certifi wheel hashes before installation; it never
+disables TLS or changes operating-system trust. Run it before the first index access
+in each project environment. Offline installation needs both verified bootstrap
+wheels plus the dependency wheels in its wheelhouse.
+
+The project does **not** automatically read `.env` files. Set environment variables in your shell before starting the server; `.env.example` lists supported settings. Legacy AI on/off values no longer gate automatic report preparation. For pinned installations after bootstrap, use `python -m pip install -r requirements.lock .`; development installs use `python -m pip install -r requirements-dev.lock -e ".[dev]"`.
 
 Network detection uses the active default-route network, not an arbitrary virtual adapter.
 If that network is larger than /24, select a smaller authorised range in Settings.
@@ -394,6 +438,11 @@ within that range. Being connected to a network does not grant permission to sca
 This workspace has a local VS Code task named **NetGuard: Start backend**. It starts `.venv\Scripts\python.exe -m app serve --port 8765` when the folder opens, if automatic tasks are allowed. You can also run it from **Terminal > Run Task**. The task opens the authenticated app after the server is ready.
 
 Right-click `app/templates/dashboard.html` and choose **Open with Live Server** if you prefer that shortcut. The static preview redirects to the Python app at `http://127.0.0.1:8765/`; Live Server alone cannot run scans or read saved JSON. Refresh the browser after HTML/CSS/JavaScript edits, and restart the Python task after backend changes. If port 8765 is in use, stop the previous backend task before starting another.
+
+For a custom port, open the session URL printed by that backend directly; the
+Live Server shortcut does not detect other ports. Keep session links private.
+The home/report pages explain disabled JavaScript and module-loading failures;
+reloading never submits a replacement scan automatically.
 
 The `.vscode/tasks.json` tasks are shared in Git; other editor settings remain local.
 Development installs include `requirements-testclient.lock` through the development
@@ -560,6 +609,10 @@ managed data and recovery copies; offline checksum export includes managed `.tra
 evidence and receipts. Shared nicknames/settings remain unchanged by report deletion.
 See [the 14 October execution record](docs/ui-ux-implementation-20261014.md).
 
+At 80% of the recovery count or byte limit, storage guidance warns to make a private
+offline backup. Deleting more reports retains recovery copies and does not free
+their disk space. This warning does not delete anything or add permanent removal.
+
 Managed JSON reads and writes share a 20 MiB UTF-8 byte limit. An oversized write preserves the previous checkpoint and backup. At most three guidance snapshots stay inline; older snapshots, or snapshots that would exceed the document limit, move to separate JSON files with references in the report. Unusually large scan evidence can still hit the limit and is reported as incomplete rather than publishing an unreadable document. See [storage lifecycle planning](docs/storage-lifecycle.md).
 
 Final status can be saved separately when the primary report is full, preventing endless
@@ -598,6 +651,21 @@ Install development dependencies with `python -m pip install -e ".[dev]"`. Run o
 
 For all offline Python/JavaScript/lint checks together, run `python scripts/check.py`
 or the VS Code **NetGuard: Check offline** task. Run artifacts stay in `.test-artifacts/`.
+
+After installing Playwright engines, use
+`python scripts/check.py --browser-only --browser-engines chromium,firefox`
+to run the synthetic browser suite separately.
+The CVE, library and workflow fixtures select the actual named engine. CI retains
+four OS/Python offline/package combinations and twelve OS/Python/browser combinations;
+`--ci-artifacts` exports bounded, token-redacted synthetic failure diagnostics to
+`.test-artifacts/ci-reports/` only. Never upload the rest of `.test-artifacts/`.
+See [the improvements record](docs/improvements-20261018.md) for actual local
+verification and remaining hosted/human checks.
+
+`python -B -m scripts.benchmark_library` creates fresh synthetic 32/600-report
+libraries and records cold/warm reads, concurrent edit/search timing and event-loop
+responsiveness. It never reads the normal data directory or starts scans. The
+rebuildable recent-report cache remains bounded; search still examines the library.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -m "not live_lab and not live_provider and not browser"

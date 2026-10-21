@@ -225,7 +225,9 @@ def test_light_and_deep_tabs_are_independent(tmp_path, monkeypatch, direct_pages
         listener.close()
 
 
-def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monkeypatch):
+def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(
+    tmp_path, monkeypatch, browser_engine
+):
     from playwright.sync_api import expect, sync_playwright
 
     monkeypatch.setenv("APP_ALLOWED_NETWORK", "192.168.56.8/30")
@@ -290,9 +292,10 @@ def test_scan_ai_wait_failure_retry_history_and_known_host_rescan(tmp_path, monk
     base = f"http://127.0.0.1:{port}"
     try:
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(
-                channel=os.getenv("BROWSER_CHANNEL", "msedge") or None, headless=True
-            )
+            options = {"headless": True}
+            if browser_engine == "chromium" and os.getenv("BROWSER_CHANNEL"):
+                options["channel"] = os.environ["BROWSER_CHANNEL"]
+            browser = getattr(playwright, browser_engine).launch(**options)
             page = browser.new_page()
             errors = []
             page.on("pageerror", lambda error: errors.append(str(error)))

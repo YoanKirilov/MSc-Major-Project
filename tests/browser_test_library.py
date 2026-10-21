@@ -39,7 +39,9 @@ def edit_label(page, trigger, value):
     expect(page.locator("#annotationEditorDialog")).not_to_be_visible()
 
 
-def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_path):
+def test_search_picker_titles_nickname_sync_and_identification(
+    monkeypatch, tmp_path, browser_engine
+):
     from playwright.sync_api import expect, sync_playwright
 
     monkeypatch.setenv("APP_ALLOWED_NETWORK", "192.168.0.0/24")
@@ -52,20 +54,21 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
         return False
 
     lookup_count = 0
+    lookup_stamp = iso_z(utc_now())
 
-    async def lookup(device, scope, interface):
+    async def lookup(device, scope, interface, **kwargs):
         nonlocal lookup_count
         lookup_count += 1
         return NameRefresh(
             device_id=device.device_id,
-            checked_at=iso_z(utc_now()),
+            checked_at=lookup_stamp,
             names=[]
             if lookup_count > 1
             else [
                 {
                     "name": "Later reported name",
                     "source": "reverse_dns",
-                    "observed_at": iso_z(utc_now()),
+                    "observed_at": lookup_stamp,
                 }
             ],
             notes=["Unverified later name claim."],
@@ -140,7 +143,7 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
         assert server.started
         base = f"http://127.0.0.1:{port}"
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
+            browser = getattr(playwright, browser_engine).launch(headless=True)
             context = browser.new_context()
             errors, scans = [], []
             context.on("page", lambda page: page.on("pageerror", lambda e: errors.append(str(e))))
@@ -291,6 +294,10 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
                 "checked"
             )
             expect(refresh_button).to_be_focused()
+            # The second and third results have identical text and timestamps.
+            # Completion must not depend on rebuilding the saved disclosure.
+            expect(page.locator(".identification-status")).to_contain_text("No new name found")
+            expect(page.locator(".identification-status")).not_to_contain_text("Looking for a name")
             expect(page.locator("#searchInput")).to_have_value("TV kitchen")
             expect(page.locator("#deviceSearchInput")).to_have_value("TV kitchen")
             expect(page.locator("#checklist-progress")).to_contain_text("1 of 2")
@@ -302,7 +309,7 @@ def test_search_picker_titles_nickname_sync_and_identification(monkeypatch, tmp_
             edit_label(other, other.locator("#editReportTitle"), "Title from second tab")
             expect(other.locator("#report-user-title")).to_have_text("Title from second tab")
             page.locator("#detailPanel .cve-research > summary").click()
-            cve = page.locator("#detailPanel .cve-references button")
+            cve = page.locator('#detailPanel [data-device-action="cve-lookup"]')
             cve.focus()
             cve.click()
             expect(page.locator("#report-user-title")).to_have_text("Title from second tab")

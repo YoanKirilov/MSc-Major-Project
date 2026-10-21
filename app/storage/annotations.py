@@ -6,7 +6,8 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from app.schemas.common import StrictModel, iso_z, utc_now
-from app.schemas.cve import CveLookup
+from app.schemas.cve import CveLookup, CveOperationReceipt
+from app.schemas.naming import NameDiagnostic
 from pydantic import Field, field_validator
 
 from .recovery import reserve_recovery_revision
@@ -29,6 +30,7 @@ class NameRefresh(StrictModel):
     checked_at: str
     names: list[dict[str, str]] = Field(default_factory=list, max_length=16)
     notes: list[str] = Field(default_factory=list, max_length=8)
+    diagnostics: list[NameDiagnostic] = Field(default_factory=list, max_length=4)
 
 
 class ActionCheckUpdate(StrictModel):
@@ -144,6 +146,28 @@ class AnnotationStore:
                     item for item in saved.name_refreshes if item.device_id != refresh.device_id
                 ] + [refresh]
             if cve is not None:
+                previous = next(
+                    (item for item in saved.cve_lookups if item.service_id == cve.service_id), None
+                )
+                receipts = list(previous.operation_receipts) if previous else []
+                if (
+                    previous
+                    and previous.operation_id
+                    and not any(
+                        str(item.operation_id) == previous.operation_id for item in receipts
+                    )
+                ):
+                    receipts.append(CveOperationReceipt(operation_id=previous.operation_id))
+                if cve.operation_id:
+                    receipts = [
+                        item for item in receipts if str(item.operation_id) != cve.operation_id
+                    ]
+                    receipts.append(
+                        CveOperationReceipt(
+                            operation_id=cve.operation_id, recorded_at=iso_z(utc_now())
+                        )
+                    )
+                cve = cve.model_copy(update={"operation_receipts": receipts[-8:]})
                 saved.cve_lookups = [
                     item for item in saved.cve_lookups if item.service_id != cve.service_id
                 ] + [cve]

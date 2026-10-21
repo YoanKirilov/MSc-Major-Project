@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 import pytest
 from tests.browser_test_ui_ux import _open
 from tests.browser_test_ui_ux import ui as ui
-from tests.fixtures.browser import wait_for_report_ready
+from tests.fixtures.browser import wait_for_js, wait_for_report_ready
 
 pytestmark = [
     pytest.mark.browser,
@@ -99,7 +99,8 @@ def test_reload_and_back_restore_later_reading_state_after_explicit_device_link(
     page.locator("#deviceSort").select_option("address")
     page.locator("#next-title").evaluate("node => node.scrollIntoView({block:'start'})")
     key = "netguard-report-view-v1:" + report.scan_id
-    page.wait_for_function(
+    wait_for_js(
+        page,
         """key => {
         const value = JSON.parse(sessionStorage.getItem(key) || '{}');
         return value.contextDeviceId && value.devices && Math.abs(value.y - scrollY) < 3;
@@ -112,7 +113,7 @@ def test_reload_and_back_restore_later_reading_state_after_explicit_device_link(
     expect(page.locator("#deviceSearchInput")).to_have_value(report.devices[0].ip)
     expect(page.locator(".device-context-highlight")).to_have_count(0)
     expect(page.locator("#report-device-context-status")).to_contain_text("not in this view")
-    page.wait_for_function("value => Math.abs(scrollY - value) < 5", arg=before)
+    wait_for_js(page, "value => Math.abs(scrollY - value) < 5", arg=before)
     page.goto(ui[1] + "/devices")
     page.go_back()
     _ready(page)

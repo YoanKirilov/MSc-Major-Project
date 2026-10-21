@@ -148,7 +148,22 @@ def connection_snapshot(config, scope, interface=None, *, strict=False):
     bound = nmap_interface_diagnostic(config, scope, interface)
     if not bound.get("address"):
         if strict:
-            raise SnapshotUnavailable("interface_unavailable")
+            reason = bound.get("reason")
+            # Persist only known local diagnostics, never arbitrary process output.
+            allowed = {
+                "scanner_unavailable",
+                "invalid_scope",
+                "list_timeout",
+                "list_failed",
+                "list_unavailable",
+                "list_output_invalid",
+                "multiple_matches",
+                "interface_unavailable",
+                "scope_unmatched",
+            }
+            raise SnapshotUnavailable(
+                reason if isinstance(reason, str) and reason in allowed else "interface_unavailable"
+            )
         return None
     snapshot = {"address": bound["address"], "interface": bound.get("interface", interface)}
     if os.name == "nt":
@@ -189,6 +204,14 @@ def interruption_message(reason):
         cause = "The network connection changed."
     elif reason == "monitor_delayed":
         cause = "Network monitoring was delayed; the computer may have been suspended."
+    elif reason == "list_timeout":
+        cause = "The app took too long to read the local network interfaces."
+    elif reason in {"list_unavailable", "list_failed", "list_output_invalid"}:
+        cause = "The app could not read the local network interfaces."
+    elif reason == "multiple_matches":
+        cause = "More than one local network interface matched the authorised range."
+    elif reason == "scope_unmatched":
+        cause = "The authorised range did not match a local network interface."
     else:
         cause = "The app could not verify the current network connection."
     return (

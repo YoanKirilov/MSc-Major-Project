@@ -15,7 +15,8 @@ def test_dashboard_uses_local_demo_adapter():
     assert page.status_code == 200
     assert "/static/css/app.css" in page.text
     assert "/static/js/dashboard.js" in page.text
-    assert "if ('backend' !== 'backend')" in page.text
+    assert 'data-local-app="backend"' in page.text
+    assert "../static/js/startup.js?" in page.text
     assert 'id="scopeInput"' not in page.text
     assert 'id="deepHostInput"' in page.text
     assert demo.status_code == 200
@@ -32,7 +33,8 @@ def test_scan_page_keeps_live_data_hooks_with_prototype_controls():
     assert 'data-filter="high"' in page.text
     assert 'id="nextStepsList"' in page.text
     assert 'id="device-table-body"' in page.text
-    assert "if ('backend' !== 'backend')" in page.text
+    assert 'data-local-app="backend"' in page.text
+    assert "../static/js/startup.js?" in page.text
     assert "Additional checks" in page.text
     assert 'id="report-first-step"' in page.text
     assert "Explain the words in this report" in page.text
@@ -57,11 +59,14 @@ def test_active_pages_load_all_static_assets_and_module_dependencies(tmp_path, m
         def __init__(self):
             super().__init__()
             self.urls = set()
+            self.base_route = "/"
 
         def handle_starttag(self, tag, attrs):
             for key, value in attrs:
-                if key in {"src", "href"} and value and value.startswith("/static/"):
-                    self.urls.add(value)
+                if key in {"src", "href"} and value:
+                    resolved = urljoin(self.base_route, value)
+                    if resolved.startswith("/static/"):
+                        self.urls.add(resolved)
 
     assets = Assets()
     visited = set()
@@ -79,6 +84,7 @@ def test_active_pages_load_all_static_assets_and_module_dependencies(tmp_path, m
             assert page.status_code == 200
             assert f"/static/js/{script}" in page.text
             assert "{%" not in page.text
+            assets.base_route = route
             assets.feed(page.text)
 
         pending = list(assets.urls)
@@ -118,8 +124,8 @@ def test_pages_and_modules_disable_stale_browser_caching():
             response = client.get(path)
             assert response.headers["cache-control"] == "no-store"
         page = client.get("/")
-        assert "dashboard.js?v=20261014-reliability" in page.text
-        module = client.get("/static/js/dashboard.js?v=20261014-reliability")
+        assert "dashboard.js?v=20261018-csp" in page.text
+        module = client.get("/static/js/dashboard.js?v=20261018-csp")
         assert "report.mjs?v=20261014-reliability" in module.text
 
 

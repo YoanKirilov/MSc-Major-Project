@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -146,6 +146,54 @@ async def _create_validated_live_scan(
     retry_of: str | None = None,
 ):
     if not body.authorised:
+        raise HTTPException(422, "Authorisation is required")
+    if body.operation_id is None:
+        return await _perform_validated_live_scan(request, body, retry_of=retry_of)
+
+    async def create(scan_id, operation):
+        return await _perform_validated_live_scan(
+            request, body, retry_of=retry_of, reserved_id=scan_id, start_operation=operation
+        )
+
+    async def validate_recovery(doc):
+        from app.scanner.network import connection_snapshot
+
+        if doc is None:
+            raise HTTPException(409, "The original report is unavailable; no new scan was started.")
+        settings = await request.app.state.store.load_settings()
+        detected = await asyncio.to_thread(detect_private_network)
+        scope = settings.allowed_network or resolve_allowed_network(
+            request.app.state.config, detected
+        )
+        context = await asyncio.to_thread(
+            connection_snapshot, request.app.state.config, scope, settings.interface
+        )
+        if (
+            scope != body.confirmed_scope
+            or not context
+            or context != doc.policy.get("network_context")
+        ):
+            raise HTTPException(
+                409,
+                "The connection changed since the original start. "
+                "Read its saved report; no new scan was started.",
+            )
+
+    return await request.app.state.start_requests.submit(
+        body, create, validate_recovery, retry_of=retry_of
+    )
+
+
+@router.get("/scan-starts/{operation_id}")
+async def scan_start_status(request: Request, operation_id: UUID):
+    require_session(request)
+    return await request.app.state.start_requests.status(str(operation_id))
+
+
+async def _perform_validated_live_scan(
+    request, body, retry_of=None, reserved_id=None, start_operation=None
+):
+    if not body.authorised:
         raise HTTPException(status_code=422, detail="Authorisation is required")
     if not await asyncio.to_thread(request.app.state.store.storage_writable):
         raise HTTPException(status_code=503, detail="The local data folder is not writable.")
@@ -228,7 +276,7 @@ async def _create_validated_live_scan(
                 nmap_interface_diagnostic, request.app.state.config, scope, settings.interface
             )
             mdns_warning = mdns_interface_message(diagnostic["reason"], scope, detected)
-    scan_id = str(uuid4())
+    scan_id = reserved_id or str(uuid4())
     targets = [
         {"ip": host, "discovery_status": "not_run", "service_status": "pending"}
         for host in validated.candidates
@@ -260,6 +308,7 @@ async def _create_validated_live_scan(
             "extra_details_budget_seconds": 30,
             "extra_details_version": "1.0.3",
             "retry_of": retry_of,
+            **({"start_operation_id": start_operation} if start_operation else {}),
         },
         coverage={"candidate_count": len(validated.candidates), "targets": targets},
         versions={
@@ -308,6 +357,7 @@ async def get_live_scan(request: Request, scan_id: str):
     if document.source != "live":
         raise HTTPException(status_code=404, detail="Live scan result not found")
     payload = document.model_dump(mode="json")
+    payload["retryable_hosts"] = document.retryable_hosts
     # Presentation is editorial and never saved over scan facts.
     for service, presented in zip(document.services, payload["services"], strict=True):
         presented["cve_lookup_available"] = service_product_cpe(service) is not None
@@ -353,15 +403,17 @@ async def retry_unfinished_hosts(request: Request, scan_id: str, body: RefreshGu
             status_code=409,
             detail="The report changed or is still running. Reload before retrying.",
         )
-    hosts = [
-        target.ip
-        for target in document.coverage.targets
-        if target.service_status in {"failed", "timed_out", "cancelled", "pending", "running"}
-        and (document.target.get("mode") == "known_hosts" or target.discovery_status == "observed")
-    ]
+    hosts = document.retryable_hosts
     if not hosts:
         raise HTTPException(
             status_code=409, detail="There are no unfinished device checks to retry."
+        )
+    scope = document.policy.get("allowed_network")
+    if body.operation_id and not scope:
+        settings = await request.app.state.store.load_settings()
+        detected = await asyncio.to_thread(detect_private_network)
+        scope = settings.allowed_network or resolve_allowed_network(
+            request.app.state.config, detected
         )
     return await _create_validated_live_scan(
         request,
@@ -370,6 +422,8 @@ async def retry_unfinished_hosts(request: Request, scan_id: str, body: RefreshGu
             hosts=hosts,
             profile=document.policy.get("profile", "light"),
             authorised=True,
+            operation_id=body.operation_id,
+            confirmed_scope=scope if body.operation_id else None,
         ),
         retry_of=scan_id,
     )

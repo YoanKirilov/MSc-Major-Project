@@ -70,6 +70,21 @@ class LibraryCache:
         self.entries = OrderedDict()
         self.size = 0
         self.lock = RLock()
+        self.preferred = None
+
+    def prefer(self, scan_ids):
+        """Admit a stable recent hot set during full-library sweeps, not every miss.
+
+        Otherwise a library just larger than the cache evicts every entry on
+        every sequential search. No projection or source stamp becomes authoritative.
+        """
+        with self.lock:
+            self.preferred = {
+                str(value): index for index, value in enumerate(scan_ids[: self.max_entries])
+            }
+            for key in list(self.entries):
+                if key not in self.preferred:
+                    self.size -= self.entries.pop(key)[2]
 
     def load(self, store, scan_id):
         with self.lock:
@@ -84,7 +99,31 @@ class LibraryCache:
                     self.size += cached[2]
                     return cached[1]
             projection, size = _compact(store._load_scan(scan_id))
-            if stamp == _fingerprint(folder) and size <= self.max_bytes:
+            if (
+                stamp == _fingerprint(folder)
+                and size <= self.max_bytes
+                and (self.preferred is None or key in self.preferred)
+            ):
+                if self.preferred is not None:
+                    rank = self.preferred[key]
+                    removable = sorted(
+                        (entry for entry in self.entries if self.preferred[entry] > rank),
+                        key=self.preferred.get,
+                        reverse=True,
+                    )
+                    if (
+                        self.size - sum(self.entries[entry][2] for entry in removable) + size
+                        > self.max_bytes
+                        or len(self.entries) - len(removable) >= self.max_entries
+                    ):
+                        return projection
+                    for entry in removable:
+                        if (
+                            self.size + size <= self.max_bytes
+                            and len(self.entries) < self.max_entries
+                        ):
+                            break
+                        self.size -= self.entries.pop(entry)[2]
                 self.entries[key] = (stamp, projection, size)
                 self.size += size
                 while len(self.entries) > self.max_entries or self.size > self.max_bytes:

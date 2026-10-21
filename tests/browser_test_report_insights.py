@@ -5,6 +5,7 @@ import os
 import pytest
 from tests.browser_test_ui_ux import _open
 from tests.browser_test_ui_ux import ui as ui
+from tests.fixtures.browser import wait_for_js
 
 pytestmark = [
     pytest.mark.browser,
@@ -46,9 +47,10 @@ def test_export_preview_is_redacted_and_print_does_not_include_underlying_report
     page.get_by_role("button", name="Print or export", exact=True).click()
     dialog = page.locator("#report-export-dialog")
     expect(dialog).to_be_visible()
-    page.wait_for_function(
+    wait_for_js(
+        page,
         "document.querySelector('#report-export-dialog .report-export-preview')"
-        "?.textContent.length > 80"
+        "?.textContent.length > 80",
     )
     assert "192.168.56." not in dialog.inner_text()
     assert "VeryLongReportedDeviceName" not in dialog.inner_text()

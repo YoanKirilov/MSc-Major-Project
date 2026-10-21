@@ -83,6 +83,11 @@ def storage_usage(root):
     files, total = files_to_backup(root)
     recovery = [item for item in files if item[0].startswith(".trash/")]
     recovery_bytes = sum(item[2] for item in recovery)
+    recovery_reports = sum(item[0].endswith("/.removal-receipt.json") for item in recovery)
+    near_limit = (
+        recovery_bytes >= ReportTrash.max_bytes * 0.8
+        or recovery_reports >= ReportTrash.max_reports * 0.8
+    )
     return {
         "bytes": total,
         "files": len(files),
@@ -90,7 +95,15 @@ def storage_usage(root):
         "recovery_bytes": recovery_bytes,
         "recovery_files": len(recovery),
         "recovery_limit_bytes": ReportTrash.max_bytes,
-        "warning": "Consider an offline backup and review older reports."
+        "recovery_reports": recovery_reports,
+        "recovery_limit_reports": ReportTrash.max_reports,
+        "recovery_near_limit": near_limit,
+        "warning": (
+            "Recovery storage is nearing its capacity. Back up privately before further deletion; "
+            "deleting keeps recovery copies and does not free space. No files were removed."
+        )
+        if near_limit
+        else "Consider an offline backup and review older reports."
         if total >= 250 * 1024 * 1024
         else None,
     }

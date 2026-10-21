@@ -338,10 +338,14 @@ def nmap_interface_diagnostic(config: AppConfig, scope: str, selected: str | Non
         return {"address": None, "reason": "invalid_scope"}
     try:
         result = subprocess.run([executable, "--iflist"], capture_output=True, text=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        return {"address": None, "reason": "list_timeout"}
     except (OSError, subprocess.SubprocessError):
         return {"address": None, "reason": "list_unavailable"}
     if result.returncode != 0:
-        return {"address": None, "reason": "list_unavailable"}
+        return {"address": None, "reason": "list_failed"}
+    if len(result.stdout) > 100_000:
+        return {"address": None, "reason": "list_output_invalid"}
     matches = set()
     seen_selected = False
     for line in result.stdout.splitlines():
@@ -393,11 +397,14 @@ def mdns_interface_message(reason: str, scope: str, detected: str | None) -> str
             "The scanner could not read your local connections. "
             "Retry, or check the Nmap installation in Settings."
         ),
+        "list_timeout": "Reading your local connections took too long. Try again shortly.",
+        "list_failed": "The scanner could not list your local connections. Try again shortly.",
+        "list_output_invalid": "The scanner returned an unreadable list of local connections.",
         "scanner_unavailable": "Nmap is unavailable. Check the scanner installation in Settings.",
     }
     return (
         "Local device announcements could not start. "
-        + messages.get(reason, messages["scope_unmatched"])
+        + messages.get(reason, messages["list_unavailable"])
         + context
     )
 

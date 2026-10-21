@@ -6,6 +6,7 @@ from time import monotonic
 
 import httpx
 
+from app.schemas.advisory import CveAdvisory
 from app.schemas.common import iso_z, utc_now
 from app.schemas.cve import CveLookup, CveReference
 
@@ -15,7 +16,7 @@ from .cpe import service_cpe as service_cpe
 
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 MAX_RESPONSE_BYTES = 1_000_000
-LOOKUP_VERSION = "product-research-1"
+LOOKUP_VERSION = "product-research-3"
 
 
 def _entries(data, limit):
@@ -32,29 +33,83 @@ def _reference(cve):
         (d["value"] for d in cve["descriptions"] if d.get("lang") == "en"),
         "Open the published record for its description.",
     )
-    return CveReference(cve_id=cve["id"], description=" ".join(description.split())[:1200])
+    advisories = []
+    seen = set()
+    references = cve.get("references", [])
+    for reference in references[:40] if isinstance(references, list) else []:
+        if (
+            not isinstance(reference, dict)
+            or not isinstance(reference.get("tags"), list)
+            or "Vendor Advisory" not in reference["tags"]
+        ):
+            continue
+        try:
+            advisory = CveAdvisory(url=reference.get("url"))
+        except (ValueError, TypeError):
+            continue
+        if advisory.url not in seen:
+            seen.add(advisory.url)
+            advisories.append(advisory)
+        if len(advisories) == 3:
+            break
+    return CveReference(
+        cve_id=cve["id"], description=" ".join(description.split())[:1200], advisories=advisories
+    )
 
 
-def _related_to_product(cve, product):
+def product_applicability(cve, product):
     # A description/port coincidence is not enough. Inspect only positive,
     # non-negated vulnerable product criteria; keep bounds on nested input.
-    pending = list(cve.get("configurations", []))
+    configurations = cve.get("configurations")
+    if not isinstance(configurations, list) or not configurations:
+        return "unknown"
+    pending = list(configurations)
     visited = 0
+    unknown = False
     while pending and visited < 200:
         node = pending.pop()
         visited += 1
-        if not isinstance(node, dict) or node.get("negate") is True:
+        if not isinstance(node, dict):
+            unknown = True
             continue
-        if any(
-            isinstance(match, dict)
-            and match.get("vulnerable") is True
-            and product_cpe(match.get("criteria")) == product
-            for match in node.get("cpeMatch", [])
-        ):
-            return True
-        pending.extend(node.get("nodes", []))
-        pending.extend(node.get("children", []))
-    return False
+        if node.get("negate") is True:
+            continue
+        if "negate" in node and type(node["negate"]) is not bool:
+            unknown = True
+            continue
+        matches = node.get("cpeMatch", [])
+        children = []
+        for key in ("nodes", "children"):
+            value = node.get(key, [])
+            if not isinstance(value, list):
+                unknown = True
+            else:
+                children.extend(value[:201])
+                unknown |= len(value) > 200
+        if not isinstance(matches, list):
+            unknown = True
+            matches = []
+        if not matches and not children:
+            unknown = True
+        for match in matches[:200]:
+            if not isinstance(match, dict) or type(match.get("vulnerable")) is not bool:
+                unknown = True
+                continue
+            if not match["vulnerable"]:
+                continue
+            identity = product_cpe(match.get("criteria"))
+            if identity is None:
+                unknown = True
+            elif identity == product:
+                return "related"
+        unknown |= len(matches) > 200
+        pending.extend(children)
+    return "unknown" if pending or unknown else "not_related"
+
+
+def _related_to_product(cve, product):
+    """Compatibility boolean for callers that require positive evidence only."""
+    return product_applicability(cve, product) == "related"
 
 
 class NvdBusy(Exception):
@@ -121,11 +176,16 @@ class NvdClient:
                     total, entries = _entries(data, 20)
                     seen = {record.cve_id for record in result.results}
                     related = []
+                    unverified = 0
                     for entry in entries:
                         cve = entry["cve"]
                         if cve.get("vulnStatus") in {"Rejected", "REJECT"}:
                             continue
-                        if not _related_to_product(cve, product):
+                        applicability = product_applicability(cve, product)
+                        if applicability == "unknown":
+                            unverified += 1
+                            continue
+                        if applicability != "related":
                             continue
                         record = _reference(cve)
                         if record.cve_id not in seen:
@@ -134,7 +194,14 @@ class NvdClient:
                     result.related_total = total
                     result.related_results = related[:5]
                     result.related_truncated = total > len(entries) or len(related) > 5
-                    result.related_status = "candidates" if related else "no_matches"
+                    result.related_unverified = unverified
+                    result.related_status = (
+                        "candidates"
+                        if related
+                        else "coverage_unknown"
+                        if unverified
+                        else "no_matches"
+                    )
                     return result
             except (httpx.HTTPError, TimeoutError, ValueError, KeyError, TypeError, AttributeError):
                 if result is not None:

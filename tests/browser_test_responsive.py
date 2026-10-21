@@ -14,7 +14,12 @@ from app.scanner.parser import parse_host
 from app.schemas.scan import ScanDocument
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import assert_page_reflows, browser_listener, wait_for_report_ready
+from tests.fixtures.browser import (
+    assert_page_reflows,
+    browser_listener,
+    wait_for_js,
+    wait_for_report_ready,
+)
 
 pytestmark = [
     pytest.mark.browser,
@@ -125,9 +130,9 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
             )
             base = f"http://127.0.0.1:{port}"
             page.goto(manager.get_bootstrap_url(port))
-            page.wait_for_function("sessionStorage.getItem('network-assessor-csrf') !== null")
+            wait_for_js(page, "sessionStorage.getItem('network-assessor-csrf') !== null")
             expect(page.locator("#scanLaunchButton")).to_be_enabled()
-            page.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
+            wait_for_js(page, "document.querySelector('#runningScans').dataset.snapshot")
             for width, height in SIZES:
                 page.set_viewport_size({"width": width, "height": height})
                 for route, selector in [
@@ -153,8 +158,8 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                         )
                     if route in ("/", "/light", "/deep"):
                         expect(page.locator("#scanLaunchButton")).to_be_enabled()
-                        page.wait_for_function(
-                            "document.querySelector('#runningScans').dataset.snapshot"
+                        wait_for_js(
+                            page, "document.querySelector('#runningScans').dataset.snapshot"
                         )
                         if route == "/deep":
                             expect(page.locator("#recentDeviceNote")).not_to_be_empty()
@@ -269,9 +274,9 @@ def test_all_pages_reflow_and_deep_dialog(engine, tmp_path, monkeypatch):
                     ),
                 )
                 touch.goto(manager.get_bootstrap_url(port))
-                touch.wait_for_function("sessionStorage.getItem('network-assessor-csrf') !== null")
+                wait_for_js(touch, "sessionStorage.getItem('network-assessor-csrf') !== null")
                 expect(touch.locator("#scanLaunchButton")).to_be_enabled()
-                touch.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
+                wait_for_js(touch, "document.querySelector('#runningScans').dataset.snapshot")
                 touch.goto(base + f"/scans/{scan_id}")
                 wait_for_report_ready(touch)
                 expect(touch.locator("#first-action")).to_be_visible()

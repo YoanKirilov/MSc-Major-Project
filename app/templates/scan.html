@@ -1,11 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-local-app="{{ 'backend' }}">
   <head>
     <meta charset="UTF-8" />
-    <script>
-      // Static previews cannot access the local saved report API.
-      if ('{{ "backend" }}' !== 'backend') window.location.replace('http://127.0.0.1:8765/');
-    </script>
+  <meta name="netguard-api-contract" content="3" />
+    <script src="../static/js/startup.js?v=20261018-csp"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Plain-language results from your saved local network checks." />
     <title>Scan report — NetGuard AI</title>
@@ -13,6 +11,7 @@
     <link rel="stylesheet" href="/static/css/app.css?v=20261017-block-fields" />
   </head>
   <body class="scan-results-page">
+    <noscript><p class="status-message status-warning">JavaScript is needed to display this saved report. Enable it for this local app, then reload. Your saved results remain on this computer; no scan was started.</p></noscript>
     <div class="page-shell">
       {% set active_page = 'report' %}{% include "includes/shared-header.html" %}
       <main id="main-content" tabindex="-1">
@@ -71,9 +70,8 @@
                 <div><dt>Features answering</dt><dd id="service-metric">—</dd></div>
                 <div><dt>Items to review</dt><dd id="result-count">—</dd></div>
               </dl>
-              <span id="finding-metric" class="sr-only">Not loaded</span>
               <p id="priority-breakdown"></p>
-              <small>Review priorities are not a security score.</small>
+              <small>Review-only items describe features whose safety was not assessed. They are not confirmed security problems. Review priorities are not a security score.</small>
             </div>
           </div>
         </section>
@@ -85,7 +83,10 @@
           <section class="beginner-guide" aria-labelledby="guide-title">
             <h2 id="guide-title">Where to start</h2>
             <article id="first-action"><h3>What should I check first?</h3><p id="report-first-step"></p>
+              <p id="first-action-instruction" hidden></p>
+              <p id="first-action-limits" class="first-action-precaution" hidden></p>
               <p id="first-action-precaution" class="first-action-precaution" hidden></p>
+              <details id="first-action-context" hidden><summary>Why start here?</summary><p id="first-action-reason"></p></details>
               <button id="openFirstFinding" class="primary-button" type="button" hidden>Read the first review item</button>
               <button id="identifyFirstDevice" class="text-button" type="button" hidden>Recognise or name this device</button>
             </article>
@@ -221,6 +222,6 @@
       </main>
       {% include "includes/shared-footer.html" %}
     </div>
-    <script type="module" src="/static/js/scan.js?v=20261015-related"></script>
+    <script type="module" src="/static/js/scan.js?v=20261018-lookup-receipts"></script>
   </body>
 </html>

@@ -122,6 +122,21 @@ class OllamaExplanationProvider:
         async with self._generation_lock:
             return await self._generate(findings)
 
+    async def preload(self) -> None:
+        """Public bounded warm-up; share generation ownership without prompting."""
+        async with asyncio.timeout(45):
+            async with self._generation_lock:
+                async with httpx.AsyncClient(
+                    timeout=40, trust_env=False, transport=self.transport
+                ) as client:
+                    response = await client.post(
+                        f"{self.base_url}/api/generate",
+                        json={"model": self.model, "stream": False, "keep_alive": "10m"},
+                    )
+                    response.raise_for_status()
+                    if response.json().get("done") is not True:
+                        raise ValueError("Model preload was not confirmed")
+
     async def _generate(self, findings: list[dict[str, object]]) -> GeneratedExplanationBatch:
         prompt = (
             "Your reader has no computing knowledge. Help them understand what was found, "

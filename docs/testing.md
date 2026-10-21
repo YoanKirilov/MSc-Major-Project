@@ -1,5 +1,191 @@
 # Testing status
 
+## F1-F4 fixes - 21 October 2026
+
+[Implementation and acceptance evidence](issue-fixes-20261021.md). Stale scan-start
+outcomes, status-dependent recovery, collapsed interface reasons and interrupted-
+search wording are fixed locally. Final offline gate passed **987 Python,
+292 JavaScript**, 29 syntax checks and lint/204-file formatting; five Windows
+link-privilege skips/159 opt-in deselections. **14 focused Chromium/Firefox cases**
+passed, including real accepted-lost-reply recovery. Final security and installed-
+wheel gates passed. Saved Light/Deep reopening submitted no new scans, displayed
+the corrected interrupted-search explanation and preserved test/normal evidence.
+Seven stored AI records and 21 Deep service records/five findings revalidated.
+Another **16 parallel-workflow/settings browser cases passed**: 30 browser cases
+across the two runs. Normal
+deployment, new live scans, hosted CI and reader/real-AT studies are not inferred.
+
+## Live and architecture recheck - 21 October 2026
+
+[Results, four new issues and recommendations](live-review-20261021.md). Deep
+completed 1/1 selected check, with 14 open features/five review items and no check
+errors. Light was interrupted during discovery because the interface could not
+be verified; it is not an empty successful scan. Seven ready AI records and 21
+Deep service records/five findings revalidated. Two submissions, refresh, report
+navigation, four viewports, exports and inventory passed; 853 normal evidence files
+and a 267-file source/test/script/lock/workflow manifest stayed unchanged. Owned
+backend port/processes were independently confirmed stopped/absent.
+
+Offline 968 Python/277 JavaScript, 29 syntax checks, lint/202-file formatting,
+16 focused Chromium/Firefox cases, security and fresh installed-wheel checks passed.
+Five Windows privilege skips/153 opt-in deselections remain explicit. Private
+observed-behaviour probes reproduced stale POST ownership, hidden pending recovery,
+lost interface reasons and inaccurate interrupted-discovery wording; these are open,
+not fixes or new passing acceptance tests. Normal backend still needs a restart for
+contract 3. No application code was changed, and no new hosted/reader/AT pass is claimed.
+
+## Findings implementation - 20-21 October 2026
+
+[Changes, acceptance evidence and deployment limits](findings-implementation-20261020.md).
+The trust update and scan-start/freshness fixes are implemented locally. Final
+offline gate passed **968 Python, 277 JavaScript**, 29 syntax checks and lint/
+202-file formatting, with five Windows link-privilege skips and 153 opt-in cases
+deselected. New regressions cover lost replies, concurrent callers, refresh,
+targeted retry receipts, corruption/capacity and truthfully interrupted checks.
+Seven focused Chromium/Firefox cases and 16 further parallel-tab/settings cases
+passed (one repeated settings case), as recorded in the linked execution report.
+Dependency/static/secret and fresh offline
+installed-wheel gates passed, including hash-verified trust bootstrap in new venvs.
+Reopening saved Light/Deep reports passed with zero submissions/page errors and
+unchanged test/normal evidence. No fresh live scan or model generation is claimed
+by reopening. The normal backend still needs a task restart for API contract 3;
+hosted CI, real-AT/readers and reference-lab evaluation remain pending.
+
+## Live/architecture review - 20 October 2026
+
+[Current results, open findings and recommendations](live-review-20261020.md).
+The functional gate passed **957 Python, 274 JavaScript**, 29 syntax checks,
+lint/197-file formatting; **16 Chromium/Firefox** cases passed. **The security gate
+failed:** both audited graphs pin an affected certifi bundle, and the old project
+pip installations separately retain an affected vendored bundle. No upgrade or
+advisory suppression was performed. Two Python/one JavaScript synthetic probes
+confirmed scan-start uncertainty and same-contract verification weaknesses; they
+are observed-behaviour reproductions, not fixes. Normal backend source/build now
+matches. Light retained one unreachable device after two attempts (8/9 checks),
+not a falsely complete report. Deep finished 1/1 selected check without errors.
+Evidence replay reproduced 140 service records and twelve findings; thirteen ready
+explanation records revalidated, with one separate Light fixed-wording fallback.
+Refresh/export/inventory/viewport checks passed, 853 normal evidence files stayed
+unchanged, and the owned test port/known parent/child processes were confirmed
+closed/absent. Earlier dated passes below remain historical evidence.
+
+## Post-review fixes - 19 October 2026
+
+[Implementation, acceptance checks and limits](post-review-implementation-20261019.md)
+records fixes for queue-expired targeted retry, unknown CVE mappings and lingering
+shared-thread DNS work. Bounded cross-tab CVE receipts, process-frozen build/contract
+diagnostics and optional naming diagnostics are implemented. Rich-history load and
+reader/AT tasks extend verification without claiming a completed participant study.
+Final checks passed **957 Python, 274 JavaScript**, 29 syntax checks, lint and
+197-file formatting. **16 focused Chromium/Firefox** cases passed; eight of these
+were strengthened and rerun for cross-tab receipts. Installed-wheel and security
+checks passed. Live Light finished 6/6 discovered checks and Deep 1/1 selected,
+with no check errors; thirteen explanation records and 111 saved service records
+revalidated. Refresh/export/inventory/responsive checks passed; all 853 protected
+normal evidence files stayed unchanged. The owned test backend was stopped and its
+port/known processes independently confirmed closed/absent. The normal backend
+still needs a task restart to load the latest build diagnostics and backend fixes.
+Current verification and deployment status are kept in the linked record and
+[verification index](verification-status.md); dated sections below are historical.
+
+## Post-improvement live recheck - 18 October 2026
+
+[Results, three reproduced edge cases and recommendations](live-review-post-improvements-20261018.md):
+the fresh isolated Light scan completed all nine discovered checks (12 open features,
+eight low/informational review items); Deep completed on this PC (13 open features,
+four informational items). Neither recorded a host-check error. Deep retained the
+expected self-scan limitation. Both refreshed without duplicate submission and opened
+reports after explanation processing. Eight report/viewport cases, exports, inventory
+and return-focus passed, with zero page errors and unchanged normal evidence.
+
+Raw XML reproduced 155 saved service records and twelve findings; thirteen ready
+explanation records revalidated, with one additional Light fixed-wording fallback.
+Fresh gates passed **938 Python, 270 JavaScript, 29 syntax checks**, lint/193-file
+formatting; **16 actual Chromium/Firefox** synthetic browser cases; and the security
+gate (16 retained low static alerts, none medium/high, no secret alerts or known
+dependency vulnerabilities). Source manifest stayed unchanged. No fixes were made.
+
+The normal server still lacks the new CVE request contract despite matching static
+assets; the live pair used a fresh current-source backend. Restart the normal task
+when idle, then reload tabs. Three isolated probes reproduced skipped-host retry,
+empty CVE mapping status and lingering DNS-worker concerns; these are recorded open,
+not erased by the passing regression suite. No new hosted/reader/real-AT pass is implied.
+
+## Audit improvements - 18 October 2026
+
+[I1-I9 changes, benchmark and verification](improvements-20261018.md) cover
+actual-engine CVE/library/workflow tests, split CI jobs with bounded redacted
+diagnostics, conservative NVD/advisory handling, first-action/resilience guidance,
+cache admission and narrow analysis/name/preload refactors. Final offline gate
+`.test-artifacts/checks-d40a97b669/` passed **938 Python**, five Windows privilege
+skips, 151 opt-in cases deselected, **270 JavaScript**, 29 syntax checks, lint and
+193-file formatting. Installed wheel and saved-report reopening passed separately.
+The main Chromium/Firefox run passed 28 cases and failed two new no-JavaScript
+assertions; the corrected six-case inclusive rerun passed, bringing all 30 distinct
+focused cases to a pass across executions. The security rerun passed with no known
+dependency vulnerabilities, zero medium/high static alerts and zero secret alerts;
+16 low static alerts remain recorded. See the linked record for corrections and
+exact artifact folders, not an inferred full hosted matrix pass.
+
+No new scans or live model generations were performed. Actual participant/AT/phone
+evaluation, representative simultaneous scanner/inventory/cancellation load and a
+new hosted matrix remain pending. This working tree has not been committed/pushed.
+The earlier dated entries below preserve their narrower scope and original counts.
+
+## Targeted audit issues - 18 October 2026
+
+[F1-F3 changes and verification](issue-fixes-20261018.md) and the
+[current status index](verification-status.md) supersede older current-status
+pointers, not their historical evidence. This pass changes CVE request correlation,
+name-operation completion feedback and evaluation documentation only. Wider UI,
+architecture and scanning recommendations remain deferred; no new scans are run.
+Final gate passed **919 Python, 268 JavaScript, 28 syntax checks**, lint and
+formatting; **seven focused browser cases**, installed-wheel and saved-report
+verification passed separately. The execution record includes initial failures,
+test-setup corrections, exact artifact folders and engine/evaluation limits.
+
+## Remaining-fixes verification - 18 October 2026
+
+[Implementation and evidence](remaining-fixes-20261018.md) covers CVE deadline/recovery,
+actual HTTP response protections, CSP-compatible startup and report-readability
+cleanup. No new network scans were run. Existing Light/Deep reports were reopened
+at four viewport widths with zero submissions, no page errors/overflow, successful
+exports/inventory navigation and unchanged saved evidence. Final checks passed
+**914 Python, 261 JavaScript, 28 syntax checks**, lint and formatting; **23 focused
+browser cases** and installed-wheel verification passed separately. The linked
+record retains the broad run's initial five failures and affected reruns, rather
+than representing it as a clean first run or a subsequent full-matrix pass.
+The new application changes remain local and require a backend restart. The green
+hosted baseline below is not a remote verification of these unpublished changes.
+
+## Live and maintenance review — 18 October 2026
+
+[Results, remaining issues and verification](live-review-20261018.md): the authorised
+Light scan discovered ten devices, completed eight checks and retained two
+unreachable-device failures after retries. Deep completed on this PC with thirteen
+open features and four informational findings. Both completed explanation processing;
+raw XML replay matched 140 service records and twelve findings. Twelve ready AI
+records passed revalidation; two Light records retained reviewed fixed wording.
+
+The initial live helper stopped after scanning on a stale inventory-button selector.
+The corrected helper reopened the same reports without any new scan submissions:
+eight report/viewport cases, export previews, inventory filtering and return-focus
+passed, with no page errors/overflow and unchanged saved evidence. Eighteen helper
+regressions cover outcome enforcement and finished-report-only reopening. The final
+offline gate passed **891 Python tests** (five Windows privilege-related skips),
+**252 JavaScript tests**, 27 syntax checks, lint and formatting. Fourteen focused
+browser cases and a fresh installed-wheel check passed separately. All 853 normal
+report/evidence files remained unchanged. CVE deadlines and real security headers
+were open in that review; the subsequent fixes and their separate verification are
+linked above. Passed scans alone were not evidence of those fixes.
+
+The source baseline's [GitHub run 23](https://github.com/YoanKirilov/MSc-Major-Project/actions/runs/39079432854)
+is green across all twelve platform/browser jobs and security, including WebKit.
+That hosted result predates this local helper/test/documentation cleanup; no new
+push was made. Older failing-CI and unverified-WebKit notes below are dated history,
+not the current hosted status. Local Windows WebKit is still OS-blocked; protections
+remain enabled.
+
 ## WebKit layout follow-up — 16 October 2026
 
 [Changes and verification limits](webkit-reflow-20261016.md): Settings now uses

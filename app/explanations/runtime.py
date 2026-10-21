@@ -134,22 +134,7 @@ class OllamaRuntime:
             self.state = "ready"
             if warm and monotonic() >= self.next_warm:
                 self.state = "warming"
-                async with asyncio.timeout(45):
-                    async with self.provider._generation_lock:
-                        async with httpx.AsyncClient(
-                            timeout=40, trust_env=False, transport=self.provider.transport
-                        ) as client:
-                            response = await client.post(
-                                f"{self.provider.base_url}/api/generate",
-                                json={
-                                    "model": self.provider.model,
-                                    "stream": False,
-                                    "keep_alive": "10m",
-                                },
-                            )
-                            response.raise_for_status()
-                            if response.json().get("done") is not True:
-                                raise ValueError("Model preload was not confirmed")
+                await self.provider.preload()
                 self.next_warm = monotonic() + 300
                 self.state = "ready"
             return True

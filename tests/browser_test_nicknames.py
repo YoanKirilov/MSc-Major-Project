@@ -11,7 +11,7 @@ import uvicorn
 from app.main import create_app
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import browser_listener
+from tests.fixtures.browser import browser_listener, wait_for_js
 from tests.unit.test_action_checks import document
 
 pytestmark = [
@@ -51,7 +51,7 @@ def test_delayed_nicknames_conflicts_and_mobile_checklists(tmp_path, monkeypatch
             ctx = browser.new_context(viewport={"width": 390, "height": 844})
             page = ctx.new_page()
             page.goto(manager.get_bootstrap_url(port))
-            page.wait_for_function("!location.hash.includes('token=')")
+            wait_for_js(page, "!location.hash.includes('token=')")
             factual = ctx.request.get(endpoint).json()
             device = doc.devices[0].device_id
             revision = 1

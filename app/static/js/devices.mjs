@@ -1,7 +1,7 @@
 // Display-only device components. Nicknames and later lookups remain notes;
 // announcements and previous observations never become completed scan checks.
 import {
-  IDENTIFY_DEVICE_LABEL, deviceLabel, featureLabel, namingCoverage,
+  IDENTIFY_DEVICE_LABEL, deviceLabel, featureLabel, namingCoverage, nameLookupMessage, nameDiagnosticText,
   recordedDeviceRole, recordedTimeLabel, reviewItemTitle,
 } from './presentation.mjs?v=20261014-dates';
 import { prioritise } from './report.mjs?v=20261008-dates';
@@ -167,9 +167,10 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
     heading.append(text('span', deviceLabel(device), 'device-summary-name'));
     heading.append(text('span', `Network address: ${device.ip}`, 'device-summary-address'));
     heading.append(text('span', nameQualification(device), 'device-summary-source'));
-    heading.append(text('span', possibleCategory(device, data), 'device-summary-type'));
+    const category = possibleCategory(device, data);
+    heading.append(text('span', category, 'device-summary-type'));
     const role = recordedDeviceRole(device, data);
-    if (role) heading.append(text('span', role, 'device-summary-source'));
+    if (role && category !== 'This computer (scan source)') heading.append(text('span', role, 'device-summary-source'));
     heading.append(text('span', deviceStatus(device, target), 'device-summary-status'));
     const incomplete = !device.device_id || (target && target.service_status !== 'completed');
     heading.append(text('span', incomplete && !services.length && !findings.length
@@ -271,6 +272,10 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
     fact(identity, 'Possible type', possibleCategory(device, data));
     if (device.vendor) fact(identity, 'Network adapter manufacturer', `${device.vendor} — does not identify the device model`);
     about.append(identity);
+    for (const diagnostic of device.name_diagnostics || []) {
+      const description = nameDiagnosticText(diagnostic);
+      if (description) about.append(text('p', description));
+    }
     if (device.hostname_source === 'saved_report') about.append(text('p', 'An earlier scan reported this name for the same network-adapter address. It was not confirmed this time. Adapter addresses can change or be copied.'));
     if (device.hostname_conflict) about.append(text('p', 'Different sources reported different names. Do not choose one as a verified identity; compare with the device itself or your router.'));
     if (device.name_candidates?.length) {
@@ -369,14 +374,16 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
           laterDetails.replaceChildren();
           if (!later) { lookupStatus.hidden = true; lookupStatus.textContent = ''; return; }
           lookupStatus.hidden = false;
-          lookupStatus.textContent = later.names?.length
-            ? `The last lookup returned ${later.names.length} reported name${later.names.length === 1 ? '' : 's'}: ${later.names.map(item => item.name).join(', ')}. Unverified claims; the saved device name has not changed.`
-            : 'No new name found in the last lookup. The saved name has not changed; this does not mean the device is absent or safe.';
+          lookupStatus.textContent = nameLookupMessage(later);
           const extra = disclosure(`Later identification lookup — ${recordedTimeLabel(later.checked_at)}`,
             'device-supporting-details', 'later-identification');
           extra.open = open;
           for (const name of later.names || []) extra.append(text('p', `${name.name} — ${nameSources[name.source] || name.source}; ${recordedTimeLabel(name.observed_at)}. Unverified name claim.`));
           for (const note of later.notes || []) extra.append(text('p', note));
+          for (const diagnostic of later.diagnostics || []) {
+            const description = nameDiagnosticText(diagnostic);
+            if (description) extra.append(text('p', description));
+          }
           laterDetails.append(extra);
         };
         laterDetails.updateNotes(notesSnapshot);

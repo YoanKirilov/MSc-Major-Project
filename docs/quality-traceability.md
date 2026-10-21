@@ -2,8 +2,53 @@
 
 Baseline established before the quality-plan live run on 28 September 2026.
 Acceptance thresholds are in [quality-plan.md](quality-plan.md), not implied by test names.
-Current execution: [quality-evidence-20260928.md](quality-evidence-20260928.md).
+Current status: [verification index](verification-status.md).
+Established baseline: [quality-evidence-20260928.md](quality-evidence-20260928.md).
 PASS/LIMITED/FAIL/PENDING apply to the stated test conditions, not a whole ISO standard.
+
+## F1-F4 follow-up - 21 October 2026
+
+[Four fixes and acceptance evidence](issue-fixes-20261021.md) links Q03/Q06 to
+operation-owned late outcomes, readiness-independent recovery and truthful failed-
+discovery wording. Q04/Q05/Q08 preserve fail-closed network authorisation while
+retaining precise bounded query reasons. Q11/Q12 now include 987 Python/292 JavaScript,
+30 Chromium/Firefox cases, security and fresh installed-wheel passes. Saved report
+reopening preserved factual data/AI records and submitted no scans. Normal restart,
+fresh authorised live verification, hosted CI and Q07 actual reader/AT work remain
+separate from these local implementation passes.
+
+## Findings implementation - 20-21 October 2026
+
+[Implementation and acceptance evidence](findings-implementation-20261020.md) links
+Q04/Q05/Q08 to per-intention durable scan-start receipts, authenticated GET-only
+recovery, current-connection checks and fail-closed journal bounds. Q03/Q06 include
+refresh-safe uncertainty and shorter role/CVE wording without hiding incomplete
+checks or evidence. Q11/Q12 include patched trust bootstrap, complete dependency/
+static/secret gates, isolated regressions, actual Chromium/Firefox workflows and a
+fresh installed wheel. Saved live-report reopening submitted zero scans and preserved
+test/normal evidence. Normal-process deployment, current hosted matrix and Q07
+novice/real-AT work remain pending. Earlier failures and dated passes are retained.
+
+## Audit improvements - 18 October 2026
+
+[I1-I9 implementation and evidence](improvements-20261018.md) adds Q03/Q06
+chunked first-action and unavailable-JavaScript guidance; Q04/Q05 conservative
+CVE applicability/URL and recovery-capacity boundaries; Q11 actual-engine fixtures,
+bounded redacted CI diagnostics, regressions and a measured cache benchmark; and
+Q12 a freshly installed wheel. The scanner/analysis contracts retain isolated
+coverage/cancellation tests and factual JSON. No new live scans were submitted.
+Q07 reader/real assistive-technology work, representative simultaneous-load
+measurement, current hosted matrix publication and live Ubuntu evaluation remain
+PENDING. Automated browser/DOM checks are not participant or WCAG certification.
+
+## Targeted outcome fixes - 18 October 2026
+
+[F1-F3 implementation and checks](issue-fixes-20261018.md) cover operation-specific
+CVE receipts, safe GET recovery, unchanged reference dates/evidence, and explicit
+name-lookup completion when saved content is identical. Baseline, local synthetic,
+real-scan and participant evidence are distinguished in the linked current index.
+The wider recommendations were subsequently addressed in the separate improvements
+record above; this targeted record retains its original scope and evidence.
 
 ## Bounded report management - 13 October 2026
 

@@ -1,6 +1,34 @@
 // Display-only helpers. Never turn annotations or optional observations into findings.
 export const IDENTIFY_DEVICE_LABEL = 'Try identifying this address again';
 
+export function nameDiagnosticText(item) {
+  const source = { reverse_dns: 'Local name lookup', mdns: 'Device announcement lookup' }[item?.source];
+  const status = { found: 'reported a name', not_found: 'returned no name', timeout: 'did not answer before its time limit',
+    busy: 'could not start because name workers were busy', error: 'could not finish', not_checked: 'was not run' }[item?.status];
+  if (!source || !status) return '';
+  const elapsed = Number.isInteger(item.elapsed_ms) && item.elapsed_ms >= 0 && item.elapsed_ms <= 60000
+    ? ` (${(item.elapsed_ms / 1000).toFixed(2)} seconds)` : '';
+  return `${source}: ${status}${elapsed}. A name is not verified device identity.`;
+}
+
+export function nameLookupMessage(record) {
+  if (!record) return 'The lookup finished, but its saved name result could not be confirmed. Reload the report to read the latest information. The original scan is unchanged.';
+  return record.names?.length
+    ? `The last lookup returned ${record.names.length} reported name${record.names.length === 1 ? '' : 's'}: ${record.names.map(item => item.name).join(', ')}. Unverified claims; the saved device name has not changed.`
+    : 'No new name found in the last lookup. The saved name has not changed; this does not mean the device is absent or safe.'
+      + ((record.diagnostics || []).some(item => ['timeout', 'busy', 'error'].includes(item.status)) ? ' A name source could not finish; see the lookup details below.' : '');
+}
+
+export function readableOverview(value) {
+  // Display-only equivalents for the reviewed overview's known technical labels.
+  // Counts, qualifiers and the saved model text/evidence are never changed.
+  if (typeof value !== 'string') return '';
+  return value.replace(/\bopen service(s?)\b/g, (_match, plural) => `feature${plural} that answered`)
+    .replace(/\bservice(s?) accepting requests\b/g, (_match, plural) => `feature${plural} that answered`)
+    .replace('A service is a device feature that other devices can contact, such as file sharing.',
+      'A feature is something a device can do, such as show a web page or share files.');
+}
+
 export function recordedTimeLabel(value, unavailable = 'Time unavailable') {
   // Do not invent a local timezone for uncertain legacy/imported metadata.
   if (typeof value !== 'string') return unavailable;
@@ -101,7 +129,7 @@ export function matchesSearch(query, values, deviceAddress) {
 export function actionDeviceLabel(device, data) {
   const label = device ? `${deviceLabel(device)} (${device.ip})` : 'Observed device';
   const role = recordedDeviceRole(device, data);
-  return role ? `${label} — ${role.startsWith('Network gateway') ? 'Network gateway (recorded route, not a verified device name)' : role}` : label;
+  return role ? `${label} — ${role.startsWith('Network gateway') ? 'Network connection device (name unconfirmed)' : role}` : label;
 }
 
 export function deviceSearchValues(device, services = []) {

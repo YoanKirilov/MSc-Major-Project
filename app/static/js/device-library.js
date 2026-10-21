@@ -1,4 +1,4 @@
-import { request } from './api.js?v=20261001-network-recovery';
+import { request } from './api.js?v=20261018-cve-deadline';
 import { recordedTimeLabel } from './presentation.mjs?v=20261014-dates';
 import { createDeviceLibrary, deviceReportHref, DEVICE_PAGE_SIZE, DEVICE_ROOM_LIMIT, DEVICE_VIEWS, validDeviceLabels } from './device-library-model.mjs?v=20261015-inclusive';
 import { createDeviceContext } from './device-library-context.mjs?v=20261014-return-context';

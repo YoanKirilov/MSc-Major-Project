@@ -1,4 +1,4 @@
-import { request } from './api.js?v=20261001-network-recovery';
+import { request } from './api.js?v=20261018-cve-deadline';
 import { startRecoveryBrowser } from './recovery.mjs?v=20261014-recovery';
 import { historyContext, reportIdentity, reportDateLabel } from './history-context.mjs?v=20261014-context';
 import { createHistoryFeed } from './history-feed.mjs?v=20261014-paged-viewport';
@@ -36,7 +36,9 @@ document.querySelector('#storageUsageButton').addEventListener('click', async ev
       output.textContent = `${(usage.bytes / 1048576).toFixed(1)} MiB in ${usage.files} files (older active-data measurement). Recovery copies are not included. Restart the NetGuard backend task for separate active/recovery totals. No files were removed.`;
       return;
     }
-    output.textContent = `${(usage.active_bytes / 1048576).toFixed(1)} MiB active saved data; ${(usage.recovery_bytes / 1048576).toFixed(1)} MiB recovery copies (capacity ${(usage.recovery_limit_bytes / 1048576).toFixed(0)} MiB). ${usage.files} files in total. ${usage.warning || 'No files were removed.'}`;
+    const copies = Number.isSafeInteger(usage.recovery_reports) && Number.isSafeInteger(usage.recovery_limit_reports)
+      ? ` ${usage.recovery_reports} of ${usage.recovery_limit_reports} recovery-copy slots used.` : '';
+    output.textContent = `${(usage.active_bytes / 1048576).toFixed(1)} MiB active saved data; ${(usage.recovery_bytes / 1048576).toFixed(1)} MiB recovery copies (capacity ${(usage.recovery_limit_bytes / 1048576).toFixed(0)} MiB).${copies} ${usage.files} files in total. ${usage.warning || 'No files were removed.'}`;
   } catch (error) { output.textContent = error.message; }
   finally { document.querySelector('#storageUsageButton').disabled = false; }
 });

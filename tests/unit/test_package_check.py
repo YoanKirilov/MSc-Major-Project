@@ -44,11 +44,18 @@ def test_package_build_is_pinned_and_offline_index_disabled(tmp_path, monkeypatc
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(check_package.venv, "EnvBuilder", Builder)
+    bootstraps = []
+    monkeypatch.setattr(
+        check_package,
+        "bootstrap_trust",
+        lambda python, folder, **kwargs: bootstraps.append((python, folder, kwargs)),
+    )
     monkeypatch.setattr(check_package.subprocess, "run", run)
     wheelhouse = tmp_path / "local-wheels"
     wheelhouse.mkdir()
     assert check_package.main(["--offline", "--wheelhouse", str(wheelhouse)]) == 0
     assert [env.name for env in environments] == ["build-venv", "venv"]
+    assert len(bootstraps) == 2 and all(item[2] == {"offline": True} for item in bootstraps)
     installs = [command for command in commands if "install" in command]
     assert len(installs) == 2
     assert all("--no-index" in command and "--find-links" in command for command in installs)

@@ -198,8 +198,10 @@ async def test_ai_can_explain_context_but_cannot_invent_matches(invent):
 
 
 @pytest.mark.parametrize("initial_ai_failure", [False, True])
+@pytest.mark.parametrize("use_operation_receipt", [False, True])
 def test_authenticated_cve_lookup_saves_annotations_and_cache_without_rewriting_scan(
     initial_ai_failure,
+    use_operation_receipt,
 ):
     manager = SessionManager()
     app = create_app(session_manager=manager)
@@ -242,8 +244,13 @@ def test_authenticated_cve_lookup_saves_annotations_and_cache_without_rewriting_
                 message="Old exact-only lookup.",
             ),
         )
-        response = client.post(path, headers=headers, json={})
+        operation = str(uuid4()) if use_operation_receipt else None
+        response = client.post(
+            path, headers=headers, json={"operation_id": operation} if operation else {}
+        )
         assert response.status_code == 200, response.text
+        if operation:
+            assert response.json()["lookup"]["operation_id"] == operation
         assert response.json()["annotations"]["revision"] == response.json()["revision"]
         renamed = client.put(
             f"/api/live-scans/{scan.scan_id}/title",
@@ -258,22 +265,53 @@ def test_authenticated_cve_lookup_saves_annotations_and_cache_without_rewriting_
             "fixed" if initial_ai_failure else "ollama"
         )
         app.state.explanations.provider = CveProvider()
-        retried = client.post(path, headers=headers, json={}).json()
+        next_operation = str(uuid4()) if use_operation_receipt else None
+        retried = client.post(
+            path,
+            headers=headers,
+            json={"operation_id": next_operation} if next_operation else {},
+        ).json()
         assert retried["cached"]
         assert retried["annotations"]["title"] == "Changed in another tab"
         assert retried["annotations"]["revision"] == retried["revision"]
         assert retried["lookup"]["ai_source"] == "ollama"
         assert retried["lookup"]["ai_fallback_reason"] is None
+        if next_operation:
+            assert retried["lookup"]["operation_id"] == next_operation
+            assert retried["lookup"]["checked_at"] == response.json()["lookup"]["checked_at"]
+            assert retried["annotations"]["cve_lookups"][0]["operation_id"] == next_operation
         assert len(calls) == 2
         assert primary.read_bytes() == original
         saved = AnnotationStore(app.state.store)._load(scan.scan_id)
         assert saved.cve_lookups[0].results[0].cve_id == "CVE-2021-41773"
+        if next_operation:
+            assert saved.cve_lookups[0].operation_id == next_operation
+            assert all(next_operation not in str(call.url) for call in calls)
+        # Writes require JSON media type even when the legacy body is empty.
+        assert (
+            client.post(path, headers={**headers, "Content-Type": "application/json"}).status_code
+            == 200
+        )
+        assert len(calls) == 2
         assert (
             client.post(
                 path.replace(service.service_id, str(uuid4())), headers=headers, json={}
             ).status_code
             == 404
         )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"operation_id": "not-a-uuid"}, {"operation_id": ["invalid"]}, {"unexpected": "field"}],
+)
+def test_cve_receipt_request_rejects_invalid_metadata(body):
+    manager = SessionManager()
+    app = create_app(session_manager=manager)
+    with TestClient(app, base_url=BASE_URL) as client:
+        headers = authenticate_client(client, manager)
+        path = f"/api/live-scans/{uuid4()}/services/{uuid4()}/cves"
+        assert client.post(path, headers=headers, json=body).status_code == 422
 
 
 def test_report_cve_availability_uses_lookup_policy_without_changing_saved_facts():

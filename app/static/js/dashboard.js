@@ -1,6 +1,7 @@
-import { request } from './api.js?v=20261001-network-recovery';
+import { request } from './api.js?v=20261018-cve-deadline';
 import { configurePicker, startSetupTools } from './setup-tools.mjs?v=20261014-reliability';
 import { analysisProgressText, progressAnnouncement, readScanSetup, ollamaStatusText } from './report.mjs?v=20261014-reliability';
+import { createStartState } from './start-state.mjs?v=20261021-organisation';
 
 const launchButton = document.querySelector('#scanLaunchButton');
 const configText = document.querySelector('#scan-config');
@@ -69,7 +70,6 @@ let selectedProfile = pageProfile || requestedSetup?.profile || 'light';
 let savedLightHosts = selectedProfile === 'light' ? (requestedSetup?.hosts || []) : [];
 let activeNetwork = null;
 let scopeSource = null;
-let scopeConfirmationSupported = false;
 let activeScanId = null;
 let statusReady = false;
 let statusError = null;
@@ -77,6 +77,97 @@ let networkWarning = null;
 let storageReady = false;
 let pollFailures = 0;
 const pendingScanKey = `network-assessor-pending-scan${pageProfile ? `:${pageProfile}` : ''}`;
+const pendingStartKey = `${pendingScanKey}:start`;
+const startRecover = document.querySelector('#scanStartRecover');
+const startReset = document.querySelector('#scanStartReset');
+let initialStart = validScanId(scanParams.get('start')) ? scanParams.get('start') : null;
+try {
+  if (!initialStart && !newScanSetup) {
+    const saved = window.sessionStorage.getItem(pendingStartKey);
+    if (validScanId(saved)) initialStart = saved;
+  }
+  if (newScanSetup && !initialStart) window.sessionStorage.removeItem(pendingStartKey);
+} catch { /* A pinned URL also preserves uncertain start recovery. */ }
+const starts = createStartState(initialStart);
+const ownsStart = starts.owns;
+
+function rememberStart(id) {
+  if (starts.select(id)) startRecover.disabled = false;
+  try {
+    if (id) window.sessionStorage.setItem(pendingStartKey, id);
+    else window.sessionStorage.removeItem(pendingStartKey);
+  } catch { /* Never store permission or automatically resubmit from this key. */ }
+  if (id) window.history.replaceState(null, '', `${pagePath}#start=${id}`);
+  else if (window.location.hash.startsWith('#start=')) window.history.replaceState(null, '', pagePath);
+  startRecover.hidden = startReset.hidden = !id;
+  if (id) {
+    deepHostInput.disabled = true;
+    modeButtons.forEach(button => { button.disabled = true; });
+    document.querySelector('#recentDeviceSelect').disabled = true;
+    document.querySelector('#refreshDeviceChoices').disabled = true;
+  }
+}
+
+function showStartUncertain(message) {
+  errorPanel.hidden = !message;
+  errorPanel.textContent = message || '';
+  launchButton.disabled = true;
+  launchButton.querySelector('span').textContent = 'Confirming original start';
+  progress.hidden = false;
+  cancelButton.hidden = true;
+  phaseText.textContent = 'Confirming whether your scan started';
+  detailText.textContent = 'Reading the original attempt; no replacement scan is submitted.';
+  progressTrack.removeAttribute('aria-valuenow');
+  progressTrack.setAttribute('aria-valuetext', 'Scan start not yet confirmed. No replacement submitted.');
+  percentText.textContent = 'Waiting';
+  startRecover.hidden = startReset.hidden = false;
+  showScanMessage('The original start is not yet confirmed. Checking it does not start another scan.');
+}
+
+async function recoverStart() {
+  const read = starts.beginRead();
+  if (!read) return;
+  const { operation, generation } = read;
+  startRecover.disabled = true;
+  let again = true;
+  try {
+    const receipt = await request(`/api/scan-starts/${operation}`);
+    if (!ownsStart(operation, generation)) return;
+    if (receipt.request) document.querySelector('#progressTarget').textContent =
+      `Original ${receipt.request.profile === 'deep-tcp-v1' ? 'Deep' : 'Light'} scan: ${receipt.request.cidr || receipt.request.hosts?.join(', ') || receipt.request.confirmed_scope}. These settings belong to the original attempt.`;
+    if (receipt.state === 'accepted' && validScanId(receipt.scan_id)) {
+      rememberStart(null);
+      errorPanel.hidden = true;
+      await resumeScan(receipt.scan_id);
+      return;
+    }
+    if (receipt.state === 'rejected') {
+      rememberStart(null);
+      setError('The original scan was not started. Check your settings before choosing Scan again.');
+      return;
+    }
+    showStartUncertain(receipt.state === 'preparing' ? ''
+      : 'The earlier start cannot finish or its report is unavailable. Read Saved reports before choosing a new scan.');
+    again = receipt.state === 'preparing';
+  } catch (error) {
+    again = ![401, 403].includes(error.status);
+    if (ownsStart(operation, generation)) showStartUncertain(error.status === 404
+      ? 'The app has not recorded this start yet. Keep checking the original attempt before choosing another scan.'
+      : error.status === 401 ? 'Your local app session has expired. Reopen the session link in the backend terminal, then return to this original start. No replacement scan was submitted.'
+      : error.message);
+  } finally {
+    if (starts.finishRead(read)) startRecover.disabled = false;
+    if (again && starts.shouldPoll(read)) {
+      window.setTimeout(() => { if (ownsStart(operation, generation)) recoverStart(); }, 3000);
+    }
+  }
+}
+startRecover.addEventListener('click', () => { starts.resetReads(); return recoverStart(); });
+startReset.addEventListener('click', () => {
+  if (!window.confirm('The original scan may still exist. Check running scans and Saved reports first. Return to setup for a separate new scan?')) return;
+  rememberStart(null);
+  setError('Back at setup. No new scan was submitted. The earlier scan, if accepted, remains available in running scans or Saved reports.');
+});
 launchButton.disabled = true;
 launchButton.querySelector('span').textContent = 'Checking scanner...';
 
@@ -163,7 +254,7 @@ function showSetup() {
 deepHostInput.value = selectedProfile === 'deep-tcp-v1' ? (requestedSetup?.hosts[0] || '') : '';
 showSetup();
 modeButtons.forEach((button) => button.addEventListener('click', () => {
-  if (activeScanId) return;
+  if (activeScanId || starts.operation) return;
   selectedProfile = button.dataset.profile;
   savedLightHosts = [];
   showSetup();
@@ -171,6 +262,7 @@ modeButtons.forEach((button) => button.addEventListener('click', () => {
 clearTargetsButton.addEventListener('click', () => { if (!activeScanId) { savedLightHosts = []; showSetup(); } });
 
 function setError(message) {
+  if (starts.operation) { showStartUncertain(message); return; }
   errorPanel.hidden = false;
   errorPanel.textContent = message;
   progress.hidden = !activeScanId;
@@ -211,14 +303,23 @@ cancelButton.addEventListener('click', async () => {
 async function loadStatus() {
   capacityFull = false;
   capacityNote.hidden = true;
+  // Recovery reads do not depend on Nmap/AI/status readiness and never submit work.
+  if (starts.operation) {
+    rememberStart(starts.operation);
+    showStartUncertain('');
+    await recoverStart();
+    return;
+  }
+  const generation = starts.generation;
+  const currentStatus = () => generation === starts.generation && !starts.operation && !activeScanId;
   try {
     const status = await request('/api/status');
+    if (!currentStatus()) return;
     statusReady = true;
     statusError = null;
     scannerAvailable = status.scanner_available;
     activeNetwork = status.allowed_network;
     scopeSource = status.scope_source;
-    scopeConfirmationSupported = status.scope_confirmation_supported === true;
     networkWarning = status.network_warning || null;
     storageReady = status.storage_status === 'ok';
     const activeIds = (status.active_scan_ids || (status.active_scan_id ? [status.active_scan_id] : []))
@@ -265,11 +366,12 @@ async function loadStatus() {
       configText.textContent = 'Your home network could not be detected. Open Settings to choose the authorised network.';
     }
   } catch (error) {
+    if (!currentStatus()) return;
     statusReady = false;
     statusError = error.message;
     configText.textContent = `Scanner status could not be checked. ${error.message}`;
   } finally {
-    if (!activeScanId) {
+    if (currentStatus()) {
       launchButton.disabled = capacityFull;
       launchButton.querySelector('span').textContent = capacityFull ? 'Waiting for a free slot' : !statusReady ? 'Retry connection' : networkWarning ? 'Check network again' : 'Scan';
     }
@@ -399,6 +501,7 @@ async function pollScan(scanId) {
 }
 
 launchButton.addEventListener('click', async () => {
+  if (starts.operation) return;
   errorPanel.hidden = true;
   if (activeScanId) return;
   if (capacityFull) return;
@@ -441,27 +544,42 @@ launchButton.addEventListener('click', async () => {
   progress.hidden = false;
   phaseText.textContent = 'Preparing local scan';
   detailText.textContent = 'Validating authorised scope';
+  let operation = null;
+  let generation;
   try {
+    operation = globalThis.crypto?.randomUUID?.();
+    if (!operation) throw new Error('This browser cannot safely identify a scan start. Use an updated browser on the local app address. No scan was submitted.');
+    rememberStart(operation);
+    generation = starts.generation;
     const payload = await request('/api/live-scans', {
       method: 'POST',
       body: JSON.stringify({
+        operation_id: operation,
         mode: deep || savedLightHosts.length ? 'known_hosts' : 'discover',
         profile: selectedProfile,
         hosts: deep ? [deepHost] : savedLightHosts,
         authorised: true,
-        ...(scopeConfirmationSupported ? { confirmed_scope: activeNetwork } : {}),
+        confirmed_scope: activeNetwork,
       }),
     });
+    // Reset/new-start and GET recovery may have superseded this HTTP caller.
+    if (!ownsStart(operation, generation)) return;
+    if (!validScanId(payload.scan_id)) throw new Error('The app reply did not identify the scan. Checking the original start; no replacement is submitted.');
+    rememberStart(null);
     await resumeScan(payload.scan_id);
   } catch (error) {
+    if (operation && !ownsStart(operation, generation)) return;
     if (error.status === 429) {
+      rememberStart(null);
       // Another tab may have taken the last slot since status was read.
       progress.hidden = true;
       cancelButton.hidden = true;
       showCapacityWait();
       return;
     }
+    if ([400, 401, 403, 409, 422].includes(error.status)) rememberStart(null);
     setError(error.message);
+    if (starts.operation) await recoverStart();
   }
 });
 

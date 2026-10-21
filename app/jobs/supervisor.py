@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import socket
 from collections.abc import Callable
 from ipaddress import IPv4Address
 from time import monotonic
@@ -10,6 +9,7 @@ from typing import Any
 
 from filelock import Timeout as StorageLockTimeout
 
+from app.jobs.analysis import execute_analysis
 from app.jobs.scheduling import ExecutionBudget, QueueCancelled, QueueExpired, capacity_slot
 from app.jobs.transitions import close_unfinished, interrupted_document, mark_host_failure
 from app.profiling.classifier import classify_device
@@ -36,6 +36,7 @@ from app.scanner.parser import (
     parse_discovery_details,
     parse_host,
 )
+from app.scanner.reverse_dns import NameResolution, ReverseDnsResolver
 from app.scanner.runner import ProcessResult, run_process
 from app.schemas.common import iso_z, utc_now
 from app.schemas.scan import AnalysisProgress, HostAttempt, ScanDocument
@@ -55,6 +56,7 @@ class ScanSupervisor:
         max_concurrent_scans: int = 5,
         pihole_client=None,
         app_config=None,
+        name_resolver=None,
     ):
         self.store = store
         self.nmap_path = nmap_path
@@ -63,6 +65,7 @@ class ScanSupervisor:
         self.mdns_browser = mdns_browser
         self.pihole_client = pihole_client
         self.app_config = app_config
+        self.name_resolver = name_resolver or ReverseDnsResolver()
         self.max_concurrent_scans = max(1, max_concurrent_scans)
         self._tasks: dict[str, asyncio.Task] = {}
         self._analysis_tasks: dict[str, asyncio.Task] = {}
@@ -286,14 +289,8 @@ class ScanSupervisor:
 
     _close_unfinished = staticmethod(close_unfinished)
 
-    async def _local_hostname(self, ip: str) -> str | None:
-        try:
-            hostname, _, _ = await asyncio.wait_for(
-                asyncio.to_thread(socket.gethostbyaddr, ip), timeout=1.0
-            )
-        except (OSError, asyncio.TimeoutError):
-            return None
-        return hostname[:255] if hostname else None
+    async def _local_hostname(self, ip: str) -> NameResolution:
+        return await self.name_resolver.lookup(ip)
 
     async def _enrich_names(self, scan_id: str, cancel_event: asyncio.Event) -> None:
         from app.scanner.names import add_mdns_names, add_name
@@ -793,7 +790,13 @@ class ScanSupervisor:
                     device.hostname_observed_at = device.observed_at
                 if compatible:
                     add_name(device, identity.get("hostname"), "nmap_discovery", device.observed_at)
-                add_name(device, await self._local_hostname(ip), "reverse_dns", device.observed_at)
+                resolved_name = await self._local_hostname(ip)
+                if isinstance(resolved_name, NameResolution):
+                    device.name_diagnostics.append(resolved_name.diagnostic)
+                    hostname = resolved_name.hostname
+                else:
+                    hostname = resolved_name  # Injected legacy/synthetic resolver.
+                add_name(device, hostname, "reverse_dns", device.observed_at)
                 device.profile = device.profile.model_validate(classify_device(device, services))
                 findings = evaluate_device(device, services, profile=document.policy.get("profile"))
 
@@ -1008,29 +1011,15 @@ class ScanSupervisor:
 
     async def _run_explanations(self, scan_id: str) -> None:
         try:
-            await self._checkpoint(
-                scan_id,
-                lambda current: current.model_copy(
-                    update={
-                        "analysis_progress": (
-                            current.analysis_progress or AnalysisProgress()
-                        ).model_copy(update={"state": "waiting", "active": 0}),
-                    }
-                ),
+            await execute_analysis(
+                scan_id=scan_id,
+                service=self.explanation_service,
+                capacity=self._analysis_capacity,
+                checkpoint=self._checkpoint,
+                finish=self._finish_explanations,
+                queue_timeout_s=self.queue_timeout_s,
+                timeout_s=self.analysis_timeout_s,
             )
-            async with capacity_slot(self._analysis_capacity, timeout_s=self.queue_timeout_s):
-                async with asyncio.timeout(self.analysis_timeout_s):
-                    await self.explanation_service.explain_scan(scan_id)
-        except QueueExpired:
-            await self._finish_explanations(scan_id, warning_code="AI_QUEUE_EXPIRED")
-        except asyncio.CancelledError:
-            await self._finish_explanations(scan_id, warning_code="AI_EXPLANATION_CANCELLED")
-            raise
-        except Exception:
-            logger.exception("AI explanation failed for scan %s", scan_id)
-            await self._finish_explanations(scan_id, warning_code="AI_EXPLANATION_FAILED")
-        else:
-            await self._finish_explanations(scan_id)
         finally:
             self._analysis_tasks.pop(scan_id, None)
 

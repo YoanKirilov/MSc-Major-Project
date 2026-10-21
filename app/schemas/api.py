@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
 from app.scanner.commands import MAX_KNOWN_HOSTS
 from pydantic import Field
@@ -9,6 +10,7 @@ from .common import StrictModel
 
 
 class ScanCreateRequest(StrictModel):
+    operation_id: UUID | None = None
     mode: str = Field(max_length=16)
     cidr: str | None = Field(default=None, max_length=18)
     hosts: list[Annotated[str, Field(min_length=1, max_length=15)]] = Field(
@@ -21,3 +23,4 @@ class ScanCreateRequest(StrictModel):
 
 class RefreshGuidanceRequest(StrictModel):
     expected_revision: int = Field(ge=1)
+    operation_id: UUID | None = None

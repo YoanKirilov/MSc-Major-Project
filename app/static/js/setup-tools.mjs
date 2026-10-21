@@ -1,4 +1,4 @@
-import { request } from './api.js?v=20261001-network-recovery';
+import { request } from './api.js?v=20261018-cve-deadline';
 import { recordedTimeLabel } from './presentation.mjs?v=20261014-dates';
 
 let pickerLoaded = false;

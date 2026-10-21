@@ -32,6 +32,9 @@ def search_reports(
     recent_devices=False,
 ):
     page = store._list_scans(source="live", offset=0, limit=2**31 - 1)
+    store.library_cache.prefer(
+        [item["scan_id"] for item in page["items"] if item["storage_status"] == "ok"]
+    )
     annotations = AnnotationStore(store)
     nicknames = NicknameStore(store)
     warnings = set()

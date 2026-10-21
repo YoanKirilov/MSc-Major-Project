@@ -1,13 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-local-app="{{ 'backend' }}">
   <head>
     <meta charset="UTF-8" />
-    <script>
-      // Live Server previews static templates; the application runs on Python.
-      if ('{{ "backend" }}' !== 'backend') {
-        window.location.replace('http://127.0.0.1:8765/');
-      }
-    </script>
+  <meta name="netguard-api-contract" content="3" />
+    <script src="../static/js/startup.js?v=20261018-csp"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Local network security assessment." />
     <title>NetGuard AI - {{ scan_page | default('local') | capitalize }} Scan</title>
@@ -20,6 +16,7 @@
       {% include "includes/shared-header.html" %}
 
       <main id="main-content" class="scan-home-main" tabindex="-1">
+        <noscript><p class="status-message status-warning">JavaScript is needed to check the scanner and start a scan. Enable it for this local app, then reload. No scan was started by this page. For a custom backend port, open its session link from the backend terminal.</p></noscript>
         <section class="scan-landing" aria-labelledby="page-title">
           <p class="eyebrow">{% if scan_page | default('') %}{{ scan_page | capitalize }} scan{% else %}Private network security{% endif %}</p>
           {% if scan_page | default('') == 'deep' %}
@@ -93,6 +90,8 @@
           <p class="progress-note" id="progressNote">Results will appear when the scan finishes.</p>
           <div class="scan-progress-actions" role="group" aria-label="Actions for this scan">
             <button class="scan-cancel" id="scanCancelButton" type="button" hidden>Cancel scan</button>
+            <button class="secondary-button" id="scanStartRecover" type="button" hidden>Check original scan start</button>
+            <button class="secondary-button" id="scanStartReset" type="button" hidden>Return to scan setup</button>
             <a class="parallel-scan-link" id="anotherScanLink" href="/#setup=1&amp;new=1" target="_blank" rel="noopener">Set up another scan in a new tab</a>
           </div>
           <p class="progress-note">Light and Deep can run together. Each tab keeps its own progress and report; local AI preparation may wait its turn.</p>
@@ -102,18 +101,6 @@
       </main>
       {% include "includes/shared-footer.html" %}
     </div>
-    <script>
-      // This guard must not depend on the module which might fail to load.
-      function dashboardStartupFailed() {
-        const button = document.querySelector('#scanLaunchButton');
-        if (button.querySelector('span').textContent !== 'Checking scanner...') return;
-        document.querySelector('#scan-config').textContent = 'The dashboard could not finish loading. Reload the page (Ctrl+F5) to get the latest app files. If this continues, restart the NetGuard backend and reopen its session link. No scan was started by this page.';
-        button.disabled = false;
-        button.querySelector('span').textContent = 'Reload page';
-        button.onclick = () => window.location.reload();
-      }
-      window.addEventListener('error', dashboardStartupFailed, true);
-    </script>
-    <script type="module" src="/static/js/dashboard.js?v=20261014-reliability" onerror="dashboardStartupFailed()"></script>
+    <script type="module" src="/static/js/dashboard.js?v=20261018-csp"></script>
   </body>
 </html>

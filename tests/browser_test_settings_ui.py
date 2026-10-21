@@ -9,7 +9,7 @@ import pytest
 import uvicorn
 from app.main import create_app
 from app.security.session import SessionManager
-from tests.fixtures.browser import browser_listener, scroll_history_with_keyboard
+from tests.fixtures.browser import browser_listener, scroll_history_with_keyboard, wait_for_js
 
 pytestmark = [
     pytest.mark.browser,
@@ -98,9 +98,9 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
 
             page.route("**/*", intercept)
             page.goto(manager.get_bootstrap_url(port))
-            page.wait_for_function("sessionStorage.getItem('network-assessor-csrf') !== null")
+            wait_for_js(page, "sessionStorage.getItem('network-assessor-csrf') !== null")
             expect(page.locator("#scanLaunchButton")).to_be_enabled()
-            page.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
+            wait_for_js(page, "document.querySelector('#runningScans').dataset.snapshot")
             page.goto(base + "/settings")
             expect(page.locator("#save-settings")).to_be_enabled()
             expect(page.locator("#manual-network-field")).to_be_hidden()
@@ -109,6 +109,9 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
             assert page.title().startswith("Settings")
             expect(page.locator("nav a[aria-current=page]")).to_have_text("Settings")
             expect(page.locator("#network-status")).to_contain_text("backend configuration")
+            page.locator(".settings-advanced").evaluate("element => element.open = true")
+            expect(page.locator("#build-status")).to_contain_text("API contract 3")
+            page.locator(".settings-advanced").evaluate("element => element.open = false")
             page.locator(".skip-link").focus()
             page.keyboard.press("Enter")
             assert page.evaluate("document.activeElement.id") == "main-content"
@@ -198,8 +201,8 @@ def test_settings_history_errors_scope_focus_and_shared_shell(engine, monkeypatc
                         )
                     else:
                         expect(page.locator("#scanLaunchButton")).to_be_enabled()
-                        page.wait_for_function(
-                            "document.querySelector('#runningScans').dataset.snapshot"
+                        wait_for_js(
+                            page, "document.querySelector('#runningScans').dataset.snapshot"
                         )
                         if route == "/deep":
                             expect(page.locator("#recentDeviceNote")).not_to_be_empty()

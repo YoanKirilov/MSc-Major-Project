@@ -1,14 +1,99 @@
-# Current architecture — updated 16 October 2026
+# Current architecture - updated 21 October 2026
+
+The [21 October issue fixes](issue-fixes-20261021.md) close the four reproduced
+edges from the [latest live review](live-review-20261021.md). Dashboard operations
+and read finalizers are generation-owned; saved-start recovery precedes readiness.
+Known Nmap interface failure reasons remain structured through snapshot/guard/report
+storage, with bounded query time/output and no stale network authorisation. Report
+coverage distinguishes interrupted, completed-empty and unrecorded discovery.
+These fixes retain FastAPI, single-owner JSON, separate annotations and fail-closed
+network checks. No fresh live scan was submitted; saved-report display/evidence
+replay passed. The earlier Light interruption is preserved. Broader fresh-query
+sharing/measurement, receipt maintenance and reader studies remain separate work.
+
+The [20-21 October implementation](findings-implementation-20261020.md) resolves
+the trust bootstrap, uncertain-start recovery and source-freshness findings from
+the [preceding live review](live-review-20261020.md). Runtime/QA/security environments
+now use pip 26.2.2 and standalone/vendored certifi 2026.10.19. Fresh CI/package
+environments hash-verify pinned wheels before index access. No TLS or OS trust
+protection is disabled; source identity and dependency audits remain separate checks.
+
+`jobs/start_requests.py` reserves one durable scan UUID per explicit intention
+before preflight. Browser starts and targeted retries pin their operation UUID in
+the URL before POST; uncertainty/refresh uses authenticated GET recovery, not POST
+replay or an arbitrary matching job. Changed settings/source report conflict, and
+repeated accepted POSTs revalidate the current connection without starting work.
+Legacy API clients without an operation ID remain supported and do not acquire
+these deduplication guarantees automatically. The one-owner JSON architecture is
+unchanged: short file-locked receipt writes, at most five preparing starts, 1 MiB/
+1,024 receipts, no silent pruning. Corruption/capacity fails closed while saved
+reports remain accessible. A future maintenance design must not discard receipts
+in a way that lets an old intention run again.
+
+API contract 3 protects dependent scan-start/retry and CVE writes from older
+backends, retaining reads and cancellation. The normal server is still running
+contract 2/build `3e5d3881e53f804e688b`; finish active work, restart its task, reopen
+the session link and reload tabs. The verification helper now compares the actual
+running source build as well as the contract; missing identity is unverified,
+not a match. The updated installed wheel and saved-report reopening are verified
+separately from deploying to the normal process.
+
+The [post-review implementation](post-review-implementation-20261019.md) closes
+the preceding review's reproduced retry/CVE/DNS edge cases. Targeted retry uses
+the document's reason-qualified eligibility policy. CVE applicability is tri-state
+and traversal-bounded. Private-address reverse DNS uses two bounded, cancellable
+standard-library helpers instead of the default executor shared with JSON I/O.
+Optional per-source diagnostics preserve uncertain naming outcomes.
+
+Each service retains eight CVE completion receipts for cross-tab GET-only recovery,
+separate from research dates. A process-frozen source build/API contract is exposed
+in status/Settings and headers; source freshness is checked separately. Older
+contracts block dependent CVE/start/retry writes, preserving evidence reads/cancellation.
+Matching static assets alone still do not prove Python freshness. The helper's
+same-contract/different-source comparison gap is now covered by regression tests.
+
+The [I1-I9 improvements](improvements-20261018.md) retain the same scanner, scope,
+JSON and admission contracts. `jobs/analysis.py` now owns the bounded analysis stage;
+`static/js/name-lookup.mjs` owns explicit name-operation completion. Ollama runtime
+uses the provider's public serialized `preload()` method instead of a private lock.
+No scan, retry, port selection or AI evidence-validation policy is broadened.
+
+Library search admits a stable recent hot set into the existing 512-entry/8 MiB
+per-store cache, including byte-priority admission. Fingerprints still invalidate
+changed scan/terminal files; editable labels are loaded separately. This reduces
+measured full-file churn above capacity but does not eliminate whole-library work
+or create a persistent index. Recovery capacity guidance warns at 80% without purge.
+
+CVE policy `product-research-3` marks absent/unusable applicability as unknown and accepts at
+most three validated HTTPS references tagged Vendor Advisory by NVD. These links
+are user-opened research, not an authenticated maker identity or confirmed device
+vulnerability. Ollama does not invent links; the app does not fetch advisory pages.
+First-action instructions and precautions stay visible; optional reasoning moves
+into a native disclosure. Source evidence and provenance remain available.
+
+CI now separates four common offline/package combinations from twelve actual-engine
+browser combinations. Only bounded redacted synthetic failure exports are uploaded;
+real report folders and raw traces are excluded. This working-tree configuration
+has not yet been published or verified by a new hosted run.
 
 The [safe architecture/GitHub audit](safe-audit-20261016.md) provides a concise layer
 map, confirmed limitations and prioritised open work. The local prototype retains
 FastAPI, one owned JSON data folder, five admitted jobs/two scanner workers/one
-analysis slot and evidence-validated local explanations. The audit found a CVE
-client/server timeout mismatch and ineffective meta-only framing/MIME defences;
-they remain explicit open fixes, not claims resolved by passing tests. GitHub's
-published run is failing and WebKit overflow remains unverified locally. Small
-cleanup only consolidated CPE eligibility and test helpers/fixtures; the local CI
-definition now isolates its Python environment but has not been pushed or rerun.
+analysis slot and evidence-validated local explanations. The
+[18 October fixes](remaining-fixes-20261018.md) resolve the audited CVE timeout
+mismatch and meta-only framing/MIME defences. Explicit CVE POSTs alone may wait
+110 seconds; lost replies recover through saved-annotation reads without automatic
+resubmission. Shared ASGI response headers enforce a self-only CSP and MIME/framing
+protection, including error paths. Startup is external and CSP-compatible; unused
+CDN-based interactive API docs are disabled while `/openapi.json` remains available.
+[GitHub run 23](https://github.com/YoanKirilov/MSc-Major-Project/actions/runs/39079432854)
+is now successful: all twelve platform/browser jobs and the security job passed,
+including hosted Windows and Linux WebKit. Local Windows WebKit remains blocked
+by OS code-integrity protection; that protection was not weakened. The
+[18 October live review](live-review-20261018.md) records the authorised Light/this-PC
+Deep checks and originally open issues. The follow-up reopens that evidence without
+new scans or historical rewrites. Current results and verification limits belong to
+those dated records, not older snapshots or an inferred new hosted CI pass.
 
 The [Ollama/CVE follow-up](cve-and-ollama-followup-20261015.md) wires
 `explanations/runtime.py` into the owned app lifespan. It maintains an installed

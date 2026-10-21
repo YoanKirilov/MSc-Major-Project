@@ -29,6 +29,9 @@ export function deviceCheckLabel(data) {
   const c = data.coverage;
   if (!c) return 'Coverage not recorded';
   const discover = data.target?.mode === 'discover';
+  if (discover && !c.discovered_count && c.discovery_complete === false) {
+    return ['queued', 'running'].includes(data.state) ? 'Search in progress' : 'Search incomplete';
+  }
   return `${c.service_completed_count || 0} of ${(discover ? c.discovered_count : c.candidate_count) || 0} ${discover ? 'discovered' : 'selected'}`;
 }
 
@@ -86,6 +89,11 @@ export function coverageSummary(data) {
   const active = ['queued', 'running'].includes(data.state);
   const remaining = unfinishedDeviceCount(data);
   if (!total && !active) {
+    if (discover && c.discovery_complete !== true) {
+      return c.discovery_complete === false
+        ? 'The device search did not finish, so no devices could be checked. This does not mean no devices are connected.'
+        : 'Device search completion was not recorded. No device checks finished; connected devices may still exist.';
+    }
     return discover
       ? 'No devices answered the search for devices. We could not check their security.'
       : 'No device checks finished. We could not check device security.';
@@ -93,7 +101,8 @@ export function coverageSummary(data) {
   const mdnsOnly = (c.targets || []).filter((target) => target.discovery_sources?.includes('mdns') && !target.discovery_sources.includes('nmap')).length;
   const scope = discover ? `${total} device${total === 1 ? '' : 's'} found${mdnsOnly ? `. Of these, ${mdnsOnly} ${mdnsOnly === 1 ? 'was' : 'were'} seen only through mDNS, a device's announcement that it is on the network` : ''}.` : `${total} device address${total === 1 ? ' was' : 'es were'} selected.`;
   return `${scope} ${finished} device check${finished === 1 ? '' : 's'} finished.`
-    + (remaining ? ` ${remaining} ${active ? 'still pending' : 'did not finish'}.` : '');
+    + (remaining ? ` ${remaining} ${active ? 'still pending' : 'did not finish'}.` : '')
+    + (discover && c.discovery_complete === false && !active ? ' The device search did not finish; other devices may be missing.' : '');
 }
 
 export function emptyFindingMessage(data) {

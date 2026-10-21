@@ -10,14 +10,18 @@ from app.explanations.cve import explain_cves
 from app.scanner.cpe import product_cpe, service_cpe, service_product_cpe
 from app.scanner.cve import LOOKUP_VERSION, NvdBusy
 from app.schemas.common import utc_now
+from app.schemas.cve import CveLookupRequest
 from app.storage.annotations import AnnotationStore
 
 router = APIRouter(prefix="/api")
 
 
 @router.post("/live-scans/{scan_id}/services/{service_id}/cves")
-async def lookup_cves(request: Request, scan_id: str, service_id: str):
+async def lookup_cves(
+    request: Request, scan_id: str, service_id: str, body: CveLookupRequest | None = None
+):
     require_session(request, csrf=True)
+    operation_id = str(body.operation_id) if body and body.operation_id else None
     document = await live_document(request, scan_id)
     if document.phase != "finished":
         raise HTTPException(409, "Wait for the report to finish before checking CVEs")
@@ -37,7 +41,7 @@ async def lookup_cves(request: Request, scan_id: str, service_id: str):
             and cached.query == service_cpe(service)
             and cached.related_query
             == (product_cpe(cached.resolved_query) or service_product_cpe(service))
-            and cached.related_status in {"candidates", "no_matches"}
+            and cached.related_status in {"candidates", "no_matches", "coverage_unknown"}
             and cached.status in {"candidates", "no_matches", "insufficient_evidence"}
             and (
                 cached.status in {"candidates", "insufficient_evidence"}
@@ -49,13 +53,23 @@ async def lookup_cves(request: Request, scan_id: str, service_id: str):
             except (ValueError, TypeError):
                 age = -1
             if 0 <= age < 86400:
+                needs_save = operation_id is not None
                 if cached.ai_source == "fixed":
                     cached = await explain_cves(
                         cached,
                         request.app.state.explanations.provider,
                         busy=bool(request.app.state.supervisor.active_scan_ids),
                     )
+                    needs_save = True
+                if operation_id is not None:
+                    cached.operation_id = operation_id
+                if needs_save:
+                    # A cached response still acknowledges this specific attempt.
+                    # Keep the reference date/text; only annotate its receipt.
                     annotations = await note_operation(store.update(scan_id, cve=cached))
+                    cached = next(
+                        item for item in annotations.cve_lookups if item.service_id == service_id
+                    )
                 return {
                     "lookup": cached,
                     "revision": annotations.revision,
@@ -77,7 +91,9 @@ async def lookup_cves(request: Request, scan_id: str, service_id: str):
             request.app.state.explanations.provider,
             busy=bool(request.app.state.supervisor.active_scan_ids),
         )
+        result.operation_id = operation_id
         updated = await note_operation(store.update(scan_id, cve=result))
+        result = next(item for item in updated.cve_lookups if item.service_id == service_id)
         return {
             "lookup": result,
             "revision": updated.revision,

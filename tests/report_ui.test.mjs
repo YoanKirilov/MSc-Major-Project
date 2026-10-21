@@ -16,6 +16,23 @@ import { createNicknameState, projectNicknames } from '../app/static/js/nickname
 import { unfinishedDeviceCount, partialScanTitle } from '../app/static/js/report.mjs';
 import { prioritise, serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup } from '../app/static/js/report.mjs';
 
+test('overview display uses everyday feature labels without changing counts or limitations', () => {
+  const legacy = 'Recorded results for 8 devices and 12 open services in the selected checks. Two checks did not finish.';
+  assert.equal(presentation.readableOverview(legacy), 'Recorded results for 8 devices and 12 features that answered in the selected checks. Two checks did not finish.');
+  assert.match(presentation.readableOverview('It found 1 service accepting requests. A service is a device feature that other devices can contact, such as file sharing.'), /1 feature that answered.*show a web page or share files/);
+  assert.equal(presentation.readableOverview('No device checks finished.'), 'No device checks finished.');
+  assert.equal(presentation.readableOverview(null), '');
+  assert.match(legacy, /12 open services/);
+});
+
+test('the report has one labelled review total and no redundant hidden count', () => {
+  const html = readFileSync(new URL('../app/templates/scan.html', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8');
+  assert.match(html, /<dt>Items to review<\/dt><dd id="result-count"/);
+  assert.doesNotMatch(html + source, /finding-metric/);
+  assert.match(html, /not confirmed security problems/);
+});
+
 test('complete IPv4 search is exact identity, not prefixes or addresses in names and notes', () => {
   for (const ip of ['192.168.0.1', '192.168.0.115', '192.168.0.154']) {
     const device = { ip, hostname: '192.168.0.1', details: [{ value: 'Previously at 192.168.0.1' }] };
@@ -103,8 +120,9 @@ test('gateway role is sourced from the saved connection, never from a guessed ad
 test('action labels preserve nicknames and add only recorded roles', () => {
   const device = { ip: '192.168.0.1', user_nickname: 'Home router' };
   const data = { policy: { network_context: { address: '192.168.0.2', connection: { Gateways: [device.ip] } } } };
-  assert.match(presentation.actionDeviceLabel(device, data), /Home router \(your nickname\).*Network gateway/);
-  assert.match(presentation.actionDeviceLabel(device, data), /not a verified device name/);
+  assert.match(presentation.actionDeviceLabel(device, data), /Home router \(your nickname\).*Network connection device/);
+  assert.match(presentation.actionDeviceLabel(device, data), /name unconfirmed/);
+  assert.match(presentation.recordedDeviceRole(device, data), /does not confirm the device name/);
   assert.equal(presentation.actionDeviceLabel(device, {}), 'Home router (your nickname) (192.168.0.1)');
   assert.equal(presentation.actionDeviceLabel(null, data), 'Observed device');
   assert.match(presentation.actionDeviceLabel({ ip: '192.168.0.2' }, data), /Computer that ran this scan/);
@@ -243,10 +261,26 @@ test('plain report wording keeps completed, unfinished and zero-result limits wi
     assert.match(presentation.webPageInstructions(data.devices[0], data.services[0]), /permission.*address bar.*not a confirmed settings.*Do not enter passwords.*HTTP.*Do not bypass certificate warnings/);
     assert.equal(JSON.stringify(data), before);
   }
-  const zero = { state: 'completed', target: { mode: 'discover' }, coverage: { discovered_count: 0, service_completed_count: 0 } };
+  const zero = { state: 'completed', target: { mode: 'discover' }, coverage: { discovered_count: 0, service_completed_count: 0, discovery_complete: true } };
   assert.match(coverageSummary(zero), /No devices answered.*could not check their security/);
   assert.match(emptyFindingMessage(zero), /No devices were assessed/);
   assert.match(emptyFindingMessage({ ...zero, coverage: { service_completed_count: 2 } }), /no items to review.*not fully checked.*does not prove/);
+});
+
+test('interrupted discovery is not reported as a completed unanswered search or zero-of-zero coverage', () => {
+  for (const state of ['failed','cancelled','partial']) {
+    const data={state,target:{mode:'discover'},coverage:{discovered_count:0,service_completed_count:0,discovery_complete:false}};
+    const before=JSON.stringify(data);
+    assert.match(coverageSummary(data),/device search did not finish.*no devices could be checked/);
+    assert.doesNotMatch(coverageSummary(data),/No devices answered/);
+    assert.equal(deviceCheckLabel(data),'Search incomplete');
+    assert.equal(JSON.stringify(data),before);
+  }
+  assert.equal(deviceCheckLabel({state:'running',target:{mode:'discover'},coverage:{discovery_complete:false}}),'Search in progress');
+  const partial={state:'partial',target:{mode:'discover'},coverage:{discovery_complete:false,discovered_count:2,service_completed_count:1}};
+  assert.match(coverageSummary(partial),/2 devices found.*1 device check finished.*1 did not finish.*other devices may be missing/);
+  assert.equal(deviceCheckLabel(partial),'1 of 2 discovered');
+  assert.match(coverageSummary({state:'completed',target:{mode:'discover'},coverage:{}}),/completion was not recorded/);
 });
 
 test('plain AI status names the source and recovery without claiming a model review', () => {
@@ -323,7 +357,20 @@ test('rescan links only prefill bounded setup data and never include authorisati
   assert.equal(readScanSetup('#setup=1&profile=deep-tcp-v1&hosts=192.168.0.53,192.168.0.54'), null);
 });
 
-test('report renderer exposes failures, sorts recommendations and hides older AI wording', () => {
+test('refreshing a report with a pending retry goes to read-only receipt recovery', () => {
+  const operation = '99999999-9999-4999-8999-999999999999';
+  const entry = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8')
+    .split("const title = document.querySelector")[0].replace(/^import[^\n]*\n/gm, '');
+  for (const hash of [`#retry-start=${operation}`, '#retry-start=invalid', '#other=1']) {
+    let redirected;
+    vm.runInNewContext(entry, { URLSearchParams, window: { location: {
+      hash, pathname: '/scans/example', replace(value) { redirected = value; },
+    } } });
+    assert.equal(redirected, hash.includes(operation) ? `/#start=${operation}` : undefined);
+  }
+});
+
+test('report renderer exposes failures, sorts recommendations and hides older AI wording', async () => {
   // Exercise the actual page code with a minimal DOM; no browser dependency.
   const walk = node => node.children.flatMap(child => [child, ...walk(child)]);
   const matches = (node, selector) => {
@@ -428,7 +475,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     document.body.append(button);
   }
   const context = vm.createContext({ document, request: () => { throw Error('Unexpected API request'); }, window: { location: { pathname: '/scans/test' },
-    matchMedia: () => ({ matches: false, addEventListener() {} }) }, URL,
+    matchMedia: () => ({ matches: false, addEventListener() {} }) }, URL, URLSearchParams,
     ...presentation, ...reportView, ...reportDeviceContext, renderReportInsights, bindReportExport, deviceResultEntries, renderDeviceComponents, renderFindingList,
     findingDeviceOptions, repeatedUnknownReplies, createTextEditor, createUnsavedChangesGuard, confirmedTitleReceipt,
     createNicknameState, projectNicknames, createNoteState, checkStatus, projectNotes, partialScanTitle, createCvePanel, prioritise, formatServiceLabel: serviceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, aiExplanationNote, analysisProgressText, scanSetupLink, readScanSetup });
@@ -526,6 +573,11 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   assert.match(text(elements.get('#detailPanel')), /What we found Observed service/);
   assert.doesNotMatch(text(elements.get('#detailPanel')), /Plain explanation/);
   assert.match(text(elements.get('#detailPanel')), /Plain action/);
+  assert.equal(elements.get('#first-action-instruction').textContent, 'Plain action.');
+  assert.equal(elements.get('#first-action-instruction').hidden, false);
+  assert.doesNotMatch(elements.get('#report-first-step').textContent, /Plain action/);
+  assert.equal(elements.get('#first-action-reason').textContent, 'Review settings.');
+  assert.equal(elements.get('#first-action-context').hidden, false);
   assert.doesNotMatch(text(elements.get('#detailPanel')), /Original rule-based explanation|Original rule-based step|Guidance saved before/);
   context.data.explanations = [];
   assert.equal(elements.get('#refreshGuidanceButton').hidden, false);
@@ -577,9 +629,34 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   elements.get('#anotherDeviceButton').events.click();
   assert.doesNotMatch(context.window.location.href, /hosts=/);
   context.data.state = 'partial';
+  context.data.retryable_hosts = ['192.168.0.54'];
   context.data.coverage = { candidate_count: 2, service_completed_count: 1, service_failed_count: 0,
     targets: [{ ip: '192.168.0.53', service_status: 'completed' }, { ip: '192.168.0.54', service_status: 'cancelled', reason_code: 'network_interrupted' }] };
   vm.runInContext('render(data)', context);
   assert.match(elements.get('#result-title').textContent, /1 device could not be checked/);
   assert.match(text(elements.get('#scan-problems')), /network safety check/);
+  assert.equal(elements.get('#retryHostsButton').hidden, false);
+  context.data.retryable_hosts = [];
+  vm.runInContext('render(data)', context);
+  assert.equal(elements.get('#retryHostsButton').hidden, true);
+  const operation = '99999999-9999-4999-8999-999999999999';
+  context.crypto = { randomUUID: () => operation };
+  context.window.location.hash = '#device=example';
+  context.window.history = { replaceState(_a, _b, value) { context.window.location.hash = value.slice(value.indexOf('#')); } };
+  let submissions = 0, failReply;
+  context.request = (path, options) => {
+    submissions++;
+    assert.equal(path, '/api/live-scans/test/retry-hosts');
+    assert.equal(JSON.parse(options.body).operation_id, operation);
+    return new Promise((_resolve, reject) => { failReply = reject; });
+  };
+  const pending = elements.get('#retryHostsButton').events.click();
+  assert.equal(context.window.location.hash, `#retry-start=${operation}`);
+  await elements.get('#retryHostsButton').events.click();
+  vm.runInContext('render(data)', context);
+  assert.equal(elements.get('#retryHostsButton').disabled, true);
+  failReply(new Error('Reply lost'));
+  await pending;
+  assert.equal(submissions, 1);
+  assert.equal(context.window.location.href, `/#start=${operation}`);
 });

@@ -16,10 +16,17 @@ def test_supporting_dialog_contains_keyboard_focus_and_preserves_page_with_text_
     from playwright.sync_api import expect
 
     page, _ = _open(ui, size=(320, 568))
-    page.add_style_tag(
-        content="""* {line-height:1.5 !important;letter-spacing:.12em !important;
-        word-spacing:.16em !important} p {margin-bottom:2em !important}"""
-    )
+    # Exercise the same user text-spacing overrides without injecting an inline
+    # stylesheet, which the application's enforced CSP deliberately rejects.
+    page.evaluate("""() => {
+        for (const element of document.querySelectorAll('*')) {
+            element.style.setProperty('line-height', '1.5', 'important');
+            element.style.setProperty('letter-spacing', '.12em', 'important');
+            element.style.setProperty('word-spacing', '.16em', 'important');
+        }
+        for (const element of document.querySelectorAll('p'))
+            element.style.setProperty('margin-bottom', '2em', 'important');
+    }""")
     trigger = page.locator('[data-supporting-topic="accessibility"]')
     trigger.scroll_into_view_if_needed()
     trigger.focus()
@@ -75,3 +82,35 @@ def test_visible_native_controls_have_visible_names_and_valid_descriptions(ui):
             })"""
         )
         assert not problems, (route, problems)
+
+
+def test_home_and_report_explain_disabled_javascript_without_starting_work(ui):
+    from playwright.sync_api import expect
+
+    page, base, reports = ui
+    context = page.context.browser.new_context(java_script_enabled=False)
+    forbidden = []
+
+    def guard(route):
+        if not route.request.url.startswith(base + "/") or route.request.method != "GET":
+            forbidden.append((route.request.method, route.request.url))
+            route.abort()
+        else:
+            route.continue_()
+
+    context.route("**/*", guard)
+    try:
+        disabled = context.new_page()
+        disabled.goto(base + "/")
+        # Playwright's text matcher deliberately skips NOSCRIPT containers;
+        # inspect the actual rendered warning, not that container's special text.
+        warning = disabled.locator("noscript .status-message")
+        expect(warning).to_be_visible()
+        expect(warning).to_contain_text("No scan was started")
+        expect(disabled.locator("#scanLaunchButton")).to_be_disabled()
+        disabled.goto(base + "/scans/" + reports["rich"].scan_id)
+        expect(warning).to_be_visible()
+        expect(warning).to_contain_text("Your saved results remain")
+    finally:
+        context.close()
+    assert not forbidden

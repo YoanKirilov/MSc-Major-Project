@@ -1,15 +1,16 @@
-import { request } from './api.js?v=20261001-network-recovery';
+import { request } from './api.js?v=20261018-cve-deadline';
 import { createTextEditor, createUnsavedChangesGuard } from './editor.mjs?v=20261015-edit-recovery';
 import { renderFindingList, findingDeviceOptions, repeatedUnknownReplies } from './finding-list.mjs?v=20261012-followups';
 import { createReadingState, openDisclosureKeys, restoreDisclosures, bindReportNavigation, bindSupportingInformation } from './report-view.mjs?v=20261015-inclusive';
 import { readReportDeviceContext, resolveReportDeviceContext, resumeReportDeviceContext } from './report-device-context.mjs?v=20261015-inclusive';
 import { renderDeviceSummaries as renderDeviceComponents, deviceResultEntries } from './devices.mjs?v=20261014-reliability';
-import { createCvePanel } from './cves.mjs?v=20261015-related';
+import { createCvePanel } from './cves.mjs?v=20261018-lookup-receipts';
+import { refreshNameLookup } from './name-lookup.mjs?v=20261018-improvements';
 import { renderReportInsights } from './report-insights.mjs?v=20261014-simpler-report';
 import { bindReportExport } from './report-export.mjs?v=20261014-device-first';
 import { createNoteState, checkStatus, projectNotes, confirmedTitleReceipt } from './notes.mjs?v=20261015-edit-recovery';
 import { createNicknameState, projectNicknames } from './nicknames.mjs?v=20261007-followup';
-import { recordedTimeLabel, localFeatureHelp, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261014-dates';
+import { recordedTimeLabel, localFeatureHelp, readableOverview, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261018-lookup-outcomes';
 import { partialScanTitle, prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261014-reliability';
 
 const severityConfig = {
@@ -19,6 +20,10 @@ const severityConfig = {
   informational: { label: 'Review', color: 'var(--severity-info)' },
 };
 const scanId = window.location.pathname.split('/').pop();
+const returningStart = new URLSearchParams((window.location.hash || '').slice(1)).get('retry-start');
+if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returningStart || '')) {
+  window.location.replace(`/#start=${returningStart}`);
+}
 const title = document.querySelector('#result-title');
 const lead = document.querySelector('#result-lead');
 const status = document.querySelector('#result-status');
@@ -406,15 +411,31 @@ function scheduleNicknameRefresh() {
   }, 8000);
 }
 
+let retryStartPending = false;
 retryHostsButton.addEventListener('click', async () => {
-  if (!currentData) return;
+  if (!currentData || retryStartPending) return;
   retryHostsButton.disabled = true;
+  const operation = globalThis.crypto?.randomUUID?.();
+  if (!operation) {
+    status.textContent = 'An updated browser on the local app address is required to identify a retry safely. No scan was submitted.';
+    retryHostsButton.disabled = false;
+    return;
+  }
+  retryStartPending = true;
+  const previousHash = window.location.hash || '';
+  window.history.replaceState(null, '', `/scans/${scanId}#retry-start=${operation}`);
   try {
     const result = await request(`/api/live-scans/${scanId}/retry-hosts`, {
-      method: 'POST', body: JSON.stringify({ expected_revision: currentData.revision }),
+      method: 'POST', body: JSON.stringify({ expected_revision: currentData.revision, operation_id: operation }),
     });
     window.location.href = `/scans/${result.scan_id}`;
   } catch (error) {
+    if (!Number.isInteger(error.status) || error.status >= 500) {
+      window.location.href = `/#start=${operation}`;
+      return;
+    }
+    retryStartPending = false;
+    window.history.replaceState(null, '', `/scans/${scanId}${previousHash}`);
     status.textContent = error.message;
     retryHostsButton.disabled = false;
   }
@@ -800,11 +821,21 @@ function renderBeginnerGuide(data) {
   const first = prioritise(data.findings, data.devices, data.services)[0];
   const firstDevice = data.devices.find(item => item.device_id === first?.device_id);
   const firstService = data.services.find(item => item.service_id === first?.service_id);
+  const specificHelp = first?.severity === 'informational' ? localFeatureHelp(firstDevice, firstService, data) : null;
   reportFirstStep.textContent = first
-    ? 'Start with ' + actionDeviceLabel(data.devices.find(item => item.device_id === first.device_id), data) + '. Confirm you recognise it before changing settings. ' + (explanationFor(first).content.recommended_steps?.[0] || first.actions?.[0]?.text || 'Open its review item below.')
+    ? 'Start with ' + actionDeviceLabel(firstDevice, data) + '. Confirm you recognise it before changing settings.'
     : overview?.content.recommended_steps?.join(' ') || (unfinished
       ? 'Retry the unfinished checks when those devices are available. Missing results cannot tell you whether a device is safe.'
       : 'Check which devices and features were observed. No listed review items does not prove everything is safe.');
+  const instruction = document.querySelector('#first-action-instruction');
+  instruction.textContent = first ? (specificHelp?.check || explanationFor(first).content.recommended_steps?.[0] || first.actions?.[0]?.text || 'Open its review item below.') : '';
+  instruction.hidden = !instruction.textContent;
+  const limits = document.querySelector('#first-action-limits');
+  limits.textContent = specificHelp?.limitation || '';
+  limits.hidden = !limits.textContent;
+  const reason = document.querySelector('#first-action-reason');
+  reason.textContent = first ? explanationFor(first).content.why_it_matters || '' : '';
+  document.querySelector('#first-action-context').hidden = !reason.textContent;
   const precaution = document.querySelector('#first-action-precaution');
   precaution.textContent = firstActionPrecaution(firstDevice, firstService);
   precaution.hidden = !precaution.textContent;
@@ -977,19 +1008,7 @@ function editNickname(device, trigger) {
 }
 
 async function refreshDeviceName(device, trigger, localStatus) {
-  if (!window.confirm(`Look up names for ${device.ip} on your authorised network? This address may now belong to a different device. Only DNS and enabled local announcements are checked; no port scan starts.`)) return;
-  const hadFocus = document.activeElement === trigger;
-  trigger.disabled = true; localStatus.hidden = false;
-  localStatus.textContent = 'Looking for a name. The original report will not change.';
-  try {
-    notes.apply(await request(`/api/live-scans/${scanId}/devices/${device.device_id}/refresh-name`, {
-      method: 'POST', body: JSON.stringify({ authorised: true }),
-    }));
-  } catch (error) { localStatus.textContent = `Name lookup could not finish. ${error.message}`; }
-  finally {
-    trigger.disabled = false;
-    if (hadFocus && document.activeElement === document.body && trigger.isConnected) trigger.focus({ preventScroll: true });
-  }
+  return refreshNameLookup({ device, trigger, localStatus, window, document, notes, request, scanId });
 }
 
 function renderDevices(data) {
@@ -998,7 +1017,9 @@ function renderDevices(data) {
   deviceTableBody.replaceChildren();
   if (!data.devices.length) {
     const emptyRow = document.createElement('tr');
-    const emptyCell = text('td', 'No devices responded to the selected discovery or service checks.', 'device-table-empty');
+    const interruptedSearch = data.target?.mode === 'discover' && data.coverage?.discovery_complete === false;
+    const emptyCell = text('td', interruptedSearch ? coverageSummary(data)
+      : 'No devices responded to the selected discovery or service checks.', 'device-table-empty');
     emptyCell.colSpan = 7;
     emptyRow.append(emptyCell);
     deviceTableBody.append(emptyRow);
@@ -1118,8 +1139,14 @@ function render(data) {
   reportContent.setAttribute('aria-busy', String(preparing));
   document.querySelector('#first-action').hidden = preparing;
   runAgainButton.disabled = preparing;
-  retryHostsButton.hidden = preparing || !(data.coverage?.targets || []).some((target) => ['failed', 'timed_out', 'cancelled', 'pending', 'running'].includes(target.service_status) && (data.target?.mode === 'known_hosts' || target.discovery_status === 'observed'));
-  retryHostsButton.disabled = preparing;
+  // Current APIs supply the authoritative eligibility projection. Keep older
+  // reports/servers readable without treating all skipped addresses as devices.
+  const hasRetryTargets = Array.isArray(data.retryable_hosts) ? data.retryable_hosts.length > 0
+    : (data.coverage?.targets || []).some(target => (data.target?.mode === 'known_hosts' || target.discovery_status === 'observed')
+      && (['failed', 'timed_out', 'cancelled', 'pending', 'running'].includes(target.service_status)
+        || (target.service_status === 'skipped' && target.reason_code === 'scan_queue_expired')));
+  retryHostsButton.hidden = preparing || !hasRetryTargets;
+  retryHostsButton.disabled = preparing || retryStartPending;
   if (preparing) {
     currentData = data;
     title.textContent = data.phase === 'analysis' ? 'Making your results easier to understand.'
@@ -1157,7 +1184,7 @@ function render(data) {
   coverage.textContent = coverageSummary(data);
   updateDocumentTitle();
   const displayed = currentOverview(data) || data.plain_overview;
-  if (displayed?.content.meaning) lead.textContent = displayed.content.meaning;
+  if (displayed?.content.meaning) lead.textContent = readableOverview(displayed.content.meaning);
   const overviewHelp = document.querySelector('#overview-help');
   overviewHelp.replaceChildren();
   if (displayed) {
@@ -1228,7 +1255,6 @@ function render(data) {
       ? 'Some older guidance cannot be refreshed from the saved evidence. Run a new scan to reassess those findings.'
       : data.guidance_updated_at ? 'Guidance was refreshed from saved observations. The original scan date and evidence are unchanged.' : '';
   if (outdatedAi) guidanceNotice.textContent += ' Older AI wording is hidden because it predates the current validation checks.';
-  document.querySelector('#finding-metric').textContent = data.findings.length;
   document.querySelector('#device-metric').textContent = deviceCheckLabel(data);
   document.querySelector('#service-metric').textContent = openServices;
   renderFindings(data);

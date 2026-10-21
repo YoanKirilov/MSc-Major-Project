@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { renderDeviceSummaries, deviceResultEntries, deviceStatus, nameQualification } from '../app/static/js/devices.mjs';
 import { createCvePanel } from '../app/static/js/cves.mjs';
+import { createNoteState } from '../app/static/js/notes.mjs';
+import * as presentation from '../app/static/js/presentation.mjs';
+import { refreshNameLookup } from '../app/static/js/name-lookup.mjs';
 
 // A small DOM verifies component ownership and data invariants offline. Real
 // focus, target geometry and native disclosure behaviour require browser tests.
@@ -434,4 +439,235 @@ test('only an explicit CVE action posts a lookup; stale receipts retain newer sa
     assert.doesNotMatch(panel.textContent, /Stale lookup/);
     assert.match(byClass(panel, 'cve-status')[0].textContent, /No matching CVE records/);
   } finally { globalThis.fetch = originalFetch; globalThis.window = originalWindow; }
+});
+
+test('a lost CVE response offers read-only recovery and never repeats the POST', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const calls = [];
+  const recovered = { service_id: 'recovery-service', status: 'no_matches', message: 'Completed saved lookup.', results: [] };
+  const snapshots = [];
+  globalThis.window = { location: { hash: '' }, sessionStorage: { setItem() {} } };
+  globalThis.fetch = async (path, options) => {
+    calls.push([path, options.method || 'GET']);
+    if (path === '/api/session') return { ok: true, json: async () => ({ csrf_token: 'synthetic-session' }) };
+    if (options.method === 'POST') {
+      recovered.operation_id = JSON.parse(options.body).operation_id;
+      throw new TypeError('Synthetic connection lost after sending');
+    }
+    return { ok: true, json: async () => ({ revision: 2, cve_lookups: [recovered] }) };
+  };
+  try {
+    const panel = createCvePanel(document, 'recovery-scan', { service_id: recovered.service_id, cve_lookup_available: true }, null, payload => { snapshots.push(payload); return true; });
+    const [lookup, reload] = descendants(panel).filter(node => node.tagName === 'BUTTON');
+    await lookup.events.click();
+    assert.equal(lookup.disabled, true);
+    assert.equal(reload.hidden, false);
+    assert.match(byClass(panel, 'cve-status')[0].textContent, /may still finish and save/);
+    assert.doesNotMatch(byClass(panel, 'cve-status')[0].textContent, /references.*unchanged/);
+    await lookup.events.click();
+    assert.equal(calls.filter(([, method]) => method === 'POST').length, 1);
+    await reload.events.click();
+    assert.deepEqual(calls.at(-1), ['/api/live-scans/recovery-scan/annotations', 'GET']);
+    assert.equal(calls.filter(([, method]) => method === 'POST').length, 1);
+    assert.equal(snapshots[0].annotations.revision, 2);
+    assert.match(panel.textContent, /Completed saved lookup/);
+    assert.equal(lookup.disabled, false);
+    assert.equal(reload.hidden, true);
+  } finally { globalThis.fetch = originalFetch; globalThis.window = originalWindow; }
+});
+
+test('empty or failed saved-CVE recovery keeps the uncertainty and saved references', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  let reads = 0;
+  const calls = [];
+  globalThis.window = { location: { hash: '' }, sessionStorage: { setItem() {} } };
+  globalThis.fetch = async (path, options) => {
+    calls.push([path, options.method || 'GET']);
+    if (path === '/api/session') return { ok: true, json: async () => ({ csrf_token: 'synthetic-session' }) };
+    if (options.method === 'POST') throw new TypeError('Synthetic lost response');
+    if (++reads === 1) return { ok: true, json: async () => ({ revision: 1, cve_lookups: [] }) };
+    throw new TypeError('Synthetic failed read');
+  };
+  try {
+    const saved = { service_id: 'recovery-service', status: 'no_matches', message: 'Earlier saved research.', results: [] };
+    const panel = createCvePanel(document, 'recovery-scan', { service_id: saved.service_id, cve_lookup_available: true }, saved, () => false);
+    const [lookup, reload] = descendants(panel).filter(node => node.tagName === 'BUTTON');
+    await lookup.events.click();
+    await reload.events.click();
+    assert.equal(lookup.disabled, true);
+    assert.match(panel.textContent, /No newer saved references could be confirmed/);
+    await reload.events.click();
+    assert.equal(lookup.disabled, true);
+    assert.match(panel.textContent, /Earlier saved research/);
+    assert.match(panel.textContent, /no new lookup was started/);
+    assert.equal(calls.filter(([, method]) => method === 'POST').length, 1);
+  } finally { globalThis.fetch = originalFetch; globalThis.window = originalWindow; }
+});
+
+test('the self-device heading states its role once without discarding recorded type facts', () => {
+  const container = new Element('div');
+  const device = { ...baseDevice };
+  const data = { devices: [device], services: [], findings: [], policy: { network_context: { address: device.ip } } };
+  const before = JSON.stringify(data);
+  renderDeviceSummaries({ document, container, data });
+  const heading = byClass(container, 'device-summary-heading')[0];
+  assert.match(heading.textContent, /This computer \(scan source\)/);
+  assert.doesNotMatch(heading.textContent, /Computer that ran this scan/);
+  assert.equal(JSON.stringify(data), before);
+});
+
+test('CVE recovery requires the attempted lookup receipt, not an old record or unrelated newer revision', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const saved = { service_id: 'receipt-service', checked_at: '2026-10-16T12:00:00Z', status: 'no_matches', message: 'Earlier saved research.', results: [] };
+  let snapshot = { revision: 10, cve_lookups: [saved] };
+  let operation;
+  let posts = 0;
+  globalThis.window = { location: { hash: '' }, sessionStorage: { setItem() {} } };
+  globalThis.fetch = async (path, options) => {
+    if (path === '/api/session') return { ok: true, json: async () => ({ csrf_token: 'synthetic' }) };
+    if (options.method === 'POST') { posts++; operation = JSON.parse(options.body).operation_id; throw new TypeError('Synthetic lost response'); }
+    return { ok: true, json: async () => snapshot };
+  };
+  try {
+    const notes = createNoteState(() => {});
+    notes.apply(snapshot);
+    const panel = createCvePanel(document, 'receipt-scan', { service_id: saved.service_id, cve_lookup_available: true }, saved, payload => notes.apply(payload.annotations));
+    const [lookup, reload] = descendants(panel).filter(node => node.tagName === 'BUTTON');
+    await lookup.events.click();
+    await reload.events.click();
+    assert.equal(lookup.disabled, true, 'An unchanged earlier lookup does not confirm this attempt');
+    assert.equal(reload.hidden, false);
+    assert.match(panel.textContent, /Earlier saved research/);
+    snapshot = { ...snapshot, revision: 11, title: 'An unrelated title edit' };
+    await reload.events.click();
+    assert.equal(lookup.disabled, true, 'A newer overall revision alone is not a CVE receipt');
+    snapshot = { ...snapshot, revision: 12, cve_lookups: [{ ...saved, operation_id: '11111111-1111-4111-8111-111111111111' }] };
+    await reload.events.click();
+    assert.equal(lookup.disabled, true, 'Another lookup is not this attempt');
+    assert.match(operation, /^[0-9a-f-]{36}$/);
+    // A cached result can have the exact same checked_at/text: its request receipt
+    // is sufficient, without pretending NVD was checked again.
+    snapshot = { ...snapshot, revision: 13, cve_lookups: [{ ...saved, operation_id: operation }] };
+    await reload.events.click();
+    assert.equal(lookup.disabled, false);
+    assert.equal(reload.hidden, true);
+    assert.equal(posts, 1);
+    assert.equal(notes.value.cve_lookups[0].checked_at, saved.checked_at);
+  } finally { globalThis.fetch = originalFetch; globalThis.window = originalWindow; }
+});
+
+for (const outcome of ['identical', 'new', 'stale', 'failed', 'missing']) test(`name lookup finishes its waiting state: ${outcome} reply`, async () => {
+  const saved = { device_id: baseDevice.device_id, checked_at: '2026-10-18T12:00:00Z', names: [], notes: ['No name was found.'] };
+  const container = new Element('div');
+  const snapshot = { revision: 10, name_refreshes: [saved] };
+  const data = fixture();
+  const original = JSON.stringify(data);
+  renderDeviceSummaries({ document, container, data, notesSnapshot: snapshot, onRefreshName() {} });
+  const panels = descendants(container).filter(node => node.dataset.notePanel === 'name');
+  const notes = createNoteState(value => panels.forEach(node => node.updateNotes(value)));
+  notes.apply(snapshot);
+  const trigger = descendants(container).find(node => node.dataset.deviceAction === 'refresh-name');
+  const feedback = byClass(container, 'identification-status')[0];
+  const detail = panels[0].querySelector('details');
+  detail.open = true;
+  const latest = { ...saved, names: [{ name: 'Latest name', source: 'reverse_dns' }] };
+  if (outcome === 'stale') notes.apply({ revision: 12, name_refreshes: [latest] });
+  const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8');
+  const start = source.indexOf('async function refreshDeviceName(');
+  const end = source.indexOf('\nfunction renderDevices(', start);
+  const refresh = vm.runInNewContext(source.slice(start, end) + '\nrefreshDeviceName', {
+    document, notes, scanId: 'synthetic-scan', window: { confirm: () => true },
+    nameLookupMessage: presentation.nameLookupMessage, refreshNameLookup,
+    request: async () => {
+      if (outcome === 'failed') throw new Error('Synthetic failed reply');
+      return { revision: 11, name_refreshes: outcome === 'missing' ? [] : [outcome === 'new' ? latest : { ...saved }] };
+    },
+  });
+  await refresh(baseDevice, trigger, feedback);
+  assert.doesNotMatch(feedback.textContent, /Looking for a name/);
+  assert.equal(feedback.hidden, false);
+  assert.equal(trigger.disabled, false);
+  if (outcome === 'identical') {
+    assert.equal(notes.value.revision, 11);
+    assert.match(feedback.textContent, /No new name found/);
+    assert.equal(panels[0].querySelector('details'), detail, 'Unchanged evidence should not be rebuilt');
+  }
+  if (outcome === 'stale') { assert.equal(notes.value.revision, 12); assert.match(feedback.textContent, /Latest name/); }
+  if (outcome === 'new') assert.match(feedback.textContent, /Latest name/);
+  if (outcome === 'failed') assert.match(feedback.textContent, /could not finish/);
+  if (outcome === 'missing') assert.match(feedback.textContent, /could not be confirmed/);
+  else assert.equal(panels[0].querySelector('details').open, true);
+  assert.equal(JSON.stringify(data), original);
+});
+
+test('cached lookup receipts preserve an open CVE description and its recorded date', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const saved = { service_id: 'cached-service', checked_at: '2026-10-18T10:00:00Z', status: 'candidates', message: 'Saved references.', results: [{ cve_id: 'CVE-2026-10001', description: 'Saved technical description.' }], total: 1 };
+  let panel;
+  let posts = 0;
+  globalThis.window = { location: { hash: '' }, sessionStorage: { setItem() {} } };
+  globalThis.fetch = async (path, options) => {
+    if (path === '/api/session') return { ok: true, json: async () => ({ csrf_token: 'synthetic' }) };
+    posts++;
+    const lookup = { ...saved, operation_id: JSON.parse(options.body).operation_id };
+    return { ok: true, json: async () => ({ lookup, annotations: { revision: 11, cve_lookups: [lookup] }, cached: true }) };
+  };
+  try {
+    panel = createCvePanel(document, 'cached-scan', { service_id: saved.service_id, cve_lookup_available: true }, saved, payload => { panel.updateNotes(payload.annotations); return true; });
+    const description = descendants(panel).find(node => node.tagName === 'SUMMARY' && node.textContent === 'Published technical description').parentElement;
+    description.open = true;
+    await panel.querySelector('button').events.click();
+    assert.ok(descendants(panel).includes(description));
+    assert.equal(description.open, true);
+    assert.match(panel.textContent, /18\/10\/2026|10:00/);
+    assert.equal(posts, 1);
+  } finally { globalThis.fetch = originalFetch; globalThis.window = originalWindow; }
+});
+
+test('CVE maker links show their destination and reject unsafe saved reference URLs', () => {
+  const record = { service_id: 'advisory-service', status: 'candidates', message: 'Possible reference.',
+    results: [{ cve_id: 'CVE-2026-10001', description: 'Example.', advisories: [
+      { url: 'https://vendor.example/security' }, { url: 'http://vendor.example/' },
+      { url: 'https://127.0.0.1/private' }, { url: 'javascript:alert(1)' }, { url: 'https://router.local/' },
+    ] }] };
+  const panel = createCvePanel(document, 'advisory-scan', { service_id: record.service_id }, record, () => true);
+  const advice = descendants(panel).filter(node => node.tagName === 'A' && node.textContent.startsWith("Maker's advice"));
+  assert.equal(advice.length, 1);
+  assert.equal(advice[0].href, 'https://vendor.example/security');
+  assert.match(advice[0].textContent, /vendor.example.*NVD reference/);
+  assert.equal(advice[0].rel, 'noopener noreferrer');
+});
+
+test('another tab cannot erase a completed lookup receipt during read-only recovery', async () => {
+  const originalFetch = globalThis.fetch, originalWindow = globalThis.window;
+  let attempted, posts = 0;
+  const saved = { service_id: 'cross-tab', status:'no_matches', message:'Latest saved references.', results:[], checked_at:'2026-10-18T10:00:00Z' };
+  globalThis.window = {location:{hash:''}, sessionStorage:{setItem(){}}};
+  globalThis.fetch = async (path, options) => {
+    if (path === '/api/session') return {ok:true,json:async()=>({csrf_token:'synthetic'})};
+    if (options.method === 'POST') { posts++; attempted=JSON.parse(options.body).operation_id; throw Error('Synthetic lost response'); }
+    return {ok:true,json:async()=>({revision:3,cve_lookups:[{...saved,operation_id:'11111111-1111-4111-8111-111111111111',operation_receipts:[{operation_id:attempted,recorded_at:'2026-10-18T11:00:00Z'}]}]})};
+  };
+  try {
+    const panel = createCvePanel(document, 'cross-tab-scan', {service_id:saved.service_id,cve_lookup_available:true}, saved,()=>true);
+    const [lookup,reload] = descendants(panel).filter(n=>n.tagName==='BUTTON');
+    await lookup.events.click(); assert.equal(lookup.disabled,true);
+    await reload.events.click();
+    assert.equal(lookup.disabled,false); assert.equal(reload.hidden,true); assert.equal(posts,1);
+    assert.match(panel.textContent,/Latest saved references/);
+  } finally {globalThis.fetch=originalFetch;globalThis.window=originalWindow;}
+});
+
+test('name diagnostics explain timeout versus not found without inventing names or identity', () => {
+  const diagnostics=[{source:'reverse_dns',status:'timeout',elapsed_ms:2000},{source:'mdns',status:'not_found',elapsed_ms:3010}];
+  const record={device_id:baseDevice.device_id,names:[],notes:[],diagnostics};
+  const {container}=render(fixture(),{nicknameAvailable:true,onRefreshName(){},notesSnapshot:{name_refreshes:[record]}});
+  assert.match(container.textContent,/Local name lookup: did not answer before its time limit.*2.00 seconds/);
+  assert.match(container.textContent,/Device announcement lookup: returned no name/);
+  assert.match(presentation.nameLookupMessage(record),/A name source could not finish/);
+  assert.equal(presentation.nameDiagnosticText({source:'<script>',status:'found'}),'');
 });

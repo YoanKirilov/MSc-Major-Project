@@ -2,10 +2,60 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { randomUUID } from 'node:crypto';
+import { createStartState } from '../app/static/js/start-state.mjs';
 import { analysisProgressText, readScanSetup, ollamaStatusText, progressAnnouncement } from '../app/static/js/report.mjs';
 
 const scanId = '11111111-1111-4111-8111-111111111111';
 const key = 'network-assessor-pending-scan';
+
+test('start ownership invalidates old generations even when the same identifier is selected later', () => {
+  const state = createStartState(scanId);
+  const first = state.generation;
+  assert.equal(state.select(scanId), false);
+  assert.equal(state.generation, first);
+  state.select(null); state.select(scanId);
+  assert.equal(state.owns(scanId, first), false);
+  assert.equal(state.owns(scanId, state.generation), true);
+});
+
+test('only one read owns a generation and an old finalizer cannot clear a newer read', () => {
+  const state = createStartState(scanId);
+  const old = state.beginRead();
+  assert.ok(Object.isFrozen(old));
+  assert.equal(state.beginRead(), null);
+  state.select('newer');
+  const current = state.beginRead();
+  assert.equal(state.finishRead(old), false);
+  assert.equal(state.beginRead(), null);
+  assert.equal(state.finishRead(current), true);
+  assert.equal(state.finishRead(current), false);
+  assert.ok(state.beginRead());
+});
+
+test('automatic recovery stays bounded and only an explicit retry or new intention resets its budget', () => {
+  const state = createStartState(scanId);
+  const read = state.beginRead();
+  state.finishRead(read);
+  for (let i = 1; i < 10; i++) assert.equal(state.shouldPoll(read), true);
+  state.select(scanId);
+  assert.equal(state.shouldPoll(read), false);
+  state.resetReads();
+  assert.equal(state.shouldPoll(read), true);
+  state.select('newer');
+  assert.equal(state.shouldPoll(read), false);
+  assert.equal(state.shouldPoll(state.beginRead()), true);
+});
+
+test('clearing a start prevents read recovery and does not grant any new operation', () => {
+  const state = createStartState(scanId);
+  const read = state.beginRead();
+  state.select(null);
+  assert.equal(state.operation, null);
+  assert.equal(state.beginRead(), null);
+  assert.equal(state.finishRead(read), false);
+  assert.equal(state.shouldPoll(read), false);
+});
 
 test('progress announcements use meaningful stage changes and bounded milestones, not elapsed ticks', () => {
   const keys = new Set();
@@ -159,13 +209,177 @@ function setup(request, saved = null, hash = '', pathname = '/') {
     getItem(k) { return storage.get(k); }, setItem(k, v) { storage.set(k, v); }, removeItem(k) { storage.delete(k); },
   } };
   const document = { createElement() { return new Element(); }, querySelector(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, querySelectorAll() { return []; } };
-  const context = vm.createContext({ document, window, request, analysisProgressText, progressAnnouncement, readScanSetup, ollamaStatusText, URLSearchParams, configurePicker() {}, startSetupTools() {} });
+  const context = vm.createContext({ document, window, request, crypto: { randomUUID }, createStartState, analysisProgressText, progressAnnouncement, readScanSetup, ollamaStatusText, URLSearchParams, configurePicker() {}, startSetupTools() {} });
   const source = readFileSync(new URL('../app/static/js/dashboard.js', import.meta.url), 'utf8')
     .replace(/^import[^\n]*\n/gm, '').replace(/\nloadStatus\(\);\s*$/, '');
   vm.runInContext(source, context);
   return { elements, storage, window, timers, context, load: () => vm.runInContext('loadStatus()', context) };
 }
 const ready = { ui_contract_version: 1, scanner_available: true, allowed_network: '192.168.0.0/24', storage_status: 'ok', ai_available: true };
+
+for (const outcome of ['accepted', 409, 429, 503, 'lost']) {
+  for (const newerFinishesFirst of [false, true]) {
+    test(`superseded POST ${outcome} cannot change the newer start (newer finished: ${newerFinishesFirst})`, async () => {
+      const newerId = '22222222-2222-4222-8222-222222222222';
+      const posts = [], calls = [];
+      const app = setup(async (path, options) => {
+        calls.push({path, options});
+        if (path === '/api/status') return ready;
+        if (options?.method === 'POST') return new Promise((resolve, reject) => posts.push({resolve, reject, body:JSON.parse(options.body)}));
+        if (path.startsWith('/api/scans/')) return {policy:{profile:'light'}};
+        assert.ok(!path.startsWith('/api/scan-starts/'), 'a stale failure must not initiate recovery');
+        return {state:'running',phase:'service_scan'};
+      }, null, '', '/light');
+      app.window.confirm = () => true;
+      await app.load();
+      const first = app.elements.get('#scanLaunchButton').events.click();
+      app.elements.get('#scanStartReset').events.click();
+      const second = app.elements.get('#scanLaunchButton').events.click();
+      assert.equal(posts.length, 2);
+      assert.notEqual(posts[0].body.operation_id, posts[1].body.operation_id);
+      if (newerFinishesFirst) { posts[1].resolve({scan_id:newerId}); await second; }
+      if (outcome === 'accepted') posts[0].resolve({scan_id:scanId});
+      else posts[0].reject(Object.assign(new Error('Earlier attempt outcome'), typeof outcome === 'number' ? {status:outcome} : {}));
+      await first;
+      assert.equal(app.elements.get('#scanLaunchButton').disabled, true);
+      assert.equal(app.window.location.hash, newerFinishesFirst ? `#scan=${newerId}` : `#start=${posts[1].body.operation_id}`);
+      if (!newerFinishesFirst) {
+        assert.equal(app.storage.get(`${key}:light:start`), posts[1].body.operation_id);
+        posts[1].resolve({scan_id:newerId}); await second;
+      }
+      assert.equal(app.window.location.hash, `#scan=${newerId}`);
+      assert.equal(calls.filter(call=>call.options?.method === 'POST').length,2);
+      assert.ok(calls.every(call=>call.options?.method !== 'DELETE'));
+    });
+  }
+}
+
+test('an older recovery finalizer cannot unlock or replace a newer in-flight recovery', async () => {
+  const reads=[], posts=[];
+  const entered=[];
+  const reading=[0,1].map(index=>new Promise(resolve=>{entered[index]=resolve;}));
+  const newerId='22222222-2222-4222-8222-222222222222';
+  const app=setup(async (path,options)=>{
+    if(path==='/api/status') return ready;
+    if(options?.method==='POST') { posts.push(JSON.parse(options.body)); throw new Error('Reply lost'); }
+    if(path.startsWith('/api/scan-starts/')) return new Promise(resolve=>{reads.push({path,resolve}); entered[reads.length-1]();});
+    if(path.startsWith('/api/scans/')) return {policy:{profile:'light'}};
+    return {state:'running',phase:'service_scan'};
+  },null,'','/light');
+  app.window.confirm=()=>true;
+  await app.load();
+  const first=app.elements.get('#scanLaunchButton').events.click();
+  await reading[0];
+  app.elements.get('#scanStartReset').events.click();
+  const second=app.elements.get('#scanLaunchButton').events.click();
+  await reading[1];
+  assert.equal(reads.length,2);
+  reads[0].resolve({state:'accepted',scan_id:scanId}); await first;
+  assert.equal(app.window.location.hash,`#start=${posts[1].operation_id}`);
+  assert.equal(app.elements.get('#scanStartRecover').disabled,true);
+  assert.equal(app.elements.get('#scanLaunchButton').disabled,true);
+  reads[1].resolve({state:'accepted',scan_id:newerId}); await second;
+  assert.equal(app.window.location.hash,`#scan=${newerId}`);
+});
+
+test('pinned recovery remains usable without the readiness endpoint and retries only the original GET', async () => {
+  const operation='99999999-9999-4999-8999-999999999999', calls=[];
+  let available=false;
+  const app=setup(async (path,options)=>{
+    calls.push({path,options});
+    assert.notEqual(path,'/api/status','recovering evidence must not depend on readiness');
+    if(path.startsWith('/api/scan-starts/')) {
+      if(!available) throw Object.assign(new Error('Temporary outage'),{status:503});
+      return {state:'accepted',scan_id:scanId};
+    }
+    if(path.startsWith('/api/scans/')) return {policy:{profile:'light'}};
+    return {state:'running',phase:'service_scan'};
+  },null,`#start=${operation}`,'/light');
+  await app.load();
+  assert.equal(app.elements.get('#scanStartRecover').hidden,false);
+  assert.equal(app.elements.get('#scanStartRecover').disabled,false);
+  assert.equal(app.elements.get('#scanLaunchButton').disabled,true);
+  available=true;
+  await app.elements.get('#scanStartRecover').events.click();
+  assert.equal(app.window.location.hash,`#scan=${scanId}`);
+  assert.ok(calls.every(call=>!call.options?.method));
+});
+
+test('expired pending recovery preserves context and stops automatic reads without enabling Scan', async () => {
+  const operation='99999999-9999-4999-8999-999999999999';
+  const app=setup(async()=>{throw Object.assign(new Error('Session required'),{status:401});},null,`#start=${operation}`);
+  await app.load();
+  assert.match(app.elements.get('#scanError').textContent,/session has expired.*session link/);
+  assert.equal(app.elements.get('#scanStartRecover').hidden,false);
+  assert.equal(app.elements.get('#scanLaunchButton').disabled,true);
+  assert.equal(app.window.location.hash,`#start=${operation}`);
+  assert.equal(app.timers.length,0);
+});
+
+test('a rejected receipt cannot leave the next separate start recovery button disabled', async () => {
+  const operation='99999999-9999-4999-8999-999999999999';
+  let accept;
+  const app=setup(async (path,options)=>{
+    if(path.startsWith('/api/scan-starts/')) return {state:'rejected'};
+    if(path==='/api/status') return ready;
+    if(options?.method==='POST') return new Promise(resolve=>{accept=resolve;});
+    if(path.startsWith('/api/scans/')) return {policy:{profile:'light'}};
+    return {state:'running',phase:'service_scan'};
+  },null,`#start=${operation}`,'/light');
+  await app.load();
+  await app.elements.get('#scanLaunchButton').events.click(); // Recheck readiness first.
+  const started=app.elements.get('#scanLaunchButton').events.click();
+  assert.equal(app.elements.get('#scanStartRecover').hidden,false);
+  assert.equal(app.elements.get('#scanStartRecover').disabled,false);
+  accept({scan_id:scanId}); await started;
+});
+
+test('lost start reply locks submission and recovers the exact original receipt using GET only', async () => {
+  let posts = 0, operation, available = false;
+  const app = setup(async (path, options) => {
+    if (path === '/api/status') return ready;
+    if (options?.method === 'POST') {
+      posts++; operation = JSON.parse(options.body).operation_id;
+      throw Object.assign(new Error('Reply lost'), {code:'request_timeout'});
+    }
+    if (path.startsWith('/api/scan-starts/')) {
+      assert.equal(path, `/api/scan-starts/${operation}`);
+      return available ? {state:'accepted', scan_id:scanId} : {state:'preparing'};
+    }
+    if (path === `/api/scans/${scanId}`) return {policy:{profile:'light'}};
+    return {state:'running',phase:'service_scan'};
+  }, null, '', '/light');
+  await app.load();
+  await app.elements.get('#scanLaunchButton').events.click();
+  assert.equal(posts,1);
+  assert.equal(app.elements.get('#scanLaunchButton').disabled,true);
+  assert.equal(app.window.location.hash,`#start=${operation}`);
+  assert.equal(app.elements.get('#deepHostInput').disabled,true);
+  await app.elements.get('#scanLaunchButton').events.click();
+  assert.equal(posts,1);
+  available = true;
+  await app.elements.get('#scanStartRecover').events.click();
+  assert.equal(app.window.location.hash,`#scan=${scanId}`);
+  assert.equal(posts,1);
+  assert.equal(app.elements.get('#scanStartRecover').hidden,true);
+});
+
+test('a pinned unknown start with blocked browser storage never submits or selects another job', async () => {
+  const operation='99999999-9999-4999-8999-999999999999', calls=[];
+  const app=setup(async (path,options) => {
+    calls.push({path,options});
+    if(path==='/api/status') return {...ready,active_scan_ids:[scanId]};
+    throw Object.assign(new Error('Not yet recorded'),{status:404});
+  },null,`#start=${operation}`,'/light');
+  app.window.sessionStorage.getItem=()=>{throw new Error('Blocked');};
+  app.window.sessionStorage.setItem=()=>{throw new Error('Blocked');};
+  await app.load();
+  assert.equal(app.elements.get('#scanLaunchButton').disabled,true);
+  assert.equal(app.elements.get('#scanStartRecover').hidden,false);
+  assert.equal(app.window.location.hash,`#start=${operation}`);
+  assert.deepEqual(calls.map(item=>item.path),[`/api/scan-starts/${operation}`]);
+  assert.ok(calls.every(item=>!item.options?.method));
+});
 
 test('refresh restores immutable Deep target without moving progress or scrolling, including general page', async () => {
   for (const pathname of ['/deep', '/']) {

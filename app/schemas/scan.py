@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 
 from .common import StrictModel, iso_z, utc_now
+from .naming import NameDiagnostic
 
 ServiceState = Literal[
     "open", "closed", "filtered", "open_filtered", "closed_filtered", "unfiltered", "unknown"
@@ -79,6 +80,7 @@ class Device(StrictModel):
     hostname_confidence: Literal["low", "medium"] = "low"
     hostname_conflict: bool = False
     name_candidates: list[dict[str, str]] = Field(default_factory=list)
+    name_diagnostics: list[NameDiagnostic] = Field(default_factory=list, max_length=4)
     details: list[DeviceDetail] = Field(default_factory=list, max_length=48)
     mac: str | None = None
     vendor: str | None = None
@@ -300,6 +302,28 @@ class ScanDocument(StrictModel):
     ai_requests_used: int = 0
     warnings: list[dict[str, str]] = Field(default_factory=list)
     errors: list[dict[str, str | None]] = Field(default_factory=list)
+
+    @property
+    def retryable_hosts(self) -> list[str]:
+        """Eligible unfinished targets only; never every silent discovery address."""
+        return list(
+            dict.fromkeys(
+                target.ip
+                for target in self.coverage.targets
+                if (
+                    self.target.get("mode") == "known_hosts"
+                    or target.discovery_status == "observed"
+                )
+                and (
+                    target.service_status
+                    in {"failed", "timed_out", "cancelled", "pending", "running"}
+                    or (
+                        target.service_status == "skipped"
+                        and target.reason_code == "scan_queue_expired"
+                    )
+                )
+            )
+        )
 
     @property
     def unfinished_device_count(self) -> int:

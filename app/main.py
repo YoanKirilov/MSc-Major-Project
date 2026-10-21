@@ -17,15 +17,19 @@ from .api import report_export as report_export_api
 from .api import scans as scans_api
 from .api import session as session_api
 from .api import settings as settings_api
+from .build_info import RUNNING_BUILD
 from .config import load_config, resolve_nmap_path
 from .demo.adapter import DemoFindingsAdapter
 from .demo.runs import DemoRunStore
 from .explanations import ExplanationService, OllamaExplanationProvider
 from .explanations.runtime import OllamaRuntime
+from .jobs.start_requests import StartRequests
 from .jobs.supervisor import ScanSupervisor
 from .runtime_diagnostics import observe_asyncio_errors
 from .scanner.cve import NvdClient
 from .scanner.pihole import PiholeClient
+from .scanner.reverse_dns import ReverseDnsResolver
+from .security.headers import LOCAL_RESPONSE_HEADERS, LocalResponseHeaders
 from .security.session import SessionManager
 from .static_assets import AppStaticFiles
 from .storage.json_store import DocumentTooLarge, JsonStore
@@ -62,12 +66,14 @@ async def owned_lifespan(app: FastAPI):
     data_dir = Path(config.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     app.state.config = config
+    app.state.running_build = dict(RUNNING_BUILD)
     app.state.runtime_status_lock = asyncio.Lock()
     app.state.name_refresh_lock = asyncio.Lock()
     app.state.cve_lookup_lock = asyncio.Lock()
     app.state.nvd = NvdClient()
     app.state.runtime_status_cache = None
     app.state.store = JsonStore(data_dir)
+    app.state.name_resolver = ReverseDnsResolver()
     app.state.storage_writable_at_startup = await asyncio.to_thread(
         app.state.store.storage_writable
     )
@@ -113,8 +119,10 @@ async def owned_lifespan(app: FastAPI):
         max_concurrent_scans=config.max_concurrent_scans,
         pihole_client=app.state.pihole,
         app_config=config,
+        name_resolver=app.state.name_resolver,
     )
     await app.state.supervisor.reconcile_incomplete()
+    app.state.start_requests = StartRequests(app.state.store, app.state.supervisor)
     app.state.ollama_runtime = None
     if explanation_provider is not None and config.ai_autostart:
         runtime = OllamaRuntime(explanation_provider)
@@ -125,6 +133,7 @@ async def owned_lifespan(app: FastAPI):
         yield
     finally:
         try:
+            await app.state.start_requests.shutdown()
             await app.state.supervisor.shutdown()
         finally:
             if app.state.ollama_runtime is not None:
@@ -132,7 +141,10 @@ async def owned_lifespan(app: FastAPI):
 
 
 def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
-    app = FastAPI(title="Network Assessor", lifespan=lifespan)
+    # The home-user UI is entirely same-origin. FastAPI's optional Swagger/ReDoc
+    # pages use external scripts and inline bootstraps incompatible with that CSP;
+    # retain the machine-readable schema rather than serving broken CDN-based UIs.
+    app = FastAPI(title="Network Assessor", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.initial_session_manager = session_manager
     app.state.response_factory = JSONResponse
     app_root = Path(__file__).resolve().parent
@@ -140,13 +152,20 @@ def create_app(*, session_manager: SessionManager | None = None) -> FastAPI:
     app.state.templates = templates
     app.mount("/static", AppStaticFiles(directory=str(app_root / "static")), name="static")
 
-    @app.middleware("http")
-    async def prevent_stale_local_ui(request: Request, call_next):
-        response = await call_next(request)
-        # This local app changes in-place. Mixing an old module with a new page can
-        # fail before startup error handling is installed. Reports are private too.
-        response.headers["Cache-Control"] = "no-store"
-        return response
+    app.add_middleware(LocalResponseHeaders)
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(_request: Request, _exc: Exception):
+        # Starlette's outer ServerErrorMiddleware handles unexpected errors outside
+        # user middleware. Keep those responses protected too, without leaking
+        # exception details or suppressing the server's exception logging.
+        return JSONResponse(
+            status_code=500,
+            headers=LOCAL_RESPONSE_HEADERS,
+            content={
+                "detail": "The local app encountered an unexpected error. Reload to reconnect."
+            },
+        )
 
     @app.exception_handler(Timeout)
     async def local_storage_busy(_request: Request, _exc: Timeout):

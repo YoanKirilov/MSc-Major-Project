@@ -21,7 +21,12 @@ from app.risk.engine import evaluate_device
 from app.schemas.scan import Device, DeviceDetail, ScanDocument, Service
 from app.security.session import SessionManager
 from app.storage.json_store import JsonStore
-from tests.fixtures.browser import browser_listener, component_boxes, wait_for_report_ready
+from tests.fixtures.browser import (
+    browser_listener,
+    component_boxes,
+    wait_for_js,
+    wait_for_report_ready,
+)
 
 pytestmark = [
     pytest.mark.browser,
@@ -276,7 +281,7 @@ def ui(request, tmp_path, monkeypatch):
             )
             page.goto(manager.get_bootstrap_url(port))
             try:
-                page.wait_for_function("sessionStorage.getItem('network-assessor-csrf') !== null")
+                wait_for_js(page, "sessionStorage.getItem('network-assessor-csrf') !== null")
             except BrowserTimeout:
                 safe_errors = [
                     re.sub(r"token=[^\s\"'<>]+", "token=[redacted]", error)
@@ -288,7 +293,7 @@ def ui(request, tmp_path, monkeypatch):
                     pytrace=False,
                 )
             expect(page.locator("#scanLaunchButton")).to_be_enabled()
-            page.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
+            wait_for_js(page, "document.querySelector('#runningScans').dataset.snapshot")
             yield page, base, reports
             assert not failures, failures
             assert not forbidden_requests, forbidden_requests
@@ -402,7 +407,8 @@ def test_repeat_review_device_filter_retains_all_facts_and_opens_links_outside_f
     expect(page.locator("#resultsSummary")).to_contain_text("for the selected device")
     expect(page.locator(".device-summary-group")).to_have_count(device_count)
     expect(page.locator("#nextStepsList .review-task")).to_have_count(task_count)
-    page.wait_for_function(
+    wait_for_js(
+        page,
         """({scan, device}) => JSON.parse(sessionStorage.getItem(
             'netguard-report-view-v1:' + scan) || '{}').reviewDevice === device""",
         arg={"scan": report.scan_id, "device": other.device_id},
@@ -579,7 +585,7 @@ def test_final_layout_supporting_topics_keep_report_position_and_native_keyboard
     assert abs(content.evaluate("element => element.scrollTop") - recorded) < 2
     page.locator("#closeSupportingInfo").click()
     page.set_viewport_size({"width": 768, "height": 1024})
-    page.add_style_tag(content="html {font-size:200% !important}")
+    page.evaluate("document.documentElement.style.setProperty('font-size', '200%', 'important')")
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
     trigger.click()
     expect(glossary).to_be_visible()
@@ -816,7 +822,8 @@ def test_changing_between_mobile_and_desktop_preserves_selected_result_node(ui):
         expect(selected).to_have_attribute("aria-pressed", "true")
         expect(selected).to_be_focused()
         assert selected.evaluate("element => element === window.uiSelectedTrigger")
-        page.wait_for_function(
+        wait_for_js(
+            page,
             """compact => {
                 const panel = document.querySelector('#detailPanel');
                 const list = document.querySelector('#findingsList');
@@ -1035,13 +1042,15 @@ def test_disclosure_targets_and_user_text_spacing_keep_components_usable(ui):
             target = summary.bounding_box()
             # This app adopts padded disclosure rows, not the inline-text exception.
             assert target["height"] >= 24, (summary.inner_text(), target)
-    page.add_style_tag(
-        content="""p { margin-block-end: 2em !important; }
-        body { line-height: 1.5 !important; letter-spacing: .12em !important;
-               word-spacing: .16em !important; }
-        input, button, select, textarea { letter-spacing: .12em !important;
-                                         word-spacing: .16em !important; }"""
-    )
+    page.evaluate("""() => {
+        for (const node of document.querySelectorAll('p'))
+            node.style.setProperty('margin-block-end', '2em', 'important');
+        document.body.style.setProperty('line-height', '1.5', 'important');
+        for (const node of document.querySelectorAll('body, input, button, select, textarea')) {
+            node.style.setProperty('letter-spacing', '.12em', 'important');
+            node.style.setProperty('word-spacing', '.16em', 'important');
+        }
+    }""")
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
     page.locator("#searchInput").fill("file")
     search = page.locator("#searchInput").locator(
@@ -1085,7 +1094,7 @@ def test_all_pages_share_navigation_and_keyboard_bypass(ui):
         expect(page.locator("#main-content")).to_be_focused()
         if route in ("/", "/light", "/deep"):
             expect(page.locator("#scanLaunchButton")).to_be_enabled()
-            page.wait_for_function("document.querySelector('#runningScans').dataset.snapshot")
+            wait_for_js(page, "document.querySelector('#runningScans').dataset.snapshot")
             if route == "/deep":
                 expect(page.locator("#recentDeviceNote")).not_to_be_empty()
         elif route == "/settings":
@@ -1235,7 +1244,8 @@ def test_followup_refresh_restores_filters_selection_disclosures_and_scroll_with
             checklist.locator(":scope > summary").click()
     page.locator("#next-title").evaluate("element => element.scrollIntoView({block:'start'})")
     key = "netguard-report-view-v1:" + report.scan_id
-    page.wait_for_function(
+    wait_for_js(
+        page,
         """key => { const state = JSON.parse(sessionStorage.getItem(key) || '{}');
             return state.y > 0 && Math.abs(state.y - scrollY) < 2 && state.open?.length > 0; }""",
         arg=key,
@@ -1258,7 +1268,7 @@ def test_followup_refresh_restores_filters_selection_disclosures_and_scroll_with
     )
     for task in page.locator(".next-step-checklist").all():
         expect(task).to_have_attribute("open", "")
-    page.wait_for_function("y => Math.abs(scrollY - y) < 5", arg=before["y"])
+    wait_for_js(page, "y => Math.abs(scrollY - y) < 5", arg=before["y"])
     # A different saved report in this same tab has separate reading state.
     _open(ui, kind="zero")
     expect(page.locator("#deviceSearchInput")).to_have_value("")
@@ -1304,18 +1314,24 @@ def test_followup_navigation_does_not_obscure_targets_on_small_or_enlarged_scree
         nav = page.locator(".report-jump-links")
         assert nav.evaluate("element => getComputedStyle(element).position") == expected
         page.get_by_role("link", name="Devices", exact=True).click()
-        page.wait_for_function("""() => {
+        wait_for_js(
+            page,
+            """() => {
             const nav = document.querySelector('.report-jump-links');
             const target = document.querySelector('#devices-title').getBoundingClientRect();
             return target.top >= 0 && (getComputedStyle(nav).position !== 'sticky'
-                || target.top >= nav.getBoundingClientRect().bottom); }""")
+                || target.top >= nav.getBoundingClientRect().bottom); }""",
+        )
         expect(page.locator("#devices-title")).to_be_in_viewport()
     page.set_viewport_size({"width": 768, "height": 1024})
-    page.add_style_tag(content="html {font-size: 200% !important}")
-    page.wait_for_function("""() => {
+    page.evaluate("document.documentElement.style.setProperty('font-size', '200%', 'important')")
+    wait_for_js(
+        page,
+        """() => {
         const nav = document.querySelector('.report-jump-links');
         return nav.getBoundingClientRect().height <= 160
-            || getComputedStyle(nav).position === 'static'; }""")
+            || getComputedStyle(nav).position === 'static'; }""",
+    )
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
 
 
@@ -1386,7 +1402,7 @@ def test_home_setup_has_one_primary_action_after_choices_and_permission(ui):
         expect(
             page.get_by_label("Device address (IP) for the Deep scan", exact=True)
         ).to_be_visible()
-        page.wait_for_function("document.querySelector('#recentDeviceNote').textContent.length > 0")
+        wait_for_js(page, "document.querySelector('#recentDeviceNote').textContent.length > 0")
         expect(page.locator(".scan-start-area #scanLaunchButton")).to_be_enabled()
         page.get_by_role("button", name="Light", exact=False).click()
         expect(page.locator(".scan-target-fields")).not_to_be_visible()
@@ -1403,7 +1419,7 @@ def test_home_setup_reflows_with_enlarged_text_and_keeps_native_keyboard_choices
     page.set_viewport_size({"width": 768, "height": 1024})
     page.goto(base + "/")
     expect(page.locator("#scanLaunchButton")).to_be_enabled()
-    page.add_style_tag(content="html { font-size: 200% !important; }")
+    page.evaluate("document.documentElement.style.setProperty('font-size', '200%', 'important')")
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
     light = page.get_by_role("button", name="Light", exact=False)
     deep = page.get_by_role("button", name="Deep", exact=False)
@@ -1413,7 +1429,7 @@ def test_home_setup_reflows_with_enlarged_text_and_keeps_native_keyboard_choices
     page.keyboard.press("Enter")
     expect(deep).to_have_attribute("aria-pressed", "true")
     expect(page.locator("#deepHostInput")).to_be_visible()
-    page.wait_for_function("document.querySelector('#recentDeviceNote').textContent.length > 0")
+    wait_for_js(page, "document.querySelector('#recentDeviceNote').textContent.length > 0")
     expect(deep).to_be_focused()
     assert not page.evaluate("document.documentElement.scrollWidth > innerWidth")
     for control in page.locator(

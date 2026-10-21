@@ -1,4 +1,4 @@
-import { request } from './api.js?v=20261001-network-recovery';
+import { request } from './api.js?v=20261018-cve-deadline';
 import { ollamaStatusText } from './report.mjs?v=20261001-network-recovery';
 
 const form = document.querySelector('#settings-form');
@@ -125,6 +125,10 @@ async function loadSettings() {
     if (responses[0].status !== 'fulfilled') throw responses[0].reason;
     const settings = responses[0].value;
     const status = responses[1].status === 'fulfilled' ? responses[1].value : {};
+    const build = document.querySelector('#build-status');
+    if (build) build.textContent = status.build?.build_id
+      ? `Running build ${status.build.build_id}; API contract ${status.build.contract_version}. ${status.build.source_changed ? 'Source files changed: finish active work, restart the backend, then reload.' : status.build.source_changed === false ? 'Source files match this running build.' : 'Source freshness could not be checked.'}`
+      : 'This backend does not report a build identifier. Finish active work, restart the backend task and reload.';
     revision = settings.revision;
     allowedNetwork.value = settings.allowed_network || '';
     scopeMode.value = settings.allowed_network ? 'manual' : 'automatic';

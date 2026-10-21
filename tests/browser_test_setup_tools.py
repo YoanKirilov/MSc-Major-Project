@@ -64,7 +64,10 @@ def test_native_picker_keeps_choices_short_and_saved_context_separate(ui, tmp_pa
     expect(page.locator("#refreshDeviceChoices")).to_be_focused()
     for width, font_scale in ((320, 100), (1280, 100), (320, 200)):
         page.set_viewport_size({"width": width, "height": 900})
-        page.add_style_tag(content=f"html {{ font-size: {font_scale}% !important; }}")
+        page.evaluate(
+            "value => document.documentElement.style.setProperty('font-size', value, 'important')",
+            f"{font_scale}%",
+        )
         assert not page.evaluate("document.documentElement.scrollWidth > innerWidth + 1")
         for control in (select, page.locator("#deepHostInput")):
             box = control.bounding_box()

@@ -3,6 +3,10 @@
 Automated checks establish software behaviour. They do not establish that nontechnical
 people understand the report or that every device on a live network will answer.
 
+For current revision-specific results and remaining limits, use the
+[verification index](verification-status.md). Dated baseline records are retained;
+they are not claims that newer unpublished changes have passed hosted evaluation.
+
 ## Future improvement: optional Pi-hole naming
 
 Decision, 30 September 2026: Pi-hole deployment and live evaluation are deferred at the
@@ -21,13 +25,11 @@ existing [setup notes](pihole-setup.md) are retained as future-work preparation 
 
 Use Python 3.12 on the intended Ubuntu lab host. In a new virtual environment, install
 `python -m pip install -r requirements-dev.lock -e ".[dev]"`, then run `python -m pip check`.
-The runtime pins, including platformdirs/Uvicorn, were installed in a fresh Windows/
-Python 3.14 wheel environment on 26 September 2026 and passed package verification.
-This does not establish Linux compatibility or validate every development pin.
-Verify Linux wheels and compatibility before claiming the reference platform is supported.
-
-The prepared GitHub Actions matrix covers Windows/Ubuntu and Python 3.12/3.14, using
-synthetic browser scans and `scripts/check_package.py`. Its remote runs remain pending.
+Windows/Python 3.14 installed-wheel checks and the recorded hosted Windows/Ubuntu,
+Python 3.12/3.14 baseline are linked from the verification index. The baseline's
+synthetic browser/package results do not verify the current uncommitted working
+tree or the intended live Ubuntu lab. Record the exact revision, environment and
+artifact folder when repeating installation or reference-platform evaluation.
 
 Run the offline Python suite and the JavaScript tests described in `testing.md`.
 Build a wheel with `python -m build --wheel`. Install the wheel and `requirements.lock`
@@ -37,11 +39,18 @@ in another environment and run it from outside the source checkout. Check `/`,
 ## Browser workflow
 
 Set `RUN_BROWSER_TESTS=1` and run `pytest tests/browser_test_workflow.py`.
-The default channel is installed Microsoft Edge; on Linux run `python -m playwright install chromium`
-and set `BROWSER_CHANNEL` to an empty string to use the downloaded Chromium.
+The default engine is downloaded Chromium. Install the desired engines with
+`python -m playwright install chromium firefox webkit`, then use
+`python scripts/check.py --browser-only --browser-engines chromium,firefox,webkit`.
+`BROWSER_CHANNEL=msedge` is an optional Chromium-only override for installed Edge;
+it does not select Firefox/WebKit. Record the actual engine and version.
 This test uses a real browser with synthetic scanner/provider responses and isolated
-JSON files. It covers waiting for AI, a completed report, an AI outage with factual
-results visible, retry without scanning, saved history and a Light known-host rescan.
+JSON files. It covers waiting for explanation processing, a completed report,
+refresh without resubmission, saved history and an explicit Light known-host rescan.
+Model-outage cases retain factual results without the removed AI-outage banner or
+wording-retry button. The test separately invokes the explanation-recovery API and
+reopens its saved phase without another Nmap scan; that is API-only coverage, not
+a user-facing retry control. Supporting information identifies wording provenance.
 
 ## Live lab protocol
 
@@ -91,3 +100,8 @@ Have a second reviewer check a sample of the answer scoring. Compare comprehensi
 time and misleading interpretations; a higher clarity rating alone is insufficient.
 Use the findings to revise reviewed wording and rerun the relevant cases. The study
 has not yet been conducted; no participant responses or effectiveness claims are fabricated.
+
+The [18 October extension](evaluation-session.md#first-action-and-inclusive-evaluation---18-october-2026)
+adds first-action, uncertain-CVE and assistive-technology tasks. Shorter paragraphs,
+native controls and passing browser tests remain implementation evidence, not a
+measured improvement in reader understanding or certified accessibility.

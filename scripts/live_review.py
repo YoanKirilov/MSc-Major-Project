@@ -11,12 +11,15 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from uuid import UUID, uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from app.build_info import API_CONTRACT_VERSION, source_build_id  # noqa: E402
 from app.config import detect_private_network, load_config  # noqa: E402
 from app.scanner.network import connection_snapshot  # noqa: E402
+from app.schemas.scan import ScanDocument  # noqa: E402
 from app.schemas.settings import Settings  # noqa: E402
 
 
@@ -41,9 +44,68 @@ def read_api(context, path):
     return context.request.get(path, timeout=60000, max_retries=2)
 
 
+def require_review_success(browser_results, integrity, *, saved_only=False):
+    """Recorded diagnostics must affect the outcome, not just an artifact file."""
+    if browser_results["page_errors"]:
+        raise RuntimeError("Browser errors were recorded; inspect browser-results.json")
+    expected = 0 if saved_only else 2
+    if browser_results["scan_submissions"] != expected:
+        raise RuntimeError(f"Unexpected scan submission count; expected {expected}")
+    if not saved_only and browser_results["refresh_kept_both_jobs"] is not True:
+        raise RuntimeError("Refreshing did not preserve both running scans")
+    if not saved_only and browser_results["automatic_reports_after_analysis"] is not True:
+        raise RuntimeError("Automatic navigation after analysis was not verified")
+    if integrity["normal_existing_reports_unchanged"] is not True:
+        raise RuntimeError("Existing normal reports changed; inspect integrity.json")
+    if saved_only and integrity["saved_test_evidence_unchanged"] is not True:
+        raise RuntimeError("Saved test evidence changed; inspect integrity.json")
+
+
+def saved_pair(run):
+    """Only reopen isolated, finished reports; startup must not recover live jobs."""
+    data = run / "data"
+    scan_root = data / "scans"
+    if not data.is_dir() or not data.resolve().is_relative_to(run):
+        raise ValueError("Saved test data must remain inside the review artifact folder")
+    if not scan_root.is_dir() or not scan_root.resolve().is_relative_to(data.resolve()):
+        raise ValueError("Saved scans must remain inside the isolated data folder")
+    documents = {}
+    for path in scan_root.glob("*/scan.json"):
+        if not path.resolve().is_relative_to(scan_root.resolve()):
+            raise ValueError("Saved scan evidence must not link outside the isolated folder")
+        document = ScanDocument.model_validate_json(path.read_bytes())
+        if document.phase != "finished" or document.state in {"queued", "running"}:
+            raise ValueError("Finish or cancel all test jobs before reopening saved reports")
+        documents[document.scan_id] = document
+    ids = {}
+    for profile, policy in (("light", "light"), ("deep", "deep-tcp-v1")):
+        scan_id = str(UUID(json.loads((run / f"{profile}-id.json").read_text())["scan_id"]))
+        document = documents.get(scan_id)
+        if (
+            document is None
+            or document.source != "live"
+            or document.policy.get("profile") != policy
+        ):
+            raise ValueError("Saved report identity or profile does not match the review pair")
+        ids[profile] = scan_id
+    return data, ids
+
+
 def normal_public_check(run):
     """Inspect served code, not another instance's private session or reports."""
-    result = {"reachable": False}
+    try:
+        if not (ROOT / "app").is_dir():
+            raise OSError("Missing source")
+        expected_build = source_build_id(ROOT / "app")
+    except OSError:
+        expected_build = None
+    result = {
+        "reachable": False,
+        "expected_build": expected_build,
+        "source_match": None,
+        "freshness": "unverified",
+        "restart_required": None,
+    }
     try:
         with urllib.request.urlopen("http://127.0.0.1:8765/openapi.json", timeout=5) as response:
             schema = json.load(response)
@@ -63,6 +125,11 @@ def normal_public_check(run):
             ),
             share_route="/api/live-scans/{scan_id}/share" in schema["paths"],
             monitoring_route="/api/monitoring" in schema["paths"],
+            cve_operation_contract="operation_id"
+            in schema.get("components", {})
+            .get("schemas", {})
+            .get("CveLookupRequest", {})
+            .get("properties", {}),
         )
         mismatches = []
         for path in (ROOT / "app/static").rglob("*"):
@@ -72,6 +139,22 @@ def normal_public_check(run):
                     if reply.read() != path.read_bytes():
                         mismatches.append(route)
         result["asset_mismatches"] = mismatches
+        with urllib.request.urlopen("http://127.0.0.1:8765/", timeout=5) as reply:
+            result["running_contract"] = reply.headers.get("X-NetGuard-Contract")
+            result["running_build"] = reply.headers.get("X-NetGuard-Build")
+        running = result["running_build"]
+        result["source_match"] = (running == expected_build) if running and expected_build else None
+        result["freshness"] = {True: "current", False: "different"}.get(
+            result["source_match"], "unverified"
+        )
+        contract_matches = result["cve_operation_contract"] and result["running_contract"] == str(
+            API_CONTRACT_VERSION
+        )
+        result["restart_required"] = (
+            True
+            if not contract_matches
+            else (not result["source_match"] if result["source_match"] is not None else None)
+        )
     except Exception as error:
         result["error_type"] = type(error).__name__
     save(run, "normal-public-check.json", result)
@@ -81,21 +164,41 @@ def normal_public_check(run):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--authorised", action="store_true")
-    parser.add_argument("--scope", required=True)
-    parser.add_argument("--host", required=True)
+    parser.add_argument(
+        "--verify-saved", action="store_true", help="Reopen finished test reports only"
+    )
+    parser.add_argument("--scope")
+    parser.add_argument("--host")
     parser.add_argument("--artifacts", required=True, type=Path)
     args = parser.parse_args()
-    if not args.authorised:
-        parser.error("Live scans require an explicit --authorised opt-in")
-    run = args.artifacts.resolve()
-    if not run.is_relative_to(ROOT / ".test-artifacts") or run.exists():
+    if not args.verify_saved and not (args.authorised and args.scope and args.host):
+        parser.error("Live scans require --authorised, --scope and --host")
+    source_run = args.artifacts.resolve()
+    if not source_run.is_relative_to(ROOT / ".test-artifacts"):
+        parser.error("Use a private folder under .test-artifacts")
+    if not args.verify_saved and source_run.exists():
         parser.error("Use a new private folder under .test-artifacts; never reuse scan IDs")
+    saved_ids = {}
+    if args.verify_saved:
+        try:
+            data, saved_ids = saved_pair(source_run)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            parser.error(f"Cannot reopen saved test reports: {error}")
+    run = source_run / f"verification-{uuid4().hex[:10]}" if args.verify_saved else source_run
+    try:
+        from playwright.sync_api import expect, sync_playwright
+    except ModuleNotFoundError:
+        parser.error(
+            "Playwright is required. Run this helper with the existing .venv-quality "
+            "Python environment; the app's .venv runtime does not include browser tools."
+        )
     config = load_config()
-    if detect_private_network() != args.scope:
-        parser.error("The default-route network no longer matches the authorised scope")
-    snapshot = connection_snapshot(config, args.scope, strict=True)
-    if snapshot["address"] != args.host:
-        parser.error("The Deep target must be this PC's confirmed local interface address")
+    if not args.verify_saved:
+        if detect_private_network() != args.scope:
+            parser.error("The default-route network no longer matches the authorised scope")
+        snapshot = connection_snapshot(config, args.scope, strict=True)
+        if snapshot["address"] != args.host:
+            parser.error("The Deep target must be this PC's confirmed local interface address")
     run.mkdir(parents=True)
     print(f"Live check artifacts: {run}", flush=True)
     normal_root = config.data_dir
@@ -103,26 +206,27 @@ def main():
     save(run, "normal-report-hashes-before.json", before)
     public = normal_public_check(run)
     print(json.dumps({"normal_public_check": public}), flush=True)
-    data = run / "data"
-    data.mkdir()
-    settings_path = normal_root / "settings.json"
-    saved = (
-        Settings.model_validate_json(settings_path.read_bytes())
-        if settings_path.exists()
-        else Settings()
-    )
-    save(run, "normal-settings-facts.json", saved.model_dump())
-    # Keep name discovery enabled as configured, but do not call optional Pi-hole.
-    # Use the verified current automatic scope, without changing normal settings.
-    isolated = saved.model_copy(
-        update={
-            "allowed_network": None,
-            "interface": None,
-            "retain_raw_xml": True,
-            "pihole_enabled": False,
-        }
-    )
-    save(data, "settings.json", isolated.model_dump(mode="json"))
+    if not args.verify_saved:
+        data = run / "data"
+        data.mkdir()
+        settings_path = normal_root / "settings.json"
+        saved = (
+            Settings.model_validate_json(settings_path.read_bytes())
+            if settings_path.exists()
+            else Settings()
+        )
+        save(run, "normal-settings-facts.json", saved.model_dump())
+        # Keep configured name discovery, but never call optional Pi-hole.
+        isolated = saved.model_copy(
+            update={
+                "allowed_network": None,
+                "interface": None,
+                "retain_raw_xml": True,
+                "pihole_enabled": False,
+            }
+        )
+        save(data, "settings.json", isolated.model_dump(mode="json"))
+    saved_before = hashes(data / "scans") if args.verify_saved else None
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
@@ -174,8 +278,6 @@ def main():
             time.sleep(1)
         if not bootstrap:
             raise TimeoutError("Owned backend startup deadline")
-        from playwright.sync_api import expect, sync_playwright
-
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             context = browser.new_context(
@@ -193,8 +295,16 @@ def main():
                 ),
             )
             welcome = context.new_page()
-            welcome.goto(bootstrap)
-            expect(welcome.locator("#scanLaunchButton")).to_be_enabled(timeout=60000)
+            with welcome.expect_response(
+                lambda response: (
+                    response.request.method == "POST" and response.url.endswith("/api/session")
+                )
+            ) as authentication:
+                welcome.goto(bootstrap, wait_until="domcontentloaded")
+            if authentication.value.status != 200:
+                raise RuntimeError("The owned test session could not be opened")
+            if not args.verify_saved:
+                expect(welcome.locator("#scanLaunchButton")).to_be_enabled(timeout=60000)
             preflight = read_api(context, base + "/api/status").json()
             session = read_api(context, base + "/api/session").json()
             cookie = next(
@@ -207,7 +317,7 @@ def main():
                 "X-CSRF-Token": session["csrf_token"],
             }
             save(run, "preflight.json", preflight)
-            if (
+            if not args.verify_saved and (
                 preflight["allowed_network"] != args.scope
                 or preflight["detected_network"] != args.scope
                 or preflight["network_warning"]
@@ -233,6 +343,16 @@ def main():
             )
             for profile in ("light", "deep"):
                 page = context.new_page()
+                if args.verify_saved:
+                    scan_id = saved_ids[profile]
+                    page.goto(base + f"/scans/{scan_id}", wait_until="domcontentloaded")
+                    scans[profile] = {
+                        "id": scan_id,
+                        "page": page,
+                        "finished": True,
+                        "refreshed": None,
+                    }
+                    continue
                 page.on(
                     "dialog",
                     lambda dialog: (
@@ -336,6 +456,15 @@ def main():
                             flush=True,
                         )
                 welcome.wait_for_timeout(5000)
+            flow_results = {
+                "mode": "saved_reports" if args.verify_saved else "live_scans",
+                "scan_submissions": len(submissions),
+                "refresh_kept_both_jobs": None
+                if args.verify_saved
+                else all(item["refreshed"] for item in scans.values()),
+                "automatic_reports_after_analysis": None if args.verify_saved else True,
+            }
+            save(run, "scan-flow-results.json", flow_results)
             for profile, item in scans.items():
                 page = item["page"]
                 expect(page).to_have_url(base + f"/scans/{item['id']}", timeout=60000)
@@ -346,7 +475,13 @@ def main():
                     page.set_viewport_size({"width": width, "height": 900})
                     if page.evaluate("document.documentElement.scrollWidth > innerWidth"):
                         errors.append(f"{profile} report overflow at {width}px")
+                    page.evaluate("window.scrollTo(0, 0)")
+                    page.screenshot(path=str(run / f"{profile}-{width}-viewport.png"))
                     page.screenshot(path=str(run / f"{profile}-{width}.png"), full_page=True)
+                    if profile == "deep" and width == 390:
+                        page.locator("#device-summaries").screenshot(
+                            path=str(run / "deep-device-card-390.png")
+                        )
                 (run / (profile + "-report-text.txt")).write_text(
                     page.locator("body").inner_text(), encoding="utf-8"
                 )
@@ -383,15 +518,29 @@ def main():
             device_page.get_by_role("button", name="Search devices", exact=True).click()
             expect(device_page.locator("#device-library-empty")).to_be_visible(timeout=60000)
             device_page.get_by_role("button", name="Reset search and view", exact=True).click()
+            expect(device_page.locator("#device-library-applied")).to_contain_text(
+                "Applied view: All devices.", timeout=60000
+            )
+            expect(device_page.locator("#device-library-list")).to_have_attribute(
+                "aria-busy", "false", timeout=60000
+            )
             expect(device_page.locator("#device-library-status")).to_contain_text(
                 "Page", timeout=60000
             )
             device_page.get_by_role("combobox", name="Show saved devices").select_option("review")
             device_page.get_by_role("button", name="Search devices", exact=True).click()
+            # A visible card may still belong to the previous view. Wait for the
+            # applied filter and completed load before opening its disclosures.
+            expect(device_page.locator("#device-library-applied")).to_contain_text(
+                "Applied view: With items to review.", timeout=60000
+            )
+            expect(device_page.locator("#device-library-list")).to_have_attribute(
+                "aria-busy", "false", timeout=60000
+            )
             card = device_page.locator(".device-library-card").first
             expect(card).to_be_visible(timeout=60000)
             return_key = card.get_attribute("data-device-key")
-            card.get_by_text("Open recorded reports", exact=True).click()
+            card.locator(".device-library-history > summary").click()
             card.get_by_role("link").first.click()
             expect(device_page.locator("#report-content")).to_have_attribute(
                 "data-reading-ready", "true", timeout=60000
@@ -400,11 +549,9 @@ def main():
             expect(device_page.get_by_role("combobox", name="Show saved devices")).to_have_value(
                 "review"
             )
-            device_page.wait_for_function(
-                "key => document.activeElement?.closest('.device-library-card')"
-                "?.dataset.deviceKey === key",
-                arg=return_key,
-            )
+            expect(card).to_have_attribute("data-device-key", return_key)
+            device_page.bring_to_front()
+            expect(card.locator(".device-library-primary h3")).to_be_focused(timeout=20000)
             device_page.close()
             monitor = read_api(context, base + "/api/monitoring")
             if monitor.status != 404:
@@ -423,32 +570,33 @@ def main():
                     "periodic_checks_removed": True,
                 },
             )
-            save(
-                run,
-                "browser-results.json",
-                {
-                    "page_errors": errors,
-                    "scan_submissions": len(submissions),
-                    "refresh_kept_both_jobs": all(item["refreshed"] for item in scans.values()),
-                    "automatic_reports_after_analysis": True,
-                },
-            )
+            browser_results = {
+                **flow_results,
+                "page_errors": errors,
+            }
+            save(run, "browser-results.json", browser_results)
             browser.close()
             browser = context = None
-            if len(submissions) != 2:
-                raise RuntimeError("Unexpected additional scan submission")
         after = hashes(normal_root / "scans")
+        integrity = {
+            "normal_existing_reports_unchanged": all(
+                after.get(name) == digest for name, digest in before.items()
+            )
+        }
+        if args.verify_saved:
+            integrity["saved_test_evidence_unchanged"] = saved_before == hashes(data / "scans")
+        save(run, "integrity.json", integrity)
+        require_review_success(browser_results, integrity, saved_only=args.verify_saved)
+        print(
+            "SAVED_REPORT_REVIEW_COMPLETE" if args.verify_saved else "LIVE_SCAN_PAIR_COMPLETE",
+            flush=True,
+        )
+    except Exception as error:
         save(
             run,
-            "integrity.json",
-            {
-                "normal_existing_reports_unchanged": all(
-                    after.get(name) == digest for name, digest in before.items()
-                )
-            },
+            "failed-browser-results.json",
+            {"page_errors": errors, "submissions": len(submissions)},
         )
-        print("LIVE_SCAN_PAIR_COMPLETE", flush=True)
-    except Exception as error:
         save(run, "check-failure.json", {"type": type(error).__name__, "message": str(error)})
         raise
     finally:

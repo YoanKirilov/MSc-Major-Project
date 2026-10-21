@@ -3,11 +3,29 @@
 import errno
 import secrets
 import socket
+from time import monotonic
 
 MIN_BROWSER_PORT = 49152
 MAX_BROWSER_PORT = 65535
 PORT_ATTEMPTS = 64
 LOCAL_READ_TIMEOUT_MS = 20_000
+
+
+def wait_for_js(page, expression, *, arg=None, timeout=30_000):
+    """Bounded polling without page-world Function/eval or a weaker app CSP."""
+    from playwright.sync_api import TimeoutError as BrowserTimeout
+
+    deadline = monotonic() + timeout / 1000
+    while True:
+        value = page.evaluate(expression, arg)
+        if value:
+            return value
+        remaining = (deadline - monotonic()) * 1000
+        if remaining <= 0:
+            raise BrowserTimeout(
+                "The expected browser condition was not reached before its deadline"
+            )
+        page.wait_for_timeout(min(50, remaining))
 
 
 def wait_for_report_ready(page):

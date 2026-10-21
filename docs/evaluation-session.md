@@ -48,7 +48,7 @@ For each report ask:
 | Zero findings | Selected checks finished without review items | Other services/settings were not fully assessed | Review scope; do not conclude everything is safe |
 | No responders | No devices answered discovery | No device security assessment was possible | Check connection and authorised scope |
 | Incomplete scan | One device checked; another timed out | The unfinished device remains unassessed | Review saved findings and retry the unfinished device |
-| AI outage | Scan evidence saved; simplification unavailable | AI failure is not a failed network check | Read rule-based guidance or retry explanation without rescanning |
+| Model unavailable | Scan evidence and reviewed fixed wording remain readable | Wording provenance does not establish device safety; no outage banner is expected | Use the visible guidance and inspect its source in Supporting information if needed |
 
 Score questions 1–3 as 1 only if the relevant observation, limitation, or sensible
 first step is recognised, otherwise 0. Question 4 scores 1 only if neither safety nor
@@ -231,3 +231,75 @@ Record issues, implement the smallest justified fixes and repeat affected tasks.
 Automated Chromium/Firefox checks and simulated viewports complement these sessions;
 they do not replace participants, actual assistive technology or a full conformance
 assessment. See [WAI involving-users guidance](https://www.w3.org/WAI/test-evaluate/involving-users/).
+
+## First-action and inclusive evaluation - 18 October 2026
+
+Status: prepared tasks, not collected results. Use the combined-interface condition
+unless independently prepared original/model views satisfy the controls above.
+
+- Read the short first step without opening **Why start here?**. Explain what to
+  do and identify the visible precaution. Then open the explanation and say what
+  it adds. Score action, uncertainty and precaution separately; brevity alone is
+  not success. Include a self-check and an unfinished-device example.
+- Read a CVE example with related references but no usable product mapping. Explain
+  whether a vulnerability was confirmed. Inspect a synthetic **Maker's advice**
+  destination without navigating to a real device or changing settings. Success
+  distinguishes database leads from a verified device vulnerability.
+- With actual NVDA/Firefox or VoiceOver/Safari, lose a synthetic CVE reply and
+  reload saved references. Repeat an unchanged name lookup. Record the final
+  announcement, focus location and any duplicate/stuck waiting message. A DOM
+  `role=status` check is not evidence of actual speech.
+- At true 200%/400% browser zoom, with forced colours and keyboard-only input,
+  open/close Supporting information and use search, edit and recovery. Record
+  clipping, obscured focus, reading order and whether every control remains usable.
+- Disable JavaScript in the synthetic app and explain why scanning/report loading
+  is unavailable and how to recover. No scan should start; existing results should
+  not be described as lost. Repeat a deliberately blocked report module.
+
+Record browser/OS/AT versions, settings, anonymous task results and consent status.
+Use the earlier checklist for voice input, switch access and physical phones. No
+participant, physical-device, true-zoom or real-screen-reader pass is asserted by
+the automated 18 October changes.
+
+## Naming and recovery tasks - 19 October 2026
+
+Status: prepared only. Use synthetic saved examples, not participants' home data.
+Keep technical lookup details optional; do not add controls merely for evaluation.
+
+- Show two unnamed devices: one with no name returned, another with a timed-out
+  name source. Ask whether either is an intruder or absent, and what the difference
+  means. Success preserves uncertainty; a later name is still a claim, not identity.
+- Show a queued check that expired and a deliberately excluded address. Ask which
+  targets **Retry unfinished checks** would check. It should include the eligible
+  unfinished device, not repeat completed work or probe excluded/silent addresses.
+- Show a CVE record with unusable applicability information. Ask whether a matching
+  vulnerability was ruled out. Success distinguishes unknown coverage from a usable
+  mapping with no related results, and neither is a safety verdict.
+- With actual assistive technology, show one backend-version notice. Check that it
+  is announced without moving focus or hiding saved evidence, and the instruction
+  to finish active scans before restarting is understood. Do not deliberately
+  interrupt real scans to create this condition.
+- Simulate a lost CVE reply followed by another tab's cached lookup. Use saved
+  reference recovery and record whether the outcome is understood without sending
+  another research request. Explain any attempt too old for the bounded receipt
+  history as unconfirmed, not a proved failure or successful retry.
+
+Use the earlier consent, anonymous task log and real-AT/phone checks. These tasks,
+DOM assertions and automated keyboard tests are not collected participant data or
+evidence of spoken screen-reader output.
+
+## Scan-start recovery and shorter wording - 21 October 2026
+
+Prepared only; no participant results have been collected. In an isolated synthetic
+session, lose a scan-start reply, then refresh while the original start is being
+confirmed. Ask the reader what **Check original scan start** does, whether Scan is
+available, and whether **Return to scan setup** itself starts a replacement. Success:
+the check reads the original attempt, uncertainty is not proof of failure, and
+returning to setup requires a separate explicit choice to start another scan.
+Repeat using an unfinished-device retry and ask which addresses will be checked.
+
+Compare the shorter gateway label and unknown-CVE message with their optional
+technical evidence. Ask what is known, what remains unconfirmed, and the next safe
+action. Use actual screen-reader speech/focus and nontechnical readers, not just DOM
+assertions. Keep recruitment, consent and anonymous task outcomes in the study kit;
+automated tests cannot establish comprehension or accessibility certification.
