@@ -1,6 +1,42 @@
 # NetGuard AI (Network Assessor)
 
 Current verification: [status by revision and evidence type](docs/verification-status.md).
+Latest fixes: [27 October monitoring, attempt records and simpler reports](docs/rest-fixes-20261027.md).
+Fresh Light completed 10/10 device checks; Deep completed 1/1 this-PC check.
+Evidence replay and all 13 AI records validated. The updated app is running;
+WebKit navigation is deferred at the owner's request. Offline, focused Chromium/
+Firefox, security and installed-package checks passed. No new hosted pass is claimed.
+
+Preceding recheck: [27 October live scans and remaining issues](docs/verification-review-20261027.md).
+Light retained two of six device checks; Deep stopped before completing this-PC
+checks. Both stopped safely on an intermittent local interface-query timeout.
+Saved evidence, AI validation, refresh and report access passed; successful full
+Light/Deep completion is not claimed. See the recheck for fresh automated results.
+Chromium/Firefox passed 163 cases each; WebKit recorded one intermittent navigation
+error despite 163 passing cases. The full verification is not entirely green.
+
+Latest work: [27 October fixes and improved CVE research](docs/fixes-cve-20261027.md).
+CVE lookup includes related cases for the same detected software across other or
+unknown versions, with dates and explicit applicability limits. Navigation/read
+cleanup, keyboard acceptance and dependency patches are implemented locally.
+The dependency audit, installed-package and offline checks passed. Full Chromium/
+WebKit suites passed 163 cases each; Firefox passed 162 plus final focused recovery
+checks. The normal runtime is updated and restarted; Nmap and Ollama are ready,
+and the served build matches source. No commit, push or new hosted-CI pass is claimed.
+The [26 October live review](docs/full-review-20261026.md) retains the preceding
+Light/Deep scan results and the original failures; no new device scan was started
+for the 27 October implementation.
+
+### Earlier execution snapshots
+
+Latest execution: [code organisation and fresh live checks](docs/organisation-live-verification-20261021.md).
+Deep completed; Light stopped safely when a Windows connection query timed out.
+Offline, browser, security and installed-package checks passed; a complete live
+pass is not claimed. Existing reports are unchanged. Normal backend restart and
+Windows-query reliability work remain necessary.
+
+## Previous implementation records
+
 Latest fixes: [21 October scan-start, recovery, network diagnostics and coverage](docs/issue-fixes-20261021.md).
 All four reproduced issues are fixed locally and verified; restart the backend
 task when idle, reopen its session link and reload tabs to use the new backend code.

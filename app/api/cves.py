@@ -38,6 +38,7 @@ async def lookup_cves(
         if (
             cached
             and cached.lookup_version == LOOKUP_VERSION
+            and not cached.related_search_incomplete
             and cached.query == service_cpe(service)
             and cached.related_query
             == (product_cpe(cached.resolved_query) or service_product_cpe(service))

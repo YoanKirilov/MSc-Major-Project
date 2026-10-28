@@ -25,6 +25,29 @@ test('overview display uses everyday feature labels without changing counts or l
   assert.match(legacy, /12 open services/);
 });
 
+test('failed report lead distinguishes unassessed devices from successful empty checks', () => {
+  const data = { state: 'failed', devices: [], coverage: { service_completed_count: 0 } };
+  assert.match(presentation.incompleteReportLead(data), /stopped before usable device results/);
+  assert.doesNotMatch(presentation.incompleteReportLead(data), /0 features|are safe and|everything is safe/);
+  assert.match(presentation.incompleteReportLead(data), /cannot tell you whether/);
+  assert.equal(presentation.incompleteReportLead({ ...data, state: 'completed' }), '');
+  assert.equal(presentation.incompleteReportLead({ ...data, coverage: { service_completed_count: 1 } }), '');
+});
+
+test('unfinished notes exclude silent unselected addresses and distinguish checks that never started', () => {
+  const data = { target: { mode: 'discover' }, coverage: { targets: [
+    { ip: '192.168.56.10', discovery_status: 'observed', service_status: 'cancelled', reason_code: 'network_interrupted', attempts: 1 },
+    { ip: '192.168.56.11', discovery_status: 'observed', service_status: 'failed', attempts: 0 },
+    { ip: '192.168.56.12', discovery_status: 'not_seen', service_status: 'skipped', attempts: 0 },
+    { ip: '192.168.56.13', discovery_status: 'observed', service_status: 'completed', attempts: 1 },
+  ] } };
+  const notes = presentation.unfinishedCheckNotes(data);
+  assert.equal(notes.length, 2);
+  assert.match(notes[0].message, /connection could not be verified.*Attempts: 1/);
+  assert.match(notes[1].message, /did not start/);
+  assert.doesNotMatch(notes.map(n => n.message).join(' '), /attempt\(s\)|\.12|\.13/);
+});
+
 test('the report has one labelled review total and no redundant hidden count', () => {
   const html = readFileSync(new URL('../app/templates/scan.html', import.meta.url), 'utf8');
   const source = readFileSync(new URL('../app/static/js/scan.js', import.meta.url), 'utf8');
@@ -587,7 +610,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
   context.data.services[0].cve_lookup_available = true;
   vm.runInContext('render(data)', context);
   assert.match(text(elements.get('#device-summaries')), /Check CVEs for this software/);
-  assert.match(text(elements.get('#report-first-step')), /Retry the unfinished.*Missing results cannot tell you whether a device is safe/);
+  assert.match(text(elements.get('#report-first-step')), /scan notes.*retry the unfinished.*cannot assess unchecked devices/);
   context.data.state = 'completed';
   context.data.analysis_status = 'ready';
   context.data.report_explanation = { status: 'ready', source: 'ai', ai_fields: ['meaning', 'why_it_matters', 'recommended_steps', 'how_to_check', 'limitations'], prompt_version: '3.0.0', content: {
@@ -634,7 +657,7 @@ test('report renderer exposes failures, sorts recommendations and hides older AI
     targets: [{ ip: '192.168.0.53', service_status: 'completed' }, { ip: '192.168.0.54', service_status: 'cancelled', reason_code: 'network_interrupted' }] };
   vm.runInContext('render(data)', context);
   assert.match(elements.get('#result-title').textContent, /1 device could not be checked/);
-  assert.match(text(elements.get('#scan-problems')), /network safety check/);
+  assert.match(text(elements.get('#scan-problems')), /network connection could not be verified/);
   assert.equal(elements.get('#retryHostsButton').hidden, false);
   context.data.retryable_hosts = [];
   vm.runInContext('render(data)', context);

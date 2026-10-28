@@ -29,8 +29,9 @@ RELATED_CRITERIA = "cpe:2.3:a:example:telnet:0.9:*:*:*:*:*:*:*"
 
 @pytest.mark.parametrize("version_known", [True, False])
 @pytest.mark.parametrize("lost_response", [False, True])
+@pytest.mark.parametrize("activation", ["pointer", "keyboard"])
 def test_cve_lookup_links_and_saved_references_on_mobile(
-    monkeypatch, tmp_path, version_known, lost_response, browser_engine
+    monkeypatch, tmp_path, version_known, lost_response, browser_engine, activation
 ):
     from playwright.sync_api import expect, sync_playwright
 
@@ -190,15 +191,24 @@ def test_cve_lookup_links_and_saved_references_on_mobile(
                         }
                     ),
                 )
-                reload_saved.click()
+                if activation == "keyboard":
+                    reload_saved.focus()
+                    reload_saved.press("Enter")
+                else:
+                    reload_saved.click()
                 expect(retry).to_be_disabled()
                 expect(panel.locator(".cve-status")).to_contain_text("still unconfirmed")
                 expect(panel).to_contain_text("Earlier saved lookup")
                 page.unroute("**/annotations")
-                reload_saved.click()
+                if activation == "keyboard":
+                    reload_saved.focus()
+                    reload_saved.press("Enter")
+                else:
+                    reload_saved.click()
                 expect(reload_saved).not_to_be_visible()
                 expect(retry).to_be_enabled()
-                expect(retry).to_be_focused()
+                if activation == "keyboard":
+                    expect(retry).to_be_focused()
             assert len(submissions) == 1
             cve_id = "CVE-2026-10001" if version_known else "CVE-2026-10002"
             link = panel.get_by_role("link", name=cve_id, exact=True)

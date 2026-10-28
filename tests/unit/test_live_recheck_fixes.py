@@ -221,7 +221,7 @@ async def test_active_host_cancellation_preserves_origin(tmp_path, monkeypatch, 
     from app.storage.json_store import JsonStore
 
     guard = NetworkGuard({"adapter": 1}, lambda: {"adapter": 1})
-    monkeypatch.setattr("app.jobs.supervisor.NetworkGuard", lambda *a: guard)
+    monkeypatch.setattr("app.jobs.supervisor.NetworkGuard", lambda *a, **kw: guard)
     store = JsonStore(tmp_path)
     doc = ScanDocument(
         scan_id=str(uuid4()),

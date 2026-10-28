@@ -18,6 +18,22 @@ function storedToken(value) {
 
 let csrfToken = storedToken();
 let runningContract = null;
+let pageRetired = false;
+let pageGeneration = 0;
+const pageReads = new Set();
+globalThis.window?.addEventListener?.('pagehide', () => {
+  pageRetired = true;
+  pageGeneration += 1;
+  // Retire page-owned reads, not accepted scan/CVE writes or backend jobs.
+  pageReads.forEach(controller => controller.abort());
+});
+globalThis.window?.addEventListener?.('pageshow', () => { pageRetired = false; });
+
+function inactivePage() {
+  const error = new Error('This page was left. Reopen it to read the saved results.');
+  error.code = 'page_inactive';
+  return error;
+}
 
 function expectedContract() {
   if (typeof document === 'undefined' || !document.querySelector) return null;
@@ -89,15 +105,24 @@ async function parseResponse(response) {
 }
 
 async function fetchResponse(path, options = {}) {
+  if (pageRetired) throw inactivePage();
+  const generation = pageGeneration;
   const { timeoutMs = 20000, ...fetchOptions } = options;
   const cveLookup = (options.method || 'GET').toUpperCase() === 'POST' && cveLookupPath.test(path);
   const maximum = cveLookup ? CVE_LOOKUP_TIMEOUT_MS : 60000;
   const deadline = Number.isFinite(timeoutMs) ? Math.min(maximum, Math.max(1000, timeoutMs)) : 20000;
   const controller = new AbortController();
+  const readOnly = ['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase());
+  if (readOnly) pageReads.add(controller);
   const timer = setTimeout(() => controller.abort(), deadline);
   try {
-    return await parseResponse(await fetch(path, { ...fetchOptions, signal: controller.signal, cache: 'no-store' }));
+    const response = await fetch(path, { ...fetchOptions, signal: controller.signal, cache: 'no-store' });
+    if (readOnly && generation !== pageGeneration) throw inactivePage();
+    const body = await parseResponse(response);
+    if (readOnly && generation !== pageGeneration) throw inactivePage();
+    return body;
   } catch (error) {
+    if (readOnly && generation !== pageGeneration) throw inactivePage();
     if (controller.signal.aborted) {
       const timeout = new Error(cveLookup
         ? 'The CVE lookup response took too long. It may still be finishing. Reload saved CVE references before starting another lookup; your scan does not need to run again.'
@@ -106,7 +131,7 @@ async function fetchResponse(path, options = {}) {
       throw timeout;
     }
     throw error;
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); pageReads.delete(controller); }
 }
 
 async function bootstrapSession() {

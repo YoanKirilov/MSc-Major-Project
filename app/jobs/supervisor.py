@@ -25,6 +25,7 @@ from app.scanner.commands import (
 from app.scanner.diagnostics import FAILURE_ADVICE, process_failure
 from app.scanner.mdns import browse_mdns
 from app.scanner.network import (
+    FreshNetworkReader,
     NetworkGuard,
     NetworkInterrupted,
     host_scan_interface,
@@ -71,6 +72,7 @@ class ScanSupervisor:
         self._analysis_tasks: dict[str, asyncio.Task] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
         self._scanner_activity: dict[str, dict] = {}
+        self._network_reads = FreshNetworkReader()
         self._admission = asyncio.Lock()
         self._analysis_capacity = asyncio.Semaphore(1)
         self._host_capacity = asyncio.Semaphore(2)
@@ -95,6 +97,7 @@ class ScanSupervisor:
             "scanner_checks_running": activity.get("running", 0),
             "last_scanner_event_at": activity.get("last_event_at"),
             "last_scanner_event": activity.get("last_event"),
+            "network_monitor": self._network_reads.diagnostics(),
         }
 
     async def _run_scanner(self, scan_id, args, timeout_s, cancel_event):
@@ -272,6 +275,7 @@ class ScanSupervisor:
         self._tasks.clear()
         self._analysis_tasks.clear()
         self._cancel_events.clear()
+        await self._network_reads.close()
 
     async def reconcile_incomplete(self) -> None:
         """Close persisted jobs that cannot survive a process restart."""
@@ -286,6 +290,24 @@ class ScanSupervisor:
 
     async def _checkpoint(self, scan_id: str, mutate: Callable[[Any], Any]) -> None:
         await self.store.update_scan(scan_id, mutate)
+
+    async def _record_host_attempt(self, scan_id, ip, record):
+        def append(current):
+            coverage = current.coverage.model_copy(deep=True)
+            for target in coverage.targets:
+                if target.ip == ip and not any(
+                    item.attempt == record.attempt for item in target.attempt_details
+                ):
+                    target.attempt_details.append(record)
+            return current.model_copy(update={"coverage": coverage})
+
+        saving = asyncio.create_task(self._checkpoint(scan_id, append))
+        try:
+            await asyncio.shield(saving)
+        except asyncio.CancelledError:
+            # Finish this terminal record before the parent finalises coverage.
+            await saving
+            raise
 
     _close_unfinished = staticmethod(close_unfinished)
 
@@ -428,6 +450,9 @@ class ScanSupervisor:
                     document.policy["network_context"],
                     lambda: connection_snapshot(
                         config, document.policy["allowed_network"], interface, strict=True
+                    ),
+                    read_async=lambda: self._network_reads.read(
+                        config, document.policy["allowed_network"], interface
                     ),
                 )
                 await guard.check()
@@ -644,17 +669,35 @@ class ScanSupervisor:
                         return current.model_copy(update={"coverage": coverage})
 
                     await self._checkpoint(scan_id, mark_attempt)
-                    result: ProcessResult = await self._run_scanner(
-                        scan_id,
-                        host_command(
-                            self.nmap_path,
+                    attempt_started = monotonic()
+                    try:
+                        result: ProcessResult = await self._run_scanner(
+                            scan_id,
+                            host_command(
+                                self.nmap_path,
+                                ip,
+                                DEEP_PROFILE if deep else "light",
+                                probe_interface,
+                            ),
+                            960 if deep else 210,
+                            cancel_event,
+                        )
+                    except (asyncio.CancelledError, Exception) as exc:
+                        await self._record_host_attempt(
+                            scan_id,
                             ip,
-                            DEEP_PROFILE if deep else "light",
-                            probe_interface,
-                        ),
-                        960 if deep else 210,
-                        cancel_event,
-                    )
+                            HostAttempt(
+                                attempt=attempt,
+                                duration_s=max(0, round(monotonic() - attempt_started, 3)),
+                                exit_code=None,
+                                outcome="NETWORK_INTERRUPTED"
+                                if guard and guard.failed
+                                else "HOST_SCAN_CANCELLED"
+                                if isinstance(exc, asyncio.CancelledError)
+                                else "HOST_SCAN_FAILED",
+                            ),
+                        )
+                        raise
                     if not process_failure(result) and not cancel_event.is_set():
                         try:
                             parsed = parse_host(
@@ -684,21 +727,16 @@ class ScanSupervisor:
                         or ("completed" if parsed else parse_error_code)
                     )
 
-                    def record_attempt(current, outcome=outcome, result=result, attempt=attempt):
-                        coverage = current.coverage.model_copy(deep=True)
-                        for target in coverage.targets:
-                            if target.ip == ip:
-                                target.attempt_details.append(
-                                    HostAttempt(
-                                        attempt=attempt,
-                                        duration_s=max(0, round(result.duration_s, 3)),
-                                        exit_code=result.returncode,
-                                        outcome=outcome,
-                                    )
-                                )
-                        return current.model_copy(update={"coverage": coverage})
-
-                    await self._checkpoint(scan_id, record_attempt)
+                    await self._record_host_attempt(
+                        scan_id,
+                        ip,
+                        HostAttempt(
+                            attempt=attempt,
+                            duration_s=max(0, round(result.duration_s, 3)),
+                            exit_code=result.returncode,
+                            outcome=outcome,
+                        ),
+                    )
                     if retain_raw_xml and result.stdout:
                         await self.store.save_raw_output(
                             scan_id,

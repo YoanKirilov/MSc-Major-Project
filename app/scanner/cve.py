@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from time import monotonic
 
 import httpx
@@ -16,7 +17,19 @@ from .cpe import service_cpe as service_cpe
 
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 MAX_RESPONSE_BYTES = 1_000_000
-LOOKUP_VERSION = "product-research-3"
+LOOKUP_VERSION = "product-research-4"
+RELATED_PAGE_SIZE = 20
+
+
+def _nvd_date(value):
+    if not isinstance(value, str) or not 19 <= len(value) <= 80 or value[10] != "T":
+        return None
+    try:
+        instant = datetime.fromisoformat(value)
+        # NVD API timestamps without an offset are UTC, not the local timezone.
+        return iso_z(instant.replace(tzinfo=timezone.utc) if instant.tzinfo is None else instant)
+    except (ValueError, OverflowError):
+        return None
 
 
 def _entries(data, limit):
@@ -53,7 +66,11 @@ def _reference(cve):
         if len(advisories) == 3:
             break
     return CveReference(
-        cve_id=cve["id"], description=" ".join(description.split())[:1200], advisories=advisories
+        cve_id=cve["id"],
+        description=" ".join(description.split())[:1200],
+        advisories=advisories,
+        published_at=_nvd_date(cve.get("published")),
+        modified_at=_nvd_date(cve.get("lastModified")),
     )
 
 
@@ -169,43 +186,15 @@ class NvdClient:
                     result = await self._version_lookup(query, common)
                     product = product_cpe(result.resolved_query) or product
                     result.related_query = product
-                    data = await self._fetch_json(
-                        NVD_API,
-                        {"virtualMatchString": product, "noRejected": "", "resultsPerPage": 20},
-                    )
-                    total, entries = _entries(data, 20)
-                    seen = {record.cve_id for record in result.results}
-                    related = []
-                    unverified = 0
-                    for entry in entries:
-                        cve = entry["cve"]
-                        if cve.get("vulnStatus") in {"Rejected", "REJECT"}:
-                            continue
-                        applicability = product_applicability(cve, product)
-                        if applicability == "unknown":
-                            unverified += 1
-                            continue
-                        if applicability != "related":
-                            continue
-                        record = _reference(cve)
-                        if record.cve_id not in seen:
-                            seen.add(record.cve_id)
-                            related.append(record)
-                    result.related_total = total
-                    result.related_results = related[:5]
-                    result.related_truncated = total > len(entries) or len(related) > 5
-                    result.related_unverified = unverified
-                    result.related_status = (
-                        "candidates"
-                        if related
-                        else "coverage_unknown"
-                        if unverified
-                        else "no_matches"
-                    )
+                    await self._related_lookup(result, product)
                     return result
             except (httpx.HTTPError, TimeoutError, ValueError, KeyError, TypeError, AttributeError):
                 if result is not None:
-                    result.related_status = "unavailable"
+                    result.related_search_incomplete = True
+                    result.related_selection = "partial"
+                    result.related_truncated = True
+                    if not result.related_results:
+                        result.related_status = "unavailable"
                     return result
                 return CveLookup(
                     **common,
@@ -215,6 +204,75 @@ class NvdClient:
                         "this is not a no-matches result."
                     ),
                 )
+
+    def _retain_related(self, result, product, entries, total):
+        seen, candidates, unverified = set(), [], 0
+        exact = {record.cve_id for record in result.results}
+        for index, entry in enumerate(entries[:40]):
+            cve = entry.get("cve") if isinstance(entry, dict) else None
+            identity = cve.get("id") if isinstance(cve, dict) else None
+            key = identity if isinstance(identity, str) else f"invalid-{index}"
+            if key in seen:
+                continue
+            seen.add(key)
+            if not isinstance(cve, dict):
+                unverified += 1
+                continue
+            if not isinstance(identity, str):
+                unverified += 1
+                continue
+            if cve.get("vulnStatus") in {"Rejected", "REJECT"} or identity in exact:
+                continue
+            applicability = product_applicability(cve, product)
+            if applicability == "unknown":
+                unverified += 1
+            elif applicability == "related":
+                try:
+                    candidates.append(_reference(cve))
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    unverified += 1
+        candidates.sort(
+            key=lambda item: (item.published_at or "", item.modified_at or "", item.cve_id),
+            reverse=True,
+        )
+        result.related_total = total
+        result.related_examined = len(seen)
+        result.related_results = candidates[:5]
+        result.related_truncated = total > len(seen) or len(candidates) > 5
+        result.related_unverified = unverified
+        result.related_selection = "recent_first"
+        result.related_status = (
+            "candidates"
+            if candidates
+            else "coverage_unknown"
+            if unverified or total > len(seen)
+            else "no_matches"
+        )
+
+    async def _related_lookup(self, result, product):
+        params = {
+            "virtualMatchString": product,
+            "noRejected": "",
+            "resultsPerPage": RELATED_PAGE_SIZE,
+        }
+        data = await self._fetch_json(NVD_API, params)
+        total, entries = _entries(data, RELATED_PAGE_SIZE)
+        self._retain_related(result, product, entries, total)
+        if total <= RELATED_PAGE_SIZE:
+            return
+        # Inspect both ends of the result, then rank the recorded publication
+        # dates. This is a bounded selection, never a complete history claim.
+        offset = total - RELATED_PAGE_SIZE
+        tail = await self._fetch_json(NVD_API, {**params, "startIndex": offset})
+        tail_total, recent = _entries(tail, RELATED_PAGE_SIZE)
+        if (
+            type(tail.get("startIndex")) is not int
+            or tail["startIndex"] != offset
+            or tail_total != total
+            or len(recent) != RELATED_PAGE_SIZE
+        ):
+            raise ValueError("changed or invalid NVD pagination")
+        self._retain_related(result, product, entries + recent, total)
 
     async def _version_lookup(self, query, common):
         if query is None:

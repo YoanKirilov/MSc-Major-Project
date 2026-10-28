@@ -10,7 +10,7 @@ import { renderReportInsights } from './report-insights.mjs?v=20261014-simpler-r
 import { bindReportExport } from './report-export.mjs?v=20261014-device-first';
 import { createNoteState, checkStatus, projectNotes, confirmedTitleReceipt } from './notes.mjs?v=20261015-edit-recovery';
 import { createNicknameState, projectNicknames } from './nicknames.mjs?v=20261007-followup';
-import { recordedTimeLabel, localFeatureHelp, readableOverview, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261018-lookup-outcomes';
+import { incompleteReportLead, unfinishedCheckNotes, recordedTimeLabel, localFeatureHelp, readableOverview, scanComputerCoverage, actionDeviceLabel, recordedDeviceRole, matchesSearch, deviceSearchValues, deviceLabel, reviewItemTitle, confidenceLabel, actionGuidance, wordingLabels, savedCheckNote, webPageInstructions, firstActionPrecaution } from './presentation.mjs?v=20261018-lookup-outcomes';
 import { partialScanTitle, prioritise, serviceLabel as formatServiceLabel, coverageSummary, deviceCheckLabel, completedCheckSummary, emptyFindingMessage, usableAiRecord, checkSummary, analysisProgressText, scanSetupLink, readScanSetup } from './report.mjs?v=20261014-reliability';
 
 const severityConfig = {
@@ -673,6 +673,13 @@ function cvePanel(service) {
 function renderFindings(data, { reveal = false, trigger = null } = {}) {
   currentData = data;
   const currentFindings = prioritise(data.findings, data.devices, data.services);
+  const noItems = currentFindings.length === 0;
+  for (const selector of ['.findings-section .section-heading > .form-field',
+    '.findings-section .report-toolbar', '#review-filter-help', '.findings-section .filter-row',
+    '.findings-layout']) {
+    const control = document.querySelector(selector);
+    if (control) control.hidden = noItems;
+  }
   const options = findingDeviceOptions(currentFindings, data.devices, deviceLabel);
   const optionSignature = JSON.stringify(options);
   if (reviewDeviceSignature !== optionSignature) {
@@ -756,6 +763,11 @@ function openReviewItem(findingId, trigger) {
 }
 
 function renderNextSteps(data) {
+  const hasTasks = data.findings.some(finding => finding.actions?.length);
+  const section = document.querySelector('.next-steps');
+  if (section) section.hidden = !hasTasks;
+  const link = document.querySelector('.report-jump-links a[href="#next-title"]');
+  if (link) link.hidden = !hasTasks;
   const signature = JSON.stringify([data.findings, data.devices.map(device => [device.device_id, device.hostname, device.user_nickname]), data.services.map(service => [service.service_id, service.name, service.port]), data.explanations, data.plain_guidance, currentOverview(data), data.plain_overview, data.state, data.phase, data.coverage, data.analysis_status, data.guidance_status]);
   if (signature === tasksSignature) { notes.refresh(); return; }
   tasksSignature = signature;
@@ -824,9 +836,9 @@ function renderBeginnerGuide(data) {
   const specificHelp = first?.severity === 'informational' ? localFeatureHelp(firstDevice, firstService, data) : null;
   reportFirstStep.textContent = first
     ? 'Start with ' + actionDeviceLabel(firstDevice, data) + '. Confirm you recognise it before changing settings.'
-    : overview?.content.recommended_steps?.join(' ') || (unfinished
-      ? 'Retry the unfinished checks when those devices are available. Missing results cannot tell you whether a device is safe.'
-      : 'Check which devices and features were observed. No listed review items does not prove everything is safe.');
+    : unfinished ? 'Read the scan notes above, confirm your current home connection, then retry the unfinished checks. These results cannot assess unchecked devices.'
+      : overview?.content.recommended_steps?.join(' ')
+        || 'Check which devices and features were observed. No listed review items does not prove everything is safe.';
   const instruction = document.querySelector('#first-action-instruction');
   instruction.textContent = first ? (specificHelp?.check || explanationFor(first).content.recommended_steps?.[0] || first.actions?.[0]?.text || 'Open its review item below.') : '';
   instruction.hidden = !instruction.textContent;
@@ -943,6 +955,8 @@ function renderDeviceSummaries(data) {
   }
   document.querySelector('#naming-coverage').textContent = projected.namingText;
   document.querySelector('#device-search-count').textContent = projected.countText;
+  const toolbar = document.querySelector('.device-section > .report-toolbar');
+  if (toolbar) toolbar.hidden = projected.entries.length < 2;
   const more = document.querySelector('#showMoreDevices');
   more.hidden = projected.visibleCount >= projected.matching.length;
   more.textContent = `Show more devices (${Math.max(0, projected.matching.length - projected.visibleCount)} remaining)`;
@@ -1185,6 +1199,8 @@ function render(data) {
   updateDocumentTitle();
   const displayed = currentOverview(data) || data.plain_overview;
   if (displayed?.content.meaning) lead.textContent = readableOverview(displayed.content.meaning);
+  const incompleteLead = incompleteReportLead(data);
+  if (incompleteLead) lead.textContent = incompleteLead;
   const overviewHelp = document.querySelector('#overview-help');
   overviewHelp.replaceChildren();
   if (displayed) {
@@ -1216,27 +1232,25 @@ function render(data) {
   const problems = [...(data.errors || []).filter(item => !item.target_ip), ...(data.warnings || []).filter(item =>
     item.code !== 'AI_PREFLIGHT_UNAVAILABLE'
     && !(item.code === 'SELF_SCAN_LOCAL_ROUTING' && hasSelfCheck))];
-  (data.coverage?.targets || []).filter((target) => ['failed', 'timed_out', 'cancelled'].includes(target.service_status)).forEach((target) => {
-    const reasons = { host_scan_timeout: 'timed out', host_result_invalid: 'returned an incomplete or invalid result',
-      host_unreachable: 'could not reach the device for checking (it may be asleep, disconnected or not responding; the cause is unknown)',
-      host_output_limit: 'returned more output than the scanner can retain', host_scan_failed: 'ended with a scanner error',
-      host_privilege_required: 'could not start because Nmap lacks the required permissions',
-      host_driver_unavailable: 'could not start because Nmap could not use the packet-capture driver or adapter',
-      network_interrupted: 'stopped by the network safety check; confirm the current connection before retrying',
-      result_size_limit: 'could not be saved within the report size limit', scan_failed: 'stopped because the scan encountered an error',
-      scan_time_limit: 'did not finish within the scan time budget',
-      storage_busy: 'stopped because report storage was busy',
-      host_scan_cancelled: 'was cancelled', process_restarted: 'was interrupted when the app stopped' };
-    const reason = reasons[target.reason_code] || 'did not finish';
-    problems.push({ message: `The device check for ${target.ip} ${reason} after ${target.attempts ?? 0} attempt(s). Its remaining checks were not assessed.` });
-  });
-  scanProblems.hidden = !problems.length;
-  if (problems.length) {
+  const unfinishedNotes = unfinishedCheckNotes(data);
+  scanProblems.hidden = !problems.length && !unfinishedNotes.length;
+  if (!scanProblems.hidden) {
     const incomplete = ['partial', 'failed', 'cancelled'].includes(data.state);
     scanProblems.append(text('strong', incomplete ? 'Scan notes and unfinished checks' : 'Scan notes'));
-    const list = document.createElement('ul');
-    problems.forEach((problem) => list.append(text('li', problem.message || 'A check did not complete.')));
-    scanProblems.append(list);
+    if (problems.length) {
+      const list = document.createElement('ul');
+      problems.forEach((problem) => list.append(text('li', problem.message || 'A check did not complete.')));
+      scanProblems.append(list);
+    }
+    if (unfinishedNotes.length) {
+      scanProblems.append(text('p', `${unfinishedNotes.length} device check${unfinishedNotes.length === 1 ? '' : 's'} did not finish. Their remaining checks were not assessed.`));
+      const details = document.createElement('details');
+      details.append(text('summary', 'View unfinished device checks'));
+      const list = document.createElement('ul');
+      unfinishedNotes.forEach(note => list.append(text('li', note.message)));
+      details.append(list);
+      scanProblems.append(details);
+    }
   }
   const outdatedAi = (data.explanations || []).some((record) => record.source === 'ai' && record.prompt_version !== data.guidance_status?.ai_prompt_version);
   guidanceArchives.replaceChildren();

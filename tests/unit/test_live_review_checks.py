@@ -18,6 +18,31 @@ def successful_results():
     }
 
 
+def test_scan_completion_is_distinct_from_a_successful_failed_report_workflow():
+    complete = {
+        "state": "completed",
+        "phase": "finished",
+        "target": {"mode": "discover"},
+        "coverage": {"discovery_complete": True, "service_stage_complete": True},
+    }
+    assert live_review.completed_scan_pair([complete, complete])
+    assert not live_review.completed_scan_pair([complete])
+    for change in (
+        {"state": "partial"},
+        {"state": "failed"},
+        {"phase": "analysis"},
+        {"coverage": {"discovery_complete": False, "service_stage_complete": True}},
+    ):
+        assert not live_review.completed_scan_pair([complete, {**complete, **change}])
+    # A known-host Deep check does not claim network discovery.
+    known = {
+        **complete,
+        "target": {"mode": "known_hosts"},
+        "coverage": {"discovery_complete": False, "service_stage_complete": True},
+    }
+    assert live_review.completed_scan_pair([complete, known])
+
+
 def test_live_review_accepts_verified_browser_and_unchanged_existing_reports():
     live_review.require_review_success(
         successful_results(), {"normal_existing_reports_unchanged": True}

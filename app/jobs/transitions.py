@@ -19,7 +19,23 @@ def close_unfinished(current, reason: str, *, cancelled: bool = False):
             elif not cancelled:
                 coverage.service_failed_count += 1
     coverage.service_stage_complete = False
-    return current.model_copy(update={"coverage": coverage})
+    warnings = list(current.warnings)
+    if (
+        current.policy.get("extra_details_enabled")
+        and current.phase in {"queued", "discovery", "service_scan"}
+        and not any(w.get("code") == "OPTIONAL_DETAILS_NOT_RUN" for w in warnings)
+    ):
+        warnings.append(
+            {
+                "code": "OPTIONAL_DETAILS_NOT_RUN",
+                "message": (
+                    "The scan stopped before its optional device-information stage. "
+                    "Additional name and certificate details were not collected in that stage; "
+                    "earlier observations are preserved."
+                ),
+            }
+        )
+    return current.model_copy(update={"coverage": coverage, "warnings": warnings})
 
 
 def interrupted_document(current):

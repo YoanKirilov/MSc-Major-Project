@@ -70,7 +70,11 @@ export function createCvePanel(document, scanId, service, saved, onSaved) {
       const details = element('details');
       details.dataset.disclosureKey = `description:${item.cve_id}`;
       details.append(element('summary', 'Published technical description'), element('p', item.description));
-      row.append(link, details);
+      row.append(link);
+      const published = recordedTimeLabel(item.published_at, '');
+      const modified = recordedTimeLabel(item.modified_at, '');
+      if (published || modified) row.append(element('p', [published && `Published: ${published}`, modified && `Updated: ${modified}`].filter(Boolean).join(' · ')));
+      row.append(details);
       for (const advisory of (item.advisories || []).slice(0, 3)) {
         try {
           const url = new URL(advisory.url);
@@ -99,7 +103,9 @@ export function createCvePanel(document, scanId, service, saved, onSaved) {
       if (record.resolution === 'unique_product_version_candidate') output.append(element('p', 'The dictionary uses a different vendor identifier for this product/version. These are research candidates, not a verified identity or proof your device is affected.'));
       output.append(identity);
     }
-    if (record.checked_at) output.append(element('p', `Reference check: ${recordedTimeLabel(record.checked_at)}. Saved checks are reused for 24 hours.`));
+    if (record.checked_at) output.append(element('p', `Reference check: ${recordedTimeLabel(record.checked_at)}. ${record.related_search_incomplete
+      ? 'The search was incomplete. Checking again requests fresh references.'
+      : 'Completed searches may be reused for up to 24 hours.'}`));
     if (record.results?.length) {
       output.append(element('h5', 'References for the recorded version'));
       output.append(element('p', `Showing ${record.results.length} of ${record.total} database records. These are possible matches, not confirmed vulnerabilities on your device.`));
@@ -110,6 +116,8 @@ export function createCvePanel(document, scanId, service, saved, onSaved) {
       related.className = 'cve-related-references';
       related.append(element('h5', 'Related software problems — version not verified'));
       related.append(element('p', 'These records concern the same software product, possibly other versions or settings. They are leads to compare with the maker’s advice, not matches confirmed for your device.'));
+      if (record.related_selection === 'recent_first') related.append(element('p', `Recent published cases are shown first among the ${record.related_examined || 0} records checked. This can help even when the recorded version has no exact match.`));
+      if (record.related_search_incomplete) related.append(element('p', 'Part of the product search could not finish. Available references are preserved; check again later for a fuller selection.'));
       if (record.related_results?.length) {
         related.append(element('p', `Showing ${record.related_results.length} additional reference${record.related_results.length === 1 ? '' : 's'} from a limited product search. Records already listed above are not repeated.`));
         references(record.related_results, related);

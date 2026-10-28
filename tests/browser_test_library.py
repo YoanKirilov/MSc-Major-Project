@@ -184,8 +184,10 @@ def test_search_picker_titles_nickname_sync_and_identification(
             expect(
                 page.locator("#device-summaries .device-summary-group > .device-summary")
             ).to_have_count(1)
-            expect(page.locator("#device-search-count")).to_contain_text("1 of 1 matching device")
-            expect(page.locator("#device-search-count")).to_contain_text("2 recorded in total")
+            expect(page.locator("#device-search-count")).to_contain_text(
+                "1 of 1 matching addresses"
+            )
+            expect(page.locator("#device-search-count")).to_contain_text("2 addresses")
             # Device and review-item search have explicit independent scopes.
             expect(page.locator("#findingsList .finding-card")).to_have_count(1)
             page.locator("#searchInput").fill("display bedroom")
@@ -288,7 +290,7 @@ def test_search_picker_titles_nickname_sync_and_identification(
             refresh_button = page.get_by_role("button", name="Try identifying this address again")
             refresh_button.focus()
             page.once("dialog", lambda dialog: dialog.accept())
-            refresh_button.click()
+            refresh_button.press("Enter")
             expect(page.locator("#detailPanel .action-check select").first).to_have_value("checked")
             expect(page.locator("#nextStepsList .action-check select").first).to_have_value(
                 "checked"
@@ -311,7 +313,7 @@ def test_search_picker_titles_nickname_sync_and_identification(
             page.locator("#detailPanel .cve-research > summary").click()
             cve = page.locator('#detailPanel [data-device-action="cve-lookup"]')
             cve.focus()
-            cve.click()
+            cve.press("Enter")
             expect(page.locator("#report-user-title")).to_have_text("Title from second tab")
             expect(page.locator("#detailPanel .action-check select").first).to_have_value(
                 "need_help"

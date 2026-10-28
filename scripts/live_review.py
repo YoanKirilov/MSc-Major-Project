@@ -61,6 +61,20 @@ def require_review_success(browser_results, integrity, *, saved_only=False):
         raise RuntimeError("Saved test evidence changed; inspect integrity.json")
 
 
+def completed_scan_pair(reports):
+    """A correct failed-report workflow is distinct from complete scan coverage."""
+    return len(reports) == 2 and all(
+        report.get("state") == "completed"
+        and report.get("phase") == "finished"
+        and report.get("coverage", {}).get("service_stage_complete") is True
+        and (
+            report.get("target", {}).get("mode") != "discover"
+            or report.get("coverage", {}).get("discovery_complete") is True
+        )
+        for report in reports
+    )
+
+
 def saved_pair(run):
     """Only reopen isolated, finished reports; startup must not recover live jobs."""
     data = run / "data"
@@ -169,6 +183,11 @@ def main():
     )
     parser.add_argument("--scope")
     parser.add_argument("--host")
+    parser.add_argument(
+        "--require-complete",
+        action="store_true",
+        help="Fail the live gate if either scan has incomplete coverage",
+    )
     parser.add_argument("--artifacts", required=True, type=Path)
     args = parser.parse_args()
     if not args.verify_saved and not (args.authorised and args.scope and args.host):
@@ -406,6 +425,7 @@ def main():
                         for key in ("state", "phase", "coverage", "analysis_progress")
                     }
                     elapsed = round(time.monotonic() - item["start"], 1)
+                    stamp["network_monitor"] = progress.get("runtime", {}).get("network_monitor")
                     if stamp != item["last"]:
                         item["timeline"].append({"elapsed_s": elapsed, **stamp})
                         save(run, profile + "-timeline.json", item["timeline"])
@@ -463,6 +483,13 @@ def main():
                 if args.verify_saved
                 else all(item["refreshed"] for item in scans.values()),
                 "automatic_reports_after_analysis": None if args.verify_saved else True,
+                "flow_passed": False,
+                "scan_pair_completed": completed_scan_pair(
+                    [
+                        json.loads((data / "scans" / item["id"] / "scan.json").read_bytes())
+                        for item in scans.values()
+                    ]
+                ),
             }
             save(run, "scan-flow-results.json", flow_results)
             for profile, item in scans.items():
@@ -587,8 +614,18 @@ def main():
             integrity["saved_test_evidence_unchanged"] = saved_before == hashes(data / "scans")
         save(run, "integrity.json", integrity)
         require_review_success(browser_results, integrity, saved_only=args.verify_saved)
+        flow_results["flow_passed"] = True
+        browser_results["flow_passed"] = True
+        save(run, "scan-flow-results.json", flow_results)
+        save(run, "browser-results.json", browser_results)
+        if args.require_complete and not flow_results["scan_pair_completed"]:
+            raise RuntimeError("Report workflow passed, but the scan pair has incomplete coverage")
         print(
-            "SAVED_REPORT_REVIEW_COMPLETE" if args.verify_saved else "LIVE_SCAN_PAIR_COMPLETE",
+            "SAVED_REPORT_REVIEW_COMPLETE"
+            if args.verify_saved
+            else "LIVE_SCAN_PAIR_COMPLETE"
+            if flow_results["scan_pair_completed"]
+            else "LIVE_REVIEW_INCOMPLETE",
             flush=True,
         )
     except Exception as error:

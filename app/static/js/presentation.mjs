@@ -16,7 +16,7 @@ export function nameLookupMessage(record) {
   return record.names?.length
     ? `The last lookup returned ${record.names.length} reported name${record.names.length === 1 ? '' : 's'}: ${record.names.map(item => item.name).join(', ')}. Unverified claims; the saved device name has not changed.`
     : 'No new name found in the last lookup. The saved name has not changed; this does not mean the device is absent or safe.'
-      + ((record.diagnostics || []).some(item => ['timeout', 'busy', 'error'].includes(item.status)) ? ' A name source could not finish; see the lookup details below.' : '');
+      + ((record.diagnostics || []).some(item => ['timeout', 'busy', 'error'].includes(item.status)) ? ' A name source could not finish; this is not confirmation that no name exists. You can try again later or add your own nickname. See the lookup details below.' : '');
 }
 
 export function readableOverview(value) {
@@ -218,6 +218,38 @@ export function wordingLabels(fields) {
   const labels = { title: 'heading', meaning: 'what was found', why_it_matters: 'what it means for you',
     limitations: 'what we could not confirm', recommended_steps: 'suggested actions', how_to_check: 'how to check the result' };
   return [...new Set(Object.keys(fields).map((field) => labels[field.split('[')[0]] || 'explanation'))].join(', ');
+}
+
+export function incompleteReportLead(data) {
+  if (!['partial', 'failed', 'cancelled'].includes(data.state)
+      || (data.coverage?.service_completed_count ?? data.devices?.length ?? 0) > 0) return '';
+  return 'The scan stopped before usable device results were available. These results cannot tell you whether the devices are safe.';
+}
+
+export function unfinishedCheckNotes(data) {
+  const reasons = {
+    host_scan_timeout: 'Ran out of time.', host_result_invalid: 'Returned an incomplete or invalid result.',
+    host_unreachable: 'Could not reach this device. It may be asleep, disconnected or not responding; the cause is unknown.',
+    host_output_limit: 'Returned more information than the scanner can retain.',
+    host_scan_failed: 'Ended with a scanner error.',
+    host_privilege_required: 'Nmap could not start with the required permissions.',
+    host_driver_unavailable: 'Nmap could not use the local driver or adapter.',
+    network_interrupted: 'Stopped because the current network connection could not be verified.',
+    result_size_limit: 'Could not be saved within the report size limit.',
+    scan_failed: 'Stopped because the scan encountered an error.',
+    scan_time_limit: 'Did not finish within the scan time limit.',
+    storage_busy: 'Stopped because report storage was busy.',
+    host_scan_cancelled: 'Was cancelled.', process_restarted: 'Was interrupted when the app stopped.',
+    scan_queue_expired: 'Did not start before the waiting time limit.',
+  };
+  return (data.coverage?.targets || []).filter(target =>
+    (data.target?.mode === 'known_hosts' || target.discovery_status === 'observed')
+    && target.service_status !== 'completed'
+  ).map(target => ({
+    ip: target.ip,
+    message: `${target.ip}: ${reasons[target.reason_code] || 'This device check did not finish.'} ${target.attempts
+      ? `Attempts: ${target.attempts}.` : 'This check did not start.'} Its remaining checks were not assessed.`,
+  }));
 }
 
 export function savedCheckNote(device, service) {

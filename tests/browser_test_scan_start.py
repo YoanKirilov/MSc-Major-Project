@@ -62,6 +62,7 @@ def test_lost_start_reply_refresh_recovers_one_original_scan(monkeypatch, browse
             errors, posts = [], []
             page.on("pageerror", lambda error: errors.append(str(error)))
             recovering = True
+            native_status = app.state.start_requests.status
 
             def lose_reply(route):
                 posts.append(route.request.post_data_json)
@@ -69,15 +70,16 @@ def test_lost_start_reply_refresh_recovers_one_original_scan(monkeypatch, browse
                 assert response.status == 202
                 route.abort("failed")  # The backend accepted it; only its HTTP reply is lost.
 
-            def status_reply(route):
-                response = route.fetch()
+            async def status_reply(operation):
+                # Control the synthetic server's read view, not a browser
+                # route.fetch/fulfill response that can race an unloaded frame.
+                response = await native_status(operation)
                 if recovering:
-                    route.fulfill(response=response, json={"state": "preparing"})
-                else:
-                    route.fulfill(response=response)
+                    return {"state": "preparing"}
+                return response
 
             page.route("**/api/live-scans", lose_reply)
-            page.route("**/api/scan-starts/*", status_reply)
+            monkeypatch.setattr(app.state.start_requests, "status", status_reply)
             page.goto(manager.get_bootstrap_url(port))
             expect(page.locator("#scanLaunchButton")).to_be_enabled()
             page.goto(base + "/light#setup=1&profile=light&hosts=192.168.56.10")
@@ -88,6 +90,10 @@ def test_lost_start_reply_refresh_recovers_one_original_scan(monkeypatch, browse
             assert len(posts) == 1 and entered.wait(3)
             operation = posts[0]["operation_id"]
             assert page.url.endswith(f"#start={operation}")
+            # Finish the preparing-state receipt read before reloading.
+            # The backend scan remains running; held-read navigation is covered
+            # separately with both progress and receipt requests.
+            expect(page.locator("#scanStartRecover")).to_be_enabled()
             page.reload()
             expect(page.locator("#scanStartRecover")).to_be_visible()
             expect(page.locator("#scanLaunchButton")).to_be_disabled()

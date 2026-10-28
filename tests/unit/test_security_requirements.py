@@ -50,7 +50,10 @@ def test_project_audit_includes_runtime_build_client_and_separate_security_pins(
         assert any(line.startswith(pin) for line in lines), pin
     tools = audit_requirements(root, "requirements-security.lock")
     assert any(line.startswith("pip_audit==") for line in tools)
-    assert "filelock==3.32.7" in lines and "filelock==4.0.5" in tools
+    assert "filelock==4.2.1" in lines and "filelock==4.2.1" in tools
+    assert "setuptools==84.1.0" in lines
+    # The two graphs remain independent even when one patched pin now agrees.
+    assert "platformdirs==4.11.13" in lines and "platformdirs==4.12.1" in tools
 
 
 def test_coverage_rejects_missing_or_skipped_packages():

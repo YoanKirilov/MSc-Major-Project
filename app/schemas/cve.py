@@ -3,10 +3,10 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from .advisory import CveAdvisory
-from .common import StrictModel
+from .common import StrictModel, iso_z, observation_time
 
 
 class CveLookupRequest(StrictModel):
@@ -18,6 +18,14 @@ class CveReference(StrictModel):
     cve_id: str = Field(pattern=r"^CVE-\d{4}-\d{4,19}$")
     description: str = Field(max_length=1200)
     advisories: list[CveAdvisory] = Field(default_factory=list, max_length=3)
+    published_at: str | None = Field(default=None, max_length=80)
+    modified_at: str | None = Field(default=None, max_length=80)
+
+    @field_validator("published_at", "modified_at", mode="before")
+    @classmethod
+    def valid_optional_date(cls, value):
+        # Old records have no dates; invalid external dates must not become facts.
+        return iso_z(observation_time(value))
 
 
 class CveOperationReceipt(StrictModel):
@@ -55,6 +63,9 @@ class CveLookup(StrictModel):
     related_results: list[CveReference] = Field(default_factory=list, max_length=5)
     related_truncated: bool = False
     related_unverified: int = Field(default=0, ge=0)
+    related_examined: int = Field(default=0, ge=0, le=40)
+    related_selection: Literal["legacy_first_page", "recent_first", "partial"] = "legacy_first_page"
+    related_search_incomplete: bool = False
     ai_source: Literal["fixed", "ollama"] = "fixed"
     ai_model: str | None = Field(default=None, max_length=200)
     ai_prompt_version: str = "cve-context-1"

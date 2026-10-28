@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import subprocess
 import threading
@@ -236,10 +237,75 @@ def host_scan_interface(ip, interface, context):
     return interface
 
 
+class FreshNetworkReader:
+    """Share only in-flight reads between jobs; never cache authorisation."""
+
+    def __init__(self):
+        self._pending = {}
+        self.query_count = 0
+        self.shared_count = 0
+        self.last_query = {}
+
+    async def read(self, config, scope, interface):
+        key = (config.nmap_path, scope, interface)
+        task = self._pending.get(key)
+        if task is None or task.done():
+            task = asyncio.create_task(self._query(config, scope, interface))
+            self._pending[key] = task
+
+            def finished(done):
+                if self._pending.get(key) is done:
+                    self._pending.pop(key, None)
+                if not done.cancelled():
+                    done.exception()  # Retrieve failures even if every waiter left.
+
+            task.add_done_callback(finished)
+        else:
+            self.shared_count += 1
+        # Cancelling one scan must not cancel another scan's fresh observation.
+        return await asyncio.shield(task)
+
+    async def _query(self, config, scope, interface):
+        requested = monotonic()
+        self.query_count += 1
+        timing = {"state": "running"}
+
+        def read():
+            started = monotonic()
+            timing["executor_queue_ms"] = round((started - requested) * 1000)
+            try:
+                return connection_snapshot(config, scope, interface, strict=True)
+            finally:
+                timing["query_ms"] = round((monotonic() - started) * 1000)
+
+        try:
+            observed = await asyncio.to_thread(read)
+            timing["state"] = "ready"
+            return observed
+        except SnapshotUnavailable as exc:
+            timing.update(state="unavailable", reason=exc.reason)
+            raise
+        except Exception:
+            timing.update(state="unavailable", reason="snapshot_query_failed")
+            raise
+        finally:
+            timing["elapsed_ms"] = round((monotonic() - requested) * 1000)
+            self.last_query = timing
+            if timing["state"] == "unavailable":
+                logging.getLogger(__name__).warning("Local network observation failed: %s", timing)
+
+    def diagnostics(self):
+        return {"queries": self.query_count, "shared_reads": self.shared_count, **self.last_query}
+
+    async def close(self):
+        await asyncio.gather(*self._pending.values(), return_exceptions=True)
+
+
 class NetworkGuard:
-    def __init__(self, expected, read_context):
+    def __init__(self, expected, read_context, *, read_async=None):
         self.expected = expected
         self.read_context = read_context
+        self.read_async = read_async
         self.last_tick = monotonic()
         self.failed = False
         self.failure_reason = None
@@ -266,7 +332,11 @@ class NetworkGuard:
                 return
             self.last_tick = now
             try:
-                observed = await asyncio.to_thread(self.read_context)
+                observed = (
+                    await self.read_async()
+                    if self.read_async is not None
+                    else await asyncio.to_thread(self.read_context)
+                )
             except SnapshotUnavailable as exc:
                 self._fail(exc.reason)
             except Exception:

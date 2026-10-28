@@ -205,7 +205,7 @@ function setup(request, saved = null, hash = '', pathname = '/') {
   }
   const storage = new Map(saved ? [[key, saved]] : []);
   const timers = [];
-  const window = { location: { hash, pathname, replace(url) { this.href = url; } }, history: { replaceState(_a, _b, url) { window.location.hash = url.slice(url.indexOf('#')); } }, setTimeout(fn) { timers.push(fn); }, sessionStorage: {
+  const window = { events:{}, addEventListener(type, handler) { this.events[type]=handler; }, location: { hash, pathname, replace(url) { this.href = url; } }, history: { replaceState(_a, _b, url) { window.location.hash = url.slice(url.indexOf('#')); } }, setTimeout(fn) { timers.push(fn); }, sessionStorage: {
     getItem(k) { return storage.get(k); }, setItem(k, v) { storage.set(k, v); }, removeItem(k) { storage.delete(k); },
   } };
   const document = { createElement() { return new Element(); }, querySelector(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, querySelectorAll() { return []; } };
@@ -216,6 +216,31 @@ function setup(request, saved = null, hash = '', pathname = '/') {
   return { elements, storage, window, timers, context, load: () => vm.runInContext('loadStatus()', context) };
 }
 const ready = { ui_contract_version: 1, scanner_available: true, allowed_network: '192.168.0.0/24', storage_status: 'ok', ai_available: true };
+
+test('retired progress replies cannot redirect or keep polling after page navigation', async () => {
+  let release;
+  const calls = [];
+  const app = setup(async path => {
+    calls.push(path);
+    if (path === '/api/status') return {...ready,active_scan_ids:[scanId]};
+    if (path === `/api/scans/${scanId}`) return {policy:{profile:'light'}};
+    return new Promise(resolve=>{release=resolve;});
+  }, scanId, `#scan=${scanId}`);
+  const loading = app.load();
+  while (!release) await new Promise(resolve=>setImmediate(resolve));
+  app.window.events.pagehide({persisted:true});
+  release({state:'completed',phase:'finished'});
+  await loading;
+  assert.equal(app.window.location.href, undefined);
+  assert.equal(app.timers.length, 0);
+  assert.equal(app.storage.get(key), scanId);
+  app.window.events.pageshow({persisted:true});
+  while (calls.filter(path=>path.endsWith('/progress')).length < 2) await new Promise(resolve=>setImmediate(resolve));
+  release({state:'running',phase:'service_scan'});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(app.timers.length, 1);
+  assert.ok(!calls.some(path=>path.includes('/retry')));
+});
 
 for (const outcome of ['accepted', 409, 429, 503, 'lost']) {
   for (const newerFinishesFirst of [false, true]) {

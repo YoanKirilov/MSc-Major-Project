@@ -1,5 +1,79 @@
 # Testing status
 
+## Remaining fixes and successful live verification - 27 October 2026
+
+[Execution record](rest-fixes-20261027.md). F1/F4/F2/F3 are implemented; WebKit F5
+is deferred at the owner's request. Final offline: 1,008 Python/305 JavaScript
+passes, five privilege skips; syntax, lint/208-file formatting, installed-wheel
+and security gates passed. 74 focused Chromium/Firefox cases passed before the
+prompt bump; six final cases verify the completed prompt-version workflow.
+Fresh Light checked 10/10 devices; Deep checked 1/1 this-PC target. Both passed
+running refresh, analysis/report opening, exports/inventory and four viewports.
+Raw replay reproduced 171 services/11 findings/two certificate interpretations;
+all 13 ready AI records revalidated with prompt 4.4.1. Normal backend is updated,
+853 evidence files unchanged, owned test processes/port closed. No new full browser
+matrix, WebKit or hosted-CI result is claimed.
+
+## Fresh live recheck - 27 October 2026
+
+[Full execution and open findings](verification-review-20261027.md). Fresh Light
+retained 2/6 completed device checks; Deep stopped before completing its selected
+check. Both saved the precise local Nmap-interface `list_timeout` reason. Failed/
+partial report access, running refresh, automatic analysis/report navigation,
+exports, inventory and four viewport sizes passed without browser errors. Raw
+replay and four ready AI records revalidated; NVD related-product research and
+actual Ollama context passed separately. This is not a successful full scan pair.
+Fresh offline, security and installed-package checks passed. Full Chromium/Firefox
+each passed 163 cases; WebKit passed 163 with one navigation teardown error and
+exited 1. Focused probes passed without reproducing it; they do not erase that
+failed gate. Details and test/environment limits are in the execution report.
+
+## Fix execution and CVE relevance - 27 October 2026
+
+[Implementation and evidence](fixes-cve-20261027.md) records dependency patches,
+page-read lifecycle cleanup, pointer/keyboard acceptance, deterministic subprocess
+readiness and related-product CVE selection. Offline, instrumented, security,
+installed-package and real-engine checks are reported separately there, including
+failed test-harness attempts and their corrections. One real read-only NVD lookup
+used a saved software fingerprint; no fresh network scan/model generation was
+submitted. Normal runtime is now updated/restarted and matches source; Nmap and
+Ollama readiness passed. A new hosted-CI result remains pending.
+The dated sections below retain their original failures and totals.
+
+## Full checks and live scans - 26 October 2026
+
+[Full review and findings](full-review-20261026.md). Both fresh authorised scans
+completed: Light 6/6 checks, ten open features/seven findings; Deep 1/1, fourteen
+open features/four findings. Thirteen AI records, 111 raw service records and all
+eleven findings revalidated. Refresh/navigation/export/inventory/viewport checks
+passed; 853 normal files unchanged and owned processes/port closed. Normal app now
+matches API contract 3/build `2e3a157beed5920419aa`.
+
+Offline 987 Python/296 JavaScript, lint/format/syntax and installed-wheel gates
+passed. Fresh security **failed** with four unique dependency advisories; static
+and secret checks passed. GitHub run 24 has 15 passing/two failing jobs; the Windows
+WebKit CVE-focus assertion reproduces locally, with an input-modality diagnostic
+documented in the review. Complete browser suites: Chromium 157 passes, Firefox
+157 passes, WebKit 152 passes/five failures; none skipped. The extra coverage run
+had one subprocess-output timing failure, retained separately from the normal
+offline pass and the focused normal/instrumented reruns that passed. See F2/F4/F5.
+Earlier clean security or OS-blocked WebKit records below remain historical, not
+the current result. No new hosted pass, real-AT or reader-study pass is inferred.
+
+## Organisation and fresh live verification - 21 October 2026
+
+[Execution record](organisation-live-verification-20261021.md). Separately tested
+scan-start ownership/recovery state; no proven-unused application files deleted.
+987 Python/296 JavaScript passes, 30 syntax checks, lint/204-file formatting,
+30 Chromium/Firefox cases, security and installed-wheel checks passed. Fresh Deep
+completed 1/1 selected check; Light stopped before discovery completed with precise
+`adapter_query_timeout`. Seven AI records revalidated; 21 Deep service records and
+five findings reproduced. UI/export/inventory checks passed, but the live helper
+exited 1: Light finished before its running-refresh assertion could be exercised.
+This is not a complete live pass. All 853 normal evidence files/270 source inputs
+stayed unchanged; owned processes and port independently confirmed closed. Normal
+backend still needs a restart. The timeout and later refresh verification remain open.
+
 ## F1-F4 fixes - 21 October 2026
 
 [Implementation and acceptance evidence](issue-fixes-20261021.md). Stale scan-start

@@ -86,7 +86,7 @@ async def test_network_failure_saved_exactly_without_retry_or_completed_check(
     from app.storage.json_store import JsonStore
 
     guard = NetworkGuard({"adapter": 1}, lambda: {"adapter": 1})
-    monkeypatch.setattr("app.jobs.supervisor.NetworkGuard", lambda *a: guard)
+    monkeypatch.setattr("app.jobs.supervisor.NetworkGuard", lambda *a, **kw: guard)
     store = JsonStore(tmp_path)
     doc = ScanDocument(
         scan_id=str(uuid4()),

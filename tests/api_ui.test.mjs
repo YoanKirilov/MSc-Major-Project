@@ -6,10 +6,11 @@ import vm from 'node:vm';
 function setup({ blocked = false, status = 200, detail = null } = {}) {
   const calls = [];
   const notes = [];
+  const lifecycle = new Map();
   const context = vm.createContext({ Headers, URLSearchParams, AbortController, setTimeout, clearTimeout,
     document: { body: { prepend(note) { notes.push(note); } },
       getElementById() { return notes[0]; }, createElement() { return { setAttribute() {} }; } },
-    window: { location: { hash: '', pathname: '/', search: '' }, sessionStorage: {
+    window: { addEventListener(type, handler) { lifecycle.set(type, handler); }, location: { hash: '', pathname: '/', search: '' }, sessionStorage: {
       getItem() { if (blocked) throw Error('Blocked'); return null; },
       setItem() { if (blocked) throw Error('Blocked'); },
       removeItem() { if (blocked) throw Error('Blocked'); },
@@ -23,8 +24,46 @@ function setup({ blocked = false, status = 200, detail = null } = {}) {
   });
   const source = readFileSync(new URL('../app/static/js/api.js', import.meta.url), 'utf8').replace('export { request, CVE_LOOKUP_TIMEOUT_MS };', '');
   vm.runInContext(source, context);
-  return { context, calls, notes, request: (code) => vm.runInContext(code, context) };
+  return { context, calls, notes, lifecycle, request: (code) => vm.runInContext(code, context) };
 }
+
+test('leaving a page aborts only its reads, not accepted writes or backend work', async () => {
+  const app = setup();
+  await app.request("request('/api/status')");
+  const pending = [];
+  app.context.fetch = (path, options) => new Promise((resolve, reject) => {
+    pending.push({path, options, resolve});
+    options.signal.addEventListener('abort', () => reject(new Error('aborted')));
+  });
+  const read = app.request("request('/api/live-scans/scan/progress')");
+  const readRejected = assert.rejects(read, error => error.code === 'page_inactive');
+  const write = app.request("request('/api/live-scans', {method:'POST', body:'{}'})");
+  while (pending.length < 2) await new Promise(resolve => setImmediate(resolve));
+  app.lifecycle.get('pagehide')({persisted:true});
+  await readRejected;
+  assert.equal(pending[0].options.signal.aborted, true);
+  assert.equal(pending[1].options.signal.aborted, false);
+  await assert.rejects(app.request("request('/api/status')"), error => error.code === 'page_inactive');
+  assert.equal(pending.length, 2);
+  pending[1].resolve({ok:true,json:async()=>({scan_id:'original'})});
+  assert.equal((await write).scan_id, 'original');
+});
+
+test('a late read from before navigation stays retired after pageshow', async () => {
+  const app = setup();
+  await app.request("request('/api/status')");
+  let release;
+  app.context.fetch = () => new Promise(resolve => { release=resolve; });
+  const read = app.request("request('/api/live-scans/scan/progress')");
+  const rejected = assert.rejects(read, error => error.code === 'page_inactive');
+  while (!release) await new Promise(resolve => setImmediate(resolve));
+  app.lifecycle.get('pagehide')({persisted:true});
+  app.lifecycle.get('pageshow')({persisted:true});
+  release({ok:true,json:async()=>({state:'finished'})});
+  await rejected;
+  app.context.fetch = async () => ({ok:true,json:async()=>({state:'current'})});
+  assert.equal((await app.request("request('/api/status')")).state, 'current');
+});
 
 test('validation arrays become readable field messages without echoing input values', async () => {
   const app = setup({ status: 422, detail: [{ loc: ['body', 'allowed_network'], msg: 'Value error, enter a private network range', input: 'private-value' }] });

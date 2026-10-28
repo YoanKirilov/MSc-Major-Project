@@ -76,6 +76,13 @@ let statusError = null;
 let networkWarning = null;
 let storageReady = false;
 let pollFailures = 0;
+let pollEpoch = 0;
+let pageSuspended = false;
+window.addEventListener?.('pagehide', () => { pageSuspended = true; pollEpoch += 1; });
+window.addEventListener?.('pageshow', event => {
+  pageSuspended = false;
+  if (event.persisted && activeScanId) pollScan(activeScanId);
+});
 const pendingScanKey = `network-assessor-pending-scan${pageProfile ? `:${pageProfile}` : ''}`;
 const pendingStartKey = `${pendingScanKey}:start`;
 const startRecover = document.querySelector('#scanStartRecover');
@@ -172,6 +179,7 @@ launchButton.disabled = true;
 launchButton.querySelector('span').textContent = 'Checking scanner...';
 
 function rememberScan(id) {
+  if (activeScanId !== id) pollEpoch += 1;
   activeScanId = id;
   try {
     if (id) window.sessionStorage.setItem(pendingScanKey, id);
@@ -471,20 +479,24 @@ function updateProgress(scan) {
   }
 }
 
-async function pollScan(scanId) {
+async function pollScan(scanId, epoch = pollEpoch) {
+  const current = () => !pageSuspended && epoch === pollEpoch && activeScanId === scanId;
+  if (!current()) return;
   try {
     const scan = await request(`/api/live-scans/${scanId}/progress`);
+    if (!current()) return;
     pollFailures = 0;
     errorPanel.hidden = true;
     updateProgress(scan);
     if (scan.state === 'queued' || scan.state === 'running' || scan.phase === 'analysis') {
-      window.setTimeout(() => pollScan(scanId), 1000);
+      window.setTimeout(() => pollScan(scanId, epoch), 1000);
       return;
     }
     cancelButton.hidden = true;
     rememberScan(null);
     window.location.href = `/scans/${scanId}`;
   } catch (error) {
+    if (!current() || error.code === 'page_inactive') return;
     if (error.status === 404) {
       rememberScan(null);
       setError('This saved scan could not be found. Open Saved reports to check your scan history.');
@@ -495,7 +507,7 @@ async function pollScan(scanId) {
       errorPanel.hidden = false;
       showScanMessage('Connection interrupted. Reconnecting to the same selected scan without restarting it.');
       errorPanel.textContent = `Connection interrupted. Reconnecting to the same scan; do not start another. ${error.message}`;
-      window.setTimeout(() => pollScan(scanId), Math.min(1000 * 2 ** Math.min(pollFailures++, 4), 15000));
+      window.setTimeout(() => pollScan(scanId, epoch), Math.min(1000 * 2 ** Math.min(pollFailures++, 4), 15000));
     }
   }
 }

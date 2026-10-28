@@ -76,6 +76,7 @@ export function deviceStatus(device, target) {
       : 'Selected checks finished; not a safety verdict.';
   }
   if (target?.service_status) {
+    if (target.reason_code === 'network_interrupted') return 'Stopped because the network connection could not be verified.';
     return ({ pending: 'Waiting for device checks.', running: 'Device checks are running.',
       failed: 'Device checks could not finish.', timed_out: 'Device checks ran out of time.',
       cancelled: 'Device checks were cancelled.', skipped: 'Selected device checks were not performed.',
@@ -419,9 +420,11 @@ export function renderDeviceSummaries({ document, container, data, expandedDevic
     ? 'No device results match this search. Clear the search to see all recorded devices.'
     : 'No device results were recorded. This does not prove that no devices are connected.'));
   const failed = visible.filter(device => !device.device_id).length;
+  const checked = data.coverage?.service_completed_count ?? data.devices?.length ?? 0;
+  const unfinished = Math.max(0, entries.length - checked);
   return {
     entries, matching, visibleCount: visible.length,
     namingText: `Naming information covers the ${data.devices?.length || 0} device${data.devices?.length === 1 ? '' : 's'} with usable saved results; addresses without a usable result are excluded. ${namingCoverage(data.devices || [])}`,
-    countText: `Showing ${visible.length} of ${matching.length} matching device results (${entries.length} recorded in total)${failed ? `, including ${failed} shown address${failed === 1 ? '' : 'es'} without a usable device result` : ''}. Devices without review items are included.`,
+    countText: `Showing ${visible.length} of ${matching.length} matching addresses. ${entries.length} address${entries.length === 1 ? '' : 'es'} ${data.target?.mode === 'discover' ? 'found' : 'selected'}; ${checked} checked; ${unfinished} unfinished.${failed ? ` ${failed} shown address${failed === 1 ? '' : 'es'} without a usable device result.` : ''} Devices without review items are included.`,
   };
 }

@@ -19,6 +19,16 @@ def report_input(document: ScanDocument) -> tuple[Finding, dict]:
         f"The scan saved results for {devices}. It found {connections} accepting requests. "
         "A service is a device feature that other devices can contact, such as file sharing."
     )
+    if not coverage.service_completed_count and (document.scan_outcome or document.state) in {
+        "partial",
+        "failed",
+        "cancelled",
+    }:
+        meaning = "No device checks completed. Device security could not be assessed."
+        meaning_plain = (
+            "The scan stopped before usable device results were available. "
+            "These results cannot tell you whether the devices are safe."
+        )
     why = (
         f"The selected rules produced {finding_count} "
         f"finding{'s' if finding_count != 1 else ''} for review."

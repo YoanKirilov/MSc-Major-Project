@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from time import monotonic
 from unittest.mock import AsyncMock
 
 import pytest
@@ -73,17 +74,49 @@ async def test_runner_marks_output_overflow():
 
 
 @pytest.mark.asyncio
-async def test_timeout_with_inherited_pipes_preserves_partial_output():
+async def test_timeout_with_inherited_pipes_preserves_partial_output(monkeypatch):
+    loop = asyncio.get_running_loop()
+    spawn = loop.subprocess_exec
+    output_ready = asyncio.Event()
+    ready_at = None
+
+    async def observed_spawn(factory, *args, **kwargs):
+        def observed_factory():
+            capture = factory()
+            receive = capture.pipe_data_received
+
+            def receive_with_ready(fd, data):
+                nonlocal ready_at
+                receive(fd, data)
+                if not output_ready.is_set() and b"captured-before-timeout" in capture.buffers[1]:
+                    ready_at = monotonic()
+                    output_ready.set()
+
+            capture.pipe_data_received = receive_with_ready
+            return capture
+
+        transport, capture = await spawn(observed_factory, *args, **kwargs)
+        try:
+            # Observe the marker before asserting it was preserved. Cold Python/
+            # descendant startup is not evidence that the capture lost output.
+            await asyncio.wait_for(output_ready.wait(), 8)
+        except BaseException:
+            transport.close()
+            raise
+        return transport, capture
+
+    monkeypatch.setattr(loop, "subprocess_exec", observed_spawn)
     # The child exits naturally in three seconds even if a regression breaks cleanup.
     code = (
         "import subprocess,sys; "
         "subprocess.Popen([sys.executable,'-c','import time; time.sleep(3)']); "
         "print('captured-before-timeout',flush=True)"
     )
-    result = await asyncio.wait_for(run_process([sys.executable, "-c", code], 1), 6)
+    result = await asyncio.wait_for(run_process([sys.executable, "-c", code], 1), 12)
     assert result.timed_out
     assert result.stdout.strip() == b"captured-before-timeout"
-    assert result.duration_s < 2.5  # Do not wait for the inherited pipe's natural EOF.
+    assert ready_at is not None
+    assert monotonic() - ready_at < 2.5  # Do not wait for inherited-pipe natural EOF.
 
 
 @pytest.mark.asyncio

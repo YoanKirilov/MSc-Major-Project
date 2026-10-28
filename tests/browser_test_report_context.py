@@ -80,7 +80,7 @@ def test_late_device_context_expands_only_the_needed_saved_device_page(ui):
     )
     expect(page.locator(".device-summary-group")).to_have_count(96)
     expect(page.locator("#showMoreDevices")).to_contain_text("4 remaining")
-    expect(page.locator("#device-search-count")).to_contain_text("100 recorded in total")
+    expect(page.locator("#device-search-count")).to_contain_text("100 addresses")
 
 
 def test_reload_and_back_restore_later_reading_state_after_explicit_device_link(ui):

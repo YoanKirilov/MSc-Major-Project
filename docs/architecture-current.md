@@ -1,4 +1,65 @@
-# Current architecture - updated 21 October 2026
+# Current architecture - updated 27 October 2026
+
+[Latest fixes](rest-fixes-20261027.md) preserve the single-owner FastAPI/JSON design.
+Jobs share only in-flight compatible fresh network observations; no finished-read
+authorisation cache is used. Cancellation-safe terminal attempt records preserve
+known timing/cause without inventing exits. Report presentation distinguishes
+unchecked addresses, network stops and incomplete CVE searches; prompt 4.4.1
+versions the revised overview choices. Current normal build is `5ef8b4b9ad40e95f807b`.
+Fresh Light/Deep completed and replay/AI/report checks passed. WebKit navigation
+remains explicitly deferred, not fixed or filtered.
+
+## Preceding review and implementation snapshots
+
+The [preceding 27 October recheck](verification-review-20261027.md) identified an open
+reliability issue in per-job network monitoring: intermittent local `nmap --iflist`
+timeouts stop scans safely. Light retained two checks; Deep produced no completed
+check. Coalescing compatible fresh reads and recording query/queue timings are
+recommended; bypassing network verification is not. Current source and normal
+backend still match, and saved evidence/AI/report recovery checks passed.
+
+The [27 October implementation](fixes-cve-20261027.md) preserves the single-owner
+FastAPI/JSON design. Page lifecycle now retires GET/HEAD reads and late polling
+generations without cancelling accepted backend work or replaying scan-start POSTs.
+CVE research uses bounded product pages, validates product relevance and keeps
+related cases separate from device vulnerability findings. Publication/update and
+partial-search metadata are stored in annotations; original scan evidence is kept.
+
+Patched runtime/security/build pins passed isolated audit and installed-package
+checks. Normal runtime was updated/restarted after idle confirmation; its build
+matches `1b6127342ba5b5601dc3`, contract 3. No database migration, hosted
+publication or fresh network scan was performed. See the execution record for
+browser, instrumentation and remaining evaluation limits.
+
+## Preceding architecture review - 26 October (historical)
+
+The [26 October full review](full-review-20261026.md) verified the unchanged
+single-owner FastAPI/JSON architecture on fresh Light and this-PC Deep scans.
+Both completed, both survived running refresh, report/model evidence replay passed,
+and the normal backend now matches contract 3/build `2e3a157beed5920419aa`.
+No framework/database migration, application refactor or deletion was justified
+by this review. Source/asset reachability passed; large report/worker orchestrators
+remain candidates for small tested extractions, not wholesale rewrites.
+
+Current open issues are the fresh dependency-advisory gate, WebKit input-
+modality/focus acceptance failures and intermittent navigation page-error checks.
+The instrumented process-output timing test also needs a deterministic reproducer.
+Missing PTR names and old related CVE leads
+need bounded diagnostic/relevance improvements. No old clean audit, prior startup
+failure or restart advice below should be treated as the current deployment state.
+
+## Earlier architecture and execution notes (historical snapshots)
+
+The [latest organisation/live execution](organisation-live-verification-20261021.md)
+extracts pure operation/generation/read-budget state to `static/js/start-state.mjs`.
+Dashboard DOM, storage, timers and HTTP handling remain in the orchestrator; no
+scanner, JSON ownership, concurrency, scope or authorisation policy changed.
+Four new pure-state tests and the full regression/package/browser gates passed.
+Fresh Deep completed; Light exposed the precise `adapter_query_timeout` reason
+from the eight-second Windows connection query. It failed closed and saved its
+incomplete coverage. Query reliability remains open, not fixed by this refactor.
+The live helper's both-running refresh assertion was unexercised for fast-finished
+Light; it was not waived. Existing data and frozen source stayed unchanged.
 
 The [21 October issue fixes](issue-fixes-20261021.md) close the four reproduced
 edges from the [latest live review](live-review-20261021.md). Dashboard operations

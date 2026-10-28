@@ -24,6 +24,65 @@ def wait_for_routes(page, pending, count):
     assert len(pending) == count
 
 
+@pytest.mark.parametrize("read_kind", ["progress", "receipt"])
+def test_navigation_retires_an_inflight_progress_read_without_starting_a_scan(ui, read_kind):
+    from playwright.sync_api import expect
+
+    page, base, reports = ui
+    pending, writes, errors, failed = [], [], [], []
+    # Intercepted requests do not emit requestfailed consistently across engines.
+    # Observe the actual application AbortSignal, not an automation-driver event.
+    page.add_init_script("""{
+        const originalFetch = window.fetch;
+        window.fetch = (resource, options) => {
+            if (typeof resource === 'string' && (
+                resource.endsWith('/progress') || resource.includes('/api/scan-starts/')
+            )) {
+                window.netguardTestProgressSignal = options?.signal;
+            }
+            return originalFetch(resource, options);
+        };
+    }""")
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    page.on("requestfailed", lambda request: failed.append((request.url, request.failure or "")))
+    page.on(
+        "request", lambda request: writes.append(request.url) if request.method == "POST" else None
+    )
+    route_pattern = (
+        "**/api/live-scans/*/progress" if read_kind == "progress" else "**/api/scan-starts/*"
+    )
+    page.route(route_pattern, lambda route: pending.append(route))
+    selected = f"scan={reports['zero'].scan_id}" if read_kind == "progress" else f"start={uuid4()}"
+    page.goto(base + f"/light#{selected}")
+    wait_for_routes(page, pending, 1)
+    # Register after the application's listener and read the signal property.
+    # An inactive document need not dispatch a nested AbortSignal listener.
+    page.evaluate("""() => window.addEventListener('pagehide', () => {
+        sessionStorage.setItem('netguard-test-progress-aborted',
+            window.netguardTestProgressSignal?.aborted ? 'yes' : 'no');
+    })""")
+    try:
+        page.goto(base + "/history")
+        expect(page.locator("#history-list")).to_be_visible()
+        expect(page.get_by_role("heading", name="Saved reports", exact=True)).to_be_visible()
+        signal_aborted = (
+            page.evaluate("sessionStorage.getItem('netguard-test-progress-aborted')") == "yes"
+        )
+        # Some engines cancel the fetch themselves before pagehide cleanup.
+        # Require actual cancellation by either mechanism, never an arbitrary
+        # access-control failure. Every pageerror still fails below.
+        native_cancelled = any(
+            (url.endswith("/progress") or "/api/scan-starts/" in url)
+            and any(word in reason.lower() for word in ("cancel", "abort"))
+            for url, reason in failed
+        )
+        assert signal_aborted or native_cancelled, (signal_aborted, failed)
+    finally:
+        # Settle the test's interception even if an assertion fails.
+        pending[0].abort()
+    assert not errors and not writes
+
+
 @pytest.mark.parametrize("old_status", [202, 409, 503])
 def test_superseded_post_never_replaces_newer_scan(ui, old_status):
     from playwright.sync_api import expect

@@ -204,7 +204,7 @@ test('sorting and show-more account for full matching population including faile
   assert.equal(result.visibleCount, 24);
   assert.equal(container.children.length, 24);
   assert.equal(container.children[0].dataset.deviceIp, '192.168.1.200');
-  assert.match(result.countText, /24 of 51 matching device results \(101 recorded in total\)/);
+  assert.match(result.countText, /24 of 51 matching addresses\. 101 addresses found; 100 checked; 1 unfinished/);
   assert.equal(render(data, { ...options, deviceLimit: Infinity }).result.visibleCount, 51);
 });
 
@@ -408,6 +408,26 @@ test('related CVEs are labelled separately with canonical links and no AI outage
   assert.match(panel.textContent, /related-product search could not finish/);
 });
 
+test('network safety interruptions and manual cancellation have different device labels', () => {
+  const device = { device_id: 'one', ip: '192.168.56.10' };
+  const data = fixture({ devices: [device], coverage: { service_completed_count: 0,
+    targets: [{ ip: device.ip, service_status: 'cancelled', reason_code: 'network_interrupted' }] } });
+  const interrupted = render(data).container.textContent;
+  assert.match(interrupted, /Stopped because the network connection could not be verified/);
+  assert.doesNotMatch(interrupted, /checks were cancelled/);
+  data.coverage.targets[0].reason_code = 'host_scan_cancelled';
+  assert.match(render(data).container.textContent, /checks were cancelled/);
+});
+
+test('partial CVE searches never promise that the incomplete result is reused for a day', () => {
+  const panel = createCvePanel(document, 'scan', { service_id: 'service' }, {
+    service_id: 'service', status: 'no_matches', message: 'No version references.',
+    checked_at: '2026-10-27T12:00:00Z', related_search_incomplete: true,
+  }, () => true);
+  assert.match(panel.textContent, /search was incomplete.*requests fresh references/);
+  assert.doesNotMatch(panel.textContent, /24 hours/);
+});
+
 test('only an explicit CVE action posts a lookup; stale receipts retain newer saved research', async () => {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
@@ -504,6 +524,51 @@ test('empty or failed saved-CVE recovery keeps the uncertainty and saved referen
     assert.match(panel.textContent, /no new lookup was started/);
     assert.equal(calls.filter(([, method]) => method === 'POST').length, 1);
   } finally { globalThis.fetch = originalFetch; globalThis.window = originalWindow; }
+});
+
+test('related CVE cases retain dates, bounded coverage and partial-search warnings', () => {
+  const record = {service_id:'software',status:'no_matches',message:'No exact version matches; not proof of safety.',
+    results:[], related_query:'cpe:2.3:a:example:software:*:*:*:*:*:*:*:*',related_status:'candidates',
+    related_selection:'recent_first',related_examined:35,related_search_incomplete:true,related_truncated:true,
+    related_results:[{cve_id:'CVE-2026-12345',description:'Different version of the same software.',
+      published_at:'2026-01-02T00:00:00Z',modified_at:'invalid date'}]};
+  const panel = createCvePanel(document, 'scan', {service_id:'software'}, record, () => true);
+  assert.match(panel.textContent, /Recent published cases.*35 records checked/);
+  assert.match(panel.textContent, /Part of the product search could not finish/);
+  assert.match(panel.textContent, /Published:/);
+  assert.doesNotMatch(panel.textContent, /Updated:|invalid date/);
+  assert.match(panel.textContent, /not matches confirmed for your device/);
+  assert.equal(descendants(panel).filter(node => node.tagName === 'A' && /CVE-2026-12345/.test(node.textContent)).length, 1);
+});
+
+test('CVE recovery does not steal focus when the reader moved to another control', async () => {
+  const originalFetch = globalThis.fetch, originalWindow = globalThis.window, originalFocus = document.activeElement;
+  const record = {service_id:'moved-focus-service',status:'no_matches',message:'Saved lookup.',results:[]};
+  let release, posts = 0;
+  globalThis.window = {location:{hash:''},sessionStorage:{setItem(){}}};
+  globalThis.fetch = async (path, options) => {
+    if (path === '/api/session') return {ok:true,json:async()=>({csrf_token:'synthetic'})};
+    if (options.method === 'POST') {
+      posts += 1; record.operation_id = JSON.parse(options.body).operation_id;
+      throw new TypeError('Lost reply');
+    }
+    return new Promise(resolve => { release=resolve; });
+  };
+  try {
+    const panel = createCvePanel(document, 'scan', {service_id:record.service_id,cve_lookup_available:true}, null,()=>true);
+    const [lookup,reload] = descendants(panel).filter(node=>node.tagName==='BUTTON');
+    await lookup.events.click();
+    reload.focus();
+    const reading = reload.events.click();
+    while (!release) await new Promise(resolve=>setImmediate(resolve));
+    const elsewhere = new Element('input'); elsewhere.focus();
+    release({ok:true,json:async()=>({revision:2,cve_lookups:[record]})});
+    await reading;
+    assert.equal(document.activeElement, elsewhere);
+    assert.equal(lookup.disabled, false);
+    assert.equal(reload.hidden, true);
+    assert.equal(posts, 1);
+  } finally {globalThis.fetch=originalFetch;globalThis.window=originalWindow;document.activeElement=originalFocus;}
 });
 
 test('the self-device heading states its role once without discarding recorded type facts', () => {
